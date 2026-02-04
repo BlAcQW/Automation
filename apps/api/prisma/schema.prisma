@@ -1,0 +1,354 @@
+// Prisma Schema for BookingFlow
+// Multi-tenant WhatsApp Booking Automation Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// TENANT & USER MANAGEMENT
+// ============================================
+
+model Tenant {
+  id                    String       @id @default(cuid())
+  name                  String
+  businessType          BusinessType @default(SERVICE)
+  timezone              String       @default("UTC")
+  whatsappPhoneNumberId String?      @unique
+  whatsappAccountId     String?
+  whatsappAccessToken   String?      // Encrypted
+  whatsappDisplayNumber String?
+  isActive              Boolean      @default(true)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  users                User[]
+  services             Service[]
+  bookings             Booking[]
+  products             Product[]
+  orders               Order[]
+  conversations        Conversation[]
+  workingHours         WorkingHours[]
+  blackoutDates        BlackoutDate[]
+  calendarIntegrations CalendarIntegration[]
+
+  @@index([whatsappPhoneNumberId])
+  @@index([businessType])
+}
+
+enum BusinessType {
+  PRODUCT
+  SERVICE
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(STAFF)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([email])
+}
+
+enum Role {
+  OWNER
+  STAFF
+}
+
+// Platform Admin - separate from tenants, can manage all data
+model Admin {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  isSuperAdmin Boolean   @default(false)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+
+  @@index([email])
+}
+
+// ============================================
+// SERVICE MANAGEMENT
+// ============================================
+
+model Service {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  description     String?
+  price           Decimal  @db.Decimal(10, 2)
+  durationMinutes Int
+  category        String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+}
+
+// ============================================
+// AVAILABILITY MANAGEMENT
+// ============================================
+
+model WorkingHours {
+  id        String  @id @default(cuid())
+  tenantId  String
+  dayOfWeek Int     // 0=Sunday, 6=Saturday
+  startTime String  // "09:00" (24hr format)
+  endTime   String  // "17:00" (24hr format)
+  isActive  Boolean @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dayOfWeek])
+  @@index([tenantId])
+}
+
+model BlackoutDate {
+  id       String   @id @default(cuid())
+  tenantId String
+  date     DateTime @db.Date
+  reason   String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date])
+  @@index([tenantId])
+}
+
+// ============================================
+// BOOKING MANAGEMENT
+// ============================================
+
+model Booking {
+  id               String        @id @default(cuid())
+  tenantId         String
+  serviceId        String
+  customerName     String
+  customerPhone    String
+  startTime        DateTime
+  endTime          DateTime
+  status           BookingStatus @default(CONFIRMED)
+  bookingReference String        @unique
+  calendarEventId  String?
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, startTime])
+  @@index([customerPhone])
+  @@index([bookingReference])
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+// ============================================
+// WHATSAPP CONVERSATIONS
+// ============================================
+
+model Conversation {
+  id            String            @id @default(cuid())
+  tenantId      String
+  customerPhone String
+  customerName  String?
+  state         ConversationState @default(BOT_ACTIVE)
+  botContext    Json?             // Current bot flow state
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([tenantId, customerPhone])
+  @@index([tenantId])
+  @@index([customerPhone])
+}
+
+enum ConversationState {
+  BOT_ACTIVE
+  HUMAN_ACTIVE
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  direction      Direction
+  content        String
+  messageType    MessageType @default(TEXT)
+  whatsappMsgId  String?
+  metadata       Json?
+  createdAt      DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageType {
+  TEXT
+  INTERACTIVE
+  TEMPLATE
+  IMAGE
+  DOCUMENT
+}
+
+// ============================================
+// CALENDAR INTEGRATIONS
+// ============================================
+
+model CalendarIntegration {
+  id           String           @id @default(cuid())
+  tenantId     String
+  provider     CalendarProvider
+  accessToken  String           // Encrypted
+  refreshToken String?          // Encrypted
+  expiresAt    DateTime?
+  calendarId   String?
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@index([tenantId])
+}
+
+enum CalendarProvider {
+  GOOGLE
+  OUTLOOK
+}
+
+// ============================================
+// CACHED CALENDAR EVENTS (for availability)
+// ============================================
+
+model CalendarEvent {
+  id                    String   @id @default(cuid())
+  calendarIntegrationId String
+  externalEventId       String
+  title                 String?
+  startTime             DateTime
+  endTime               DateTime
+  isAllDay              Boolean  @default(false)
+  syncedAt              DateTime @default(now())
+
+  @@unique([calendarIntegrationId, externalEventId])
+  @@index([calendarIntegrationId])
+  @@index([startTime, endTime])
+}
+
+// ============================================
+// PRODUCT MANAGEMENT (for PRODUCT businesses)
+// ============================================
+
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  imageUrl    String?
+  category    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+}
+
+// ============================================
+// ORDER MANAGEMENT (for PRODUCT businesses)
+// ============================================
+
+model Order {
+  id              String        @id @default(cuid())
+  tenantId        String
+  orderRef        String        @unique
+  customerName    String
+  customerPhone   String
+  totalAmount     Decimal       @db.Decimal(10, 2)
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(UNPAID)
+  deliveryAddress String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items  OrderItem[]
+
+  @@index([tenantId])
+  @@index([orderRef])
+  @@index([customerPhone])
+  @@index([status])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}

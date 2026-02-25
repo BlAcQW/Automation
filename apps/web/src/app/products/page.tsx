@@ -1,64 +1,225 @@
 'use client';
 
-import { useAuth } from '@/lib/auth';
-import { Package, Plus, Search, Edit, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+    Plus, Search, Filter, MoreVertical, Edit, Trash2,
+    Box, CheckCircle, AlertCircle, Tag, Package
+} from 'lucide-react';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { DashboardInput } from '@/components/ui/input';
+import { StatCard } from '@/components/ui/stat-card';
+import { ProductModal } from '@/components/products/product-modal';
+import { toast } from 'react-hot-toast';
+
+interface Product {
+    id: string;
+    name: string;
+    description?: string;
+    price: number | string;
+    stock: number;
+    category?: string;
+    imageUrl?: string;
+    isActive: boolean;
+}
 
 export default function ProductsPage() {
-    const { tenant } = useAuth();
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [search, setSearch] = useState('');
+    const queryClient = useQueryClient();
+
+    const { data: products = [], isLoading } = useQuery({
+        queryKey: ['products'],
+        queryFn: async () => {
+            const res = await api.get('/products');
+            return res.data.data;
+        },
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await api.delete(`/products/${id}`);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+            toast.success('Product deleted');
+        },
+        onError: () => toast.error('Failed to delete product'),
+    });
+
+    const handleEdit = (product: Product) => {
+        setEditingProduct(product);
+        setIsModalOpen(true);
+    };
+
+    const handleDelete = (id: string) => {
+        if (confirm('Are you sure you want to delete this product?')) {
+            deleteMutation.mutate(id);
+        }
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setEditingProduct(null);
+    };
+
+    const filteredProducts = products.filter((p: Product) =>
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.category && p.category.toLowerCase().includes(search.toLowerCase()))
+    );
+
+    const stats = {
+        total: products.length,
+        active: products.filter((p: Product) => p.isActive).length,
+        outOfStock: products.filter((p: Product) => p.stock === 0).length,
+        categories: new Set(products.map((p: Product) => p.category).filter(Boolean)).size,
+    };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Products</h1>
-                    <p className="text-slate-500 dark:text-slate-400">
-                        Manage your product catalog for {tenant?.name}
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
+                        Products
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">
+                        Manage your product catalog and inventory
                     </p>
                 </div>
-                <button className="px-4 py-2 gradient-primary text-white rounded-lg hover:opacity-90 font-medium transition-all shadow-lg flex items-center">
+                <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-emerald-500/20">
                     <Plus className="w-4 h-4 mr-2" />
                     Add Product
-                </button>
+                </Button>
             </div>
 
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                    type="text"
-                    placeholder="Search products..."
-                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-slate-900 dark:text-white placeholder-slate-400"
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard
+                    name="Total Products"
+                    value={stats.total}
+                    icon={<Box className="w-6 h-6 text-blue-500" />}
+                    color="bg-blue-500/10"
+                    index={0}
+                />
+                <StatCard
+                    name="Active"
+                    value={stats.active}
+                    icon={<CheckCircle className="w-6 h-6 text-emerald-500" />}
+                    color="bg-emerald-500/10"
+                    index={1}
+                />
+                <StatCard
+                    name="Out of Stock"
+                    value={stats.outOfStock}
+                    icon={<AlertCircle className="w-6 h-6 text-red-500" />}
+                    color="bg-red-500/10"
+                    index={2}
+                />
+                <StatCard
+                    name="Categories"
+                    value={stats.categories}
+                    icon={<Tag className="w-6 h-6 text-purple-500" />}
+                    color="bg-purple-500/10"
+                    index={3}
                 />
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {[
-                    { label: 'Total Products', value: '0', color: 'primary' },
-                    { label: 'Active', value: '0', color: 'green' },
-                    { label: 'Out of Stock', value: '0', color: 'red' },
-                    { label: 'Categories', value: '0', color: 'purple' },
-                ].map((stat) => (
-                    <div key={stat.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{stat.label}</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
-                    </div>
-                ))}
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+                <div className="relative flex-1 w-full sm:max-w-md group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                    <DashboardInput
+                        placeholder="Search products..."
+                        className="pl-10 bg-transparent border-slate-200 dark:border-slate-700/50"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
             </div>
 
-            {/* Empty State */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-12 text-center">
-                <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Package className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                                <th className="px-6 py-4">Product Name</th>
+                                <th className="px-6 py-4">Category</th>
+                                <th className="px-6 py-4">Price</th>
+                                <th className="px-6 py-4">Stock</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <p>Loading products...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredProducts.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Package className="w-8 h-8 text-slate-300" />
+                                            <p>No products found</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredProducts.map((product: Product) => (
+                                    <tr key={product.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
+                                            {product.name}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-500">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                                {product.category || 'Uncategorized'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-300">
+                                            ${Number(product.price).toFixed(2)}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${product.stock > 0
+                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400'
+                                                    : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400'
+                                                }`}>
+                                                {product.stock} in stock
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className={`flex items-center gap-2 text-xs font-medium ${product.isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                                <div className={`w-1.5 h-1.5 rounded-full ${product.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                {product.isActive ? 'Active' : 'Inactive'}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(product)}>
+                                                    <Edit className="w-4 h-4 text-slate-500 hover:text-emerald-500" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-red-50 dark:hover:bg-red-900/10" onClick={() => handleDelete(product.id)}>
+                                                    <Trash2 className="w-4 h-4 text-slate-500 hover:text-red-500" />
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">No products yet</h3>
-                <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-6">
-                    Add your first product to start selling via WhatsApp.
-                </p>
-                <button className="px-6 py-3 gradient-primary text-white rounded-xl hover:opacity-90 font-medium transition-all shadow-lg inline-flex items-center">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Add First Product
-                </button>
             </div>
+
+            <ProductModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                product={editingProduct}
+            />
         </div>
     );
 }

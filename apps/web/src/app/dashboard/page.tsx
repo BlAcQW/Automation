@@ -1,222 +1,198 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
+import { api } from '@/lib/api';
+import { motion } from 'framer-motion';
 import {
     Calendar,
-    Clock,
+    MessageCircle,
     Users,
     TrendingUp,
-    MessageSquare,
-    AlertCircle
+    Clock,
+    AlertTriangle,
+    Smartphone,
+    Loader2,
+    ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
+import { StatCard } from '@/components/ui/stat-card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button, buttonVariants } from '@/components/ui/button';
+
+interface DashboardStats {
+    totalBookings: number;
+    todayBookings: number;
+    activeConversations: number;
+    totalCustomers: number;
+}
+
+interface UpcomingBooking {
+    id: string;
+    customerName: string;
+    customerPhone: string;
+    serviceName: string;
+    startTime: string;
+    status: string;
+}
 
 export default function DashboardPage() {
     const { tenant } = useAuth();
+    const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [upcoming, setUpcoming] = useState<UpcomingBooking[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const { data: upcomingBookings } = useQuery({
-        queryKey: ['bookings', 'upcoming'],
-        queryFn: async () => {
-            const res = await api.get('/bookings/upcoming');
-            return res.data.data;
-        },
-    });
+    useEffect(() => {
+        fetchDashboard();
+    }, []);
 
-    const { data: humanActiveConversations } = useQuery({
-        queryKey: ['conversations', 'human-active'],
-        queryFn: async () => {
-            const res = await api.get('/conversations/human-active');
-            return res.data.data;
-        },
-    });
+    const fetchDashboard = async () => {
+        try {
+            const [statsRes, bookingsRes] = await Promise.all([
+                api.get('/dashboard/stats'),
+                api.get('/bookings?status=CONFIRMED&limit=5'),
+            ]);
+            setStats(statsRes.data.data);
+            setUpcoming(bookingsRes.data.data);
+        } catch (err) {
+            console.error('Failed to fetch dashboard:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-    const { data: whatsappStatus } = useQuery({
-        queryKey: ['whatsapp', 'status'],
-        queryFn: async () => {
-            const res = await api.get('/whatsapp/status');
-            return res.data;
-        },
-    });
+    const statusVariant: Record<string, 'default' | 'yellow' | 'red' | 'blue' | 'slate'> = {
+        CONFIRMED: 'default',
+        PENDING: 'yellow',
+        CANCELLED: 'red',
+        COMPLETED: 'blue',
+    };
 
-    const stats = [
-        {
-            name: "Today's Bookings",
-            value: upcomingBookings?.length || 0,
-            icon: Calendar,
-            color: 'bg-blue-500',
-        },
-        {
-            name: 'Human Takeovers',
-            value: humanActiveConversations?.length || 0,
-            icon: Users,
-            color: 'bg-orange-500',
-        },
-        {
-            name: 'WhatsApp Status',
-            value: whatsappStatus?.connected ? 'Connected' : 'Not Connected',
-            icon: MessageSquare,
-            color: whatsappStatus?.connected ? 'bg-green-500' : 'bg-red-500',
-        },
-    ];
+    if (loading) {
+        return (
+            <div className="flex justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
-            {/* Welcome */}
+            {/* Page Header */}
             <div>
                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-                    Welcome back!
+                    Welcome back, {tenant?.name}
                 </h1>
-                <p className="text-slate-500 dark:text-slate-400">
-                    Here&apos;s what&apos;s happening with {tenant?.name} today.
+                <p className="text-slate-500 dark:text-slate-400 mt-1">
+                    Here&apos;s what&apos;s happening with your business today
                 </p>
             </div>
 
             {/* WhatsApp Warning */}
-            {!whatsappStatus?.connected && (
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 flex items-start space-x-3">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
-                    <div className="flex-1">
-                        <h3 className="font-medium text-yellow-800 dark:text-yellow-200">
-                            WhatsApp Not Connected
-                        </h3>
-                        <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                            Connect your WhatsApp Business account to start receiving bookings.
-                        </p>
-                        <Link
-                            href="/dashboard/settings"
-                            className="inline-block mt-2 text-sm font-medium text-yellow-800 dark:text-yellow-200 hover:underline"
-                        >
-                            Connect WhatsApp →
+            <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-2xl p-4 flex items-center gap-3"
+            >
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                    <Smartphone className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1">
+                    <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">Connect WhatsApp</p>
+                    <p className="text-amber-700 dark:text-amber-300 text-sm">
+                        Connect your WhatsApp number to start receiving bookings.
+                    </p>
+                </div>
+                <Link href="/whatsapp" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                    Connect
+                </Link>
+            </motion.div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatCard
+                    name="Total Bookings"
+                    value={stats?.totalBookings || 0}
+                    icon={<Calendar className="w-6 h-6 text-white" />}
+                    color="bg-blue-500"
+                    index={0}
+                />
+                <StatCard
+                    name="Today's Bookings"
+                    value={stats?.todayBookings || 0}
+                    icon={<Clock className="w-6 h-6 text-white" />}
+                    color="bg-emerald-500"
+                    index={1}
+                />
+                <StatCard
+                    name="Active Conversations"
+                    value={stats?.activeConversations || 0}
+                    icon={<MessageCircle className="w-6 h-6 text-white" />}
+                    color="bg-purple-500"
+                    index={2}
+                />
+                <StatCard
+                    name="Total Customers"
+                    value={stats?.totalCustomers || 0}
+                    icon={<Users className="w-6 h-6 text-white" />}
+                    color="bg-orange-500"
+                    index={3}
+                />
+            </div>
+
+            {/* Upcoming Bookings */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between w-full">
+                        <CardTitle>
+                            <Calendar className="w-5 h-5 text-emerald-500" />
+                            Upcoming Bookings
+                        </CardTitle>
+                        <Link href="/bookings" className="text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-medium flex items-center gap-1">
+                            View all <ArrowRight className="w-4 h-4" />
                         </Link>
                     </div>
-                </div>
-            )}
-
-            {/* Stats Grid */}
-            <div className="grid md:grid-cols-3 gap-6">
-                {stats.map((stat, index) => (
-                    <div
-                        key={index}
-                        className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700"
-                    >
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">{stat.name}</p>
-                                <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
-                                    {stat.value}
-                                </p>
-                            </div>
-                            <div className={`w-12 h-12 ${stat.color} rounded-xl flex items-center justify-center`}>
-                                <stat.icon className="w-6 h-6 text-white" />
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Content Grid */}
-            <div className="grid lg:grid-cols-2 gap-6">
-                {/* Upcoming Bookings */}
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-                        <div className="flex items-center justify-between">
-                            <h2 className="font-semibold text-slate-900 dark:text-white">
-                                Upcoming Bookings
-                            </h2>
-                            <Link
-                                href="/dashboard/bookings"
-                                className="text-sm text-primary-500 hover:text-primary-600"
-                            >
-                                View All
+                </CardHeader>
+                <CardContent className="p-0">
+                    {upcoming.length === 0 ? (
+                        <div className="py-12 text-center">
+                            <Calendar className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                            <p className="text-slate-500 dark:text-slate-400">No upcoming bookings</p>
+                            <Link href="/bookings" className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'mt-3' })}>
+                                Create a booking
                             </Link>
                         </div>
-                    </div>
-                    <div className="p-6">
-                        {upcomingBookings && upcomingBookings.length > 0 ? (
-                            <div className="space-y-4">
-                                {upcomingBookings.slice(0, 5).map((booking: any) => (
-                                    <div
-                                        key={booking.id}
-                                        className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700 last:border-0"
-                                    >
-                                        <div>
-                                            <p className="font-medium text-slate-900 dark:text-white">
-                                                {booking.customerName}
-                                            </p>
-                                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                                                {booking.service?.name}
-                                            </p>
+                    ) : (
+                        <div className="divide-y divide-slate-200/80 dark:divide-slate-700/80">
+                            {upcoming.map((booking, index) => (
+                                <motion.div
+                                    key={booking.id}
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: index * 0.05 }}
+                                    className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
+                                            <Clock className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                                         </div>
-                                        <div className="text-right">
-                                            <p className="font-medium text-slate-900 dark:text-white">
-                                                {new Date(booking.startTime).toLocaleTimeString([], {
-                                                    hour: '2-digit',
-                                                    minute: '2-digit'
-                                                })}
+                                        <div>
+                                            <p className="font-medium text-slate-900 dark:text-white text-sm">{booking.customerName}</p>
+                                            <p className="text-slate-500 dark:text-slate-400 text-xs">
+                                                {booking.serviceName} · {new Date(booking.startTime).toLocaleString()}
                                             </p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-8">
-                                <Calendar className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-                                <p className="text-slate-500 dark:text-slate-400">No upcoming bookings today</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Human Takeovers */}
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <div className="p-6 border-b border-slate-200 dark:border-slate-700">
-                        <div className="flex items-center justify-between">
-                            <h2 className="font-semibold text-slate-900 dark:text-white">
-                                Needs Attention
-                            </h2>
-                            <Link
-                                href="/dashboard/conversations"
-                                className="text-sm text-primary-500 hover:text-primary-600"
-                            >
-                                View All
-                            </Link>
+                                    <Badge variant={statusVariant[booking.status] || 'slate'}>
+                                        {booking.status}
+                                    </Badge>
+                                </motion.div>
+                            ))}
                         </div>
-                    </div>
-                    <div className="p-6">
-                        {humanActiveConversations && humanActiveConversations.length > 0 ? (
-                            <div className="space-y-4">
-                                {humanActiveConversations.slice(0, 5).map((conv: any) => (
-                                    <div
-                                        key={conv.id}
-                                        className="flex items-center justify-between py-3 border-b border-slate-100 dark:border-slate-700 last:border-0"
-                                    >
-                                        <div>
-                                            <p className="font-medium text-slate-900 dark:text-white">
-                                                {conv.customerName || conv.customerPhone}
-                                            </p>
-                                            <p className="text-sm text-slate-500 dark:text-slate-400 truncate max-w-[200px]">
-                                                {conv.lastMessage}
-                                            </p>
-                                        </div>
-                                        <span className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs font-medium rounded">
-                                            Human Active
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-8">
-                                <MessageSquare className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-                                <p className="text-slate-500 dark:text-slate-400">
-                                    No conversations need attention
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
+                    )}
+                </CardContent>
+            </Card>
         </div>
     );
 }

@@ -250,6 +250,65 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         reply.clearCookie('refreshToken', { path: '/auth' });
         return { success: true };
     });
+
+    // PATCH /auth/profile - Update user profile and business settings
+    fastify.patch('/profile', { preHandler: fastify.authenticate }, async (request) => {
+        const body = z.object({
+            name: z.string().min(2).optional(),
+            businessName: z.string().min(2).optional(),
+            timezone: z.string().optional(),
+        }).parse(request.body);
+
+        // Update user name if provided
+        if (body.name) {
+            await fastify.prisma.user.update({
+                where: { id: request.user.userId },
+                data: { name: body.name },
+            });
+        }
+
+        // Update tenant (business) settings if provided
+        if (body.businessName || body.timezone) {
+            await fastify.prisma.tenant.update({
+                where: { id: request.user.tenantId },
+                data: {
+                    ...(body.businessName && { name: body.businessName }),
+                    ...(body.timezone && { timezone: body.timezone }),
+                },
+            });
+        }
+
+        return { success: true };
+    });
+
+    // POST /auth/change-password - Change user password
+    fastify.post('/change-password', { preHandler: fastify.authenticate }, async (request) => {
+        const body = z.object({
+            currentPassword: z.string(),
+            newPassword: z.string().min(8),
+        }).parse(request.body);
+
+        const user = await fastify.prisma.user.findUnique({
+            where: { id: request.user.userId },
+        });
+
+        if (!user) {
+            throw fastify.httpErrors.notFound('User not found');
+        }
+
+        const isValid = await bcrypt.compare(body.currentPassword, user.passwordHash);
+        if (!isValid) {
+            throw fastify.httpErrors.badRequest('Current password is incorrect');
+        }
+
+        const passwordHash = await bcrypt.hash(body.newPassword, 12);
+        await fastify.prisma.user.update({
+            where: { id: request.user.userId },
+            data: { passwordHash },
+        });
+
+        return { success: true };
+    });
 };
 
 export default authRoutes;

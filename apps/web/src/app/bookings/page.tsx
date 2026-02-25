@@ -1,57 +1,244 @@
 'use client';
 
-import { useAuth } from '@/lib/auth';
-import { Calendar, Search, Filter, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import {
+    Calendar, Search, Filter, Clock, MapPin,
+    MoreHorizontal, CheckCircle, XCircle, AlertCircle
+} from 'lucide-react';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { DashboardInput } from '@/components/ui/input';
+import { StatCard } from '@/components/ui/stat-card';
+import { BookingDetailsModal } from '@/components/bookings/booking-details-modal';
+
+interface Booking {
+    id: string;
+    bookingReference: string;
+    customerName: string;
+    customerPhone: string;
+    startTime: string;
+    endTime: string;
+    status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+    notes?: string;
+    service: {
+        id: string;
+        name: string;
+        price: number;
+        durationMinutes: number;
+    };
+}
 
 export default function BookingsPage() {
-    const { tenant } = useAuth();
+    const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+    const [search, setSearch] = useState('');
+    const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const { data: bookingsResponse, isLoading } = useQuery({
+        queryKey: ['bookings', selectedStatus, search],
+        queryFn: async () => {
+            const params: any = { limit: 100 }; // Fetch more for now
+            if (selectedStatus !== 'ALL') params.status = selectedStatus;
+
+            const res = await api.get('/bookings', { params });
+            return res.data;
+        },
+    });
+
+    const bookings: Booking[] = bookingsResponse?.data || [];
+
+    // Client-side search filtering (API supports some filtering but search isn't fully implemented in API yet)
+    const filteredBookings = bookings.filter(b =>
+        b.customerName.toLowerCase().includes(search.toLowerCase()) ||
+        b.bookingReference.toLowerCase().includes(search.toLowerCase()) ||
+        b.service.name.toLowerCase().includes(search.toLowerCase())
+    );
+
+    const handleViewBooking = (booking: Booking) => {
+        setSelectedBooking(booking);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setSelectedBooking(null);
+    };
+
+    const stats = {
+        total: bookings.length,
+        confirmed: bookings.filter(b => b.status === 'CONFIRMED').length,
+        completed: bookings.filter(b => b.status === 'COMPLETED').length,
+        cancelled: bookings.filter(b => b.status === 'CANCELLED').length,
+    };
+
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case 'CONFIRMED':
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">Confirmed</span>;
+            case 'COMPLETED':
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">Completed</span>;
+            case 'CANCELLED':
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Cancelled</span>;
+            case 'NO_SHOW':
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">No Show</span>;
+            default:
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400">{status}</span>;
+        }
+    };
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Bookings</h1>
-                    <p className="text-slate-500 dark:text-slate-400">
-                        Manage appointments for {tenant?.name}
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
+                        Bookings
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">
+                        Manage appointments and schedules
                     </p>
                 </div>
-                <div className="flex items-center space-x-3">
-                    <button className="px-4 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 font-medium transition-all flex items-center">
-                        <Filter className="w-4 h-4 mr-2" />
-                        Filter
-                    </button>
-                    <button className="px-4 py-2 gradient-primary text-white rounded-lg hover:opacity-90 font-medium transition-all shadow-lg flex items-center">
-                        <Plus className="w-4 h-4 mr-2" />
-                        New Booking
-                    </button>
-                </div>
+                {/* 
+                <Button className="shadow-lg shadow-emerald-500/20">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Booking
+                </Button> 
+                */}
             </div>
 
-            {/* Search */}
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                    type="text"
-                    placeholder="Search by name, phone or reference..."
-                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-slate-900 dark:text-white placeholder-slate-400"
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <StatCard
+                    name="All Bookings"
+                    value={stats.total}
+                    icon={<Calendar className="w-6 h-6 text-slate-500" />}
+                    color="bg-slate-500/10"
+                    index={0}
+                />
+                <StatCard
+                    name="Confirmed"
+                    value={stats.confirmed}
+                    icon={<CheckCircle className="w-6 h-6 text-emerald-500" />}
+                    color="bg-emerald-500/10"
+                    index={1}
+                />
+                <StatCard
+                    name="Completed"
+                    value={stats.completed}
+                    icon={<CheckCircle className="w-6 h-6 text-blue-500" />}
+                    color="bg-blue-500/10"
+                    index={2}
+                />
+                <StatCard
+                    name="Cancelled"
+                    value={stats.cancelled}
+                    icon={<XCircle className="w-6 h-6 text-red-500" />}
+                    color="bg-red-500/10"
+                    index={3}
                 />
             </div>
 
-            {/* Empty State */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-12 text-center">
-                <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Calendar className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+                <div className="flex p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
+                    {['ALL', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((status) => (
+                        <button
+                            key={status}
+                            onClick={() => setSelectedStatus(status)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedStatus === status
+                                    ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                                }`}
+                        >
+                            {status.charAt(0) + status.slice(1).toLowerCase()}
+                        </button>
+                    ))}
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">No bookings yet</h3>
-                <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-6">
-                    Create a booking manually or wait for customers to book via WhatsApp.
-                </p>
-                <button className="px-6 py-3 gradient-primary text-white rounded-xl hover:opacity-90 font-medium transition-all shadow-lg inline-flex items-center">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Create First Booking
-                </button>
+
+                <div className="relative w-full sm:max-w-xs group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                    <DashboardInput
+                        placeholder="Search bookings..."
+                        className="pl-10 h-10 bg-transparent border-slate-200 dark:border-slate-700/50"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
             </div>
+
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                                <th className="px-6 py-4">Reference</th>
+                                <th className="px-6 py-4">Customer</th>
+                                <th className="px-6 py-4">Service</th>
+                                <th className="px-6 py-4">Date & Time</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <p>Loading bookings...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredBookings.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Calendar className="w-8 h-8 text-slate-300" />
+                                            <p>No bookings found</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredBookings.map((booking: Booking) => (
+                                    <tr key={booking.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => handleViewBooking(booking)}>
+                                        <td className="px-6 py-4 font-mono text-slate-500">
+                                            {booking.bookingReference}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="font-medium text-slate-900 dark:text-white">{booking.customerName}</div>
+                                            <div className="text-xs text-slate-500">{booking.customerPhone}</div>
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                                            {booking.service.name}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col text-slate-600 dark:text-slate-300">
+                                                <span className="font-medium">{format(new Date(booking.startTime), 'MMM d, yyyy')}</span>
+                                                <span className="text-xs text-slate-500">
+                                                    {format(new Date(booking.startTime), 'h:mm a')}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {getStatusBadge(booking.status)}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleViewBooking(booking); }}>
+                                                View
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <BookingDetailsModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                booking={selectedBooking}
+            />
         </div>
     );
 }

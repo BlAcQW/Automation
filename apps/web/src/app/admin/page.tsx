@@ -4,6 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { Building2, Users, Calendar, MessageSquare, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
+import { StatCard } from '@/components/ui/stat-card';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 export default function AdminDashboardPage() {
     const { data: stats, isLoading } = useQuery({
@@ -75,56 +79,48 @@ export default function AdminDashboardPage() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 {statCards.map((stat, index) => (
-                    <div
+                    <StatCard
                         key={index}
-                        className="bg-slate-800 rounded-xl p-5 border border-slate-700"
-                    >
-                        <div className="flex items-center justify-between mb-3">
-                            <div className={`w-10 h-10 ${stat.color} rounded-lg flex items-center justify-center`}>
-                                <stat.icon className="w-5 h-5 text-white" />
-                            </div>
-                        </div>
-                        <p className="text-2xl font-bold text-white">{stat.value.toLocaleString()}</p>
-                        <p className="text-sm text-slate-400">{stat.name}</p>
-                        {stat.subValue && (
-                            <p className="text-xs text-slate-500 mt-1">{stat.subValue}</p>
-                        )}
-                    </div>
+                        name={stat.name}
+                        value={stat.value}
+                        icon={<stat.icon className="w-6 h-6 text-white" />}
+                        color={stat.color}
+                        index={index}
+                    />
                 ))}
             </div>
 
             {/* Recent Tenants */}
-            <div className="bg-slate-800 rounded-xl border border-slate-700">
-                <div className="p-6 border-b border-slate-700 flex items-center justify-between">
-                    <h2 className="font-semibold text-white">Recent Tenants</h2>
-                    <Link
-                        href="/admin/tenants"
-                        className="text-sm text-slate-400 hover:text-white transition-colors"
-                    >
-                        View All →
+            <Card className="glass-card border-white/5">
+                <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 pb-4">
+                    <CardTitle className="text-lg font-semibold text-white">Recent Tenants</CardTitle>
+                    <Link href="/admin/tenants">
+                        <Button variant="ghost" className="text-sm h-8">
+                            View All →
+                        </Button>
                     </Link>
-                </div>
+                </CardHeader>
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
-                            <tr className="text-left text-sm text-slate-400 border-b border-slate-700">
-                                <th className="px-6 py-3 font-medium">Name</th>
-                                <th className="px-6 py-3 font-medium">Users</th>
-                                <th className="px-6 py-3 font-medium">Bookings</th>
-                                <th className="px-6 py-3 font-medium">WhatsApp</th>
-                                <th className="px-6 py-3 font-medium">Status</th>
-                                <th className="px-6 py-3 font-medium">Created</th>
+                            <tr className="text-left text-sm text-slate-400 border-b border-white/5">
+                                <th className="px-6 py-4 font-medium">Name</th>
+                                <th className="px-6 py-4 font-medium">Users</th>
+                                <th className="px-6 py-4 font-medium">Bookings</th>
+                                <th className="px-6 py-4 font-medium">WhatsApp</th>
+                                <th className="px-6 py-4 font-medium">Status</th>
+                                <th className="px-6 py-4 font-medium">Created</th>
                             </tr>
                         </thead>
                         <tbody>
                             {recentTenants?.map((tenant: any) => (
-                                <tr key={tenant.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                <tr key={tenant.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-4">
                                         <Link
                                             href={`/admin/tenants/${tenant.id}`}
-                                            className="font-medium text-white hover:text-primary-400"
+                                            className="font-medium text-white hover:text-emerald-400 transition-colors"
                                         >
                                             {tenant.name}
                                         </Link>
@@ -132,26 +128,14 @@ export default function AdminDashboardPage() {
                                     <td className="px-6 py-4 text-slate-300">{tenant.usersCount}</td>
                                     <td className="px-6 py-4 text-slate-300">{tenant.bookingsCount}</td>
                                     <td className="px-6 py-4">
-                                        {tenant.whatsappConnected ? (
-                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400">
-                                                Connected
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-slate-600/50 text-slate-400">
-                                                Not Connected
-                                            </span>
-                                        )}
+                                        <Badge variant={tenant.whatsappConnected ? 'default' : 'slate'}>
+                                            {tenant.whatsappConnected ? 'Connected' : 'Not Connected'}
+                                        </Badge>
                                     </td>
                                     <td className="px-6 py-4">
-                                        {tenant.isActive ? (
-                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-400">
-                                                Active
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-500/20 text-red-400">
-                                                Inactive
-                                            </span>
-                                        )}
+                                        <Badge variant={tenant.isActive ? 'default' : 'red'}>
+                                            {tenant.isActive ? 'Active' : 'Inactive'}
+                                        </Badge>
                                     </td>
                                     <td className="px-6 py-4 text-slate-400 text-sm">
                                         {new Date(tenant.createdAt).toLocaleDateString()}
@@ -161,7 +145,7 @@ export default function AdminDashboardPage() {
                         </tbody>
                     </table>
                 </div>
-            </div>
+            </Card>
         </div>
     );
 }

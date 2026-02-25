@@ -1,61 +1,225 @@
 'use client';
 
-import { useAuth } from '@/lib/auth';
-import { ShoppingCart, Search, Filter, Eye } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import {
+    Search, Filter, Package, Truck,
+    CheckCircle, XCircle, Clock, DollarSign, Eye
+} from 'lucide-react';
+import { api } from '@/lib/api';
+import { Button } from '@/components/ui/button';
+import { DashboardInput } from '@/components/ui/input';
+import { StatCard } from '@/components/ui/stat-card';
+import { OrderDetailsModal } from '@/components/orders/order-details-modal';
+
+interface Order {
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    customerPhone: string;
+    status: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+    paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+    totalAmount: number;
+    items: any[];
+    createdAt: string;
+}
 
 export default function OrdersPage() {
-    const { tenant } = useAuth();
+    const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('ALL');
+
+    const { data: orders = [], isLoading } = useQuery({
+        queryKey: ['orders', statusFilter],
+        queryFn: async () => {
+            const params: any = {};
+            if (statusFilter !== 'ALL') params.status = statusFilter;
+            const res = await api.get('/orders', { params });
+            return res.data.data;
+        },
+    });
+
+    const { data: stats = { total: 0, pending: 0, confirmed: 0, delivered: 0, revenue: 0 } } = useQuery({
+        queryKey: ['order-stats'],
+        queryFn: async () => {
+            const res = await api.get('/orders/stats');
+            return res.data;
+        },
+    });
+
+    const handleViewOrder = (order: Order) => {
+        setSelectedOrder(order);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setSelectedOrder(null);
+    };
+
+    const filteredOrders = orders.filter((order: Order) =>
+        order.customerName.toLowerCase().includes(search.toLowerCase()) ||
+        order.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
+        order.customerPhone.includes(search)
+    );
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'PENDING': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-500/10 dark:text-yellow-400';
+            case 'CONFIRMED': return 'text-blue-600 bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400';
+            case 'PROCESSING': return 'text-purple-600 bg-purple-100 dark:bg-purple-500/10 dark:text-purple-400';
+            case 'SHIPPED': return 'text-indigo-600 bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400';
+            case 'DELIVERED': return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400';
+            case 'CANCELLED': return 'text-red-600 bg-red-100 dark:bg-red-500/10 dark:text-red-400';
+            default: return 'text-slate-600 bg-slate-100 dark:bg-slate-500/10 dark:text-slate-400';
+        }
+    };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Orders</h1>
-                    <p className="text-slate-500 dark:text-slate-400">
-                        Manage orders for {tenant?.name}
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
+                        Orders
+                    </h1>
+                    <p className="text-slate-500 dark:text-slate-400 mt-1">
+                        Track and manage customer orders
                     </p>
                 </div>
-                <button className="px-4 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 font-medium transition-all flex items-center">
-                    <Filter className="w-4 h-4 mr-2" />
-                    Filter
-                </button>
             </div>
 
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input
-                    type="text"
-                    placeholder="Search orders by reference, customer..."
-                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all text-slate-900 dark:text-white placeholder-slate-400"
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard
+                    name="Total Orders"
+                    value={stats.total}
+                    icon={<Package className="w-6 h-6 text-blue-500" />}
+                    color="bg-blue-500/10"
+                    index={0}
+                />
+                <StatCard
+                    name="Pending"
+                    value={stats.pending}
+                    icon={<Clock className="w-6 h-6 text-yellow-500" />}
+                    color="bg-yellow-500/10"
+                    index={1}
+                />
+                <StatCard
+                    name="Revenue"
+                    value={`$${Number(stats.revenue).toFixed(0)}`}
+                    icon={<DollarSign className="w-6 h-6 text-emerald-500" />}
+                    color="bg-emerald-500/10"
+                    index={2}
+                />
+                <StatCard
+                    name="Delivered"
+                    value={stats.delivered}
+                    icon={<Truck className="w-6 h-6 text-purple-500" />}
+                    color="bg-purple-500/10"
+                    index={3}
                 />
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                {[
-                    { label: 'Total Orders', value: '0', color: 'slate' },
-                    { label: 'Pending', value: '0', color: 'yellow' },
-                    { label: 'Confirmed', value: '0', color: 'blue' },
-                    { label: 'Delivered', value: '0', color: 'green' },
-                    { label: 'Revenue', value: '$0', color: 'primary' },
-                ].map((stat) => (
-                    <div key={stat.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{stat.label}</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
-                    </div>
-                ))}
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+                <div className="relative flex-1 w-full sm:max-w-md group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                    <DashboardInput
+                        placeholder="Search orders..."
+                        className="pl-10 bg-transparent border-slate-200 dark:border-slate-700/50"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Filter className="w-4 h-4 text-slate-500" />
+                    <select
+                        className="bg-transparent border-none text-sm font-medium text-slate-700 dark:text-slate-300 focus:ring-0 cursor-pointer"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                        <option value="ALL">All Status</option>
+                        <option value="PENDING">Pending</option>
+                        <option value="CONFIRMED">Confirmed</option>
+                        <option value="PROCESSING">Processing</option>
+                        <option value="SHIPPED">Shipped</option>
+                        <option value="DELIVERED">Delivered</option>
+                        <option value="CANCELLED">Cancelled</option>
+                    </select>
+                </div>
             </div>
 
-            {/* Empty State */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-12 text-center">
-                <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <ShoppingCart className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                                <th className="px-6 py-4">Order Ref</th>
+                                <th className="px-6 py-4">Customer</th>
+                                <th className="px-6 py-4">Date</th>
+                                <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">Amount</th>
+                                <th className="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <p>Loading orders...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredOrders.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Package className="w-8 h-8 text-slate-300" />
+                                            <p>No orders found</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredOrders.map((order: Order) => (
+                                    <tr key={order.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => handleViewOrder(order)}>
+                                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-300 font-medium">
+                                            {order.orderNumber}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="font-medium text-slate-900 dark:text-white">{order.customerName}</div>
+                                            <div className="text-xs text-slate-500">{order.customerPhone}</div>
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-500">
+                                            {format(new Date(order.createdAt), 'MMM d, yyyy')}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium ${getStatusColor(order.status)}`}>
+                                                {order.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 font-mono text-slate-900 dark:text-white font-medium">
+                                            ${Number(order.totalAmount).toFixed(2)}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100 dark:hover:bg-slate-700" onClick={(e) => { e.stopPropagation(); handleViewOrder(order); }}>
+                                                <Eye className="w-4 h-4 text-slate-500" />
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">No orders yet</h3>
-                <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-                    When customers order via WhatsApp, orders will appear here.
-                </p>
             </div>
+
+            <OrderDetailsModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                order={selectedOrder}
+            />
         </div>
     );
 }

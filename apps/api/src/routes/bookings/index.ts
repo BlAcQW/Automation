@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
+import { syncBookingToCalendar, deleteCalendarEvent } from '../../services/calendar';
 
 // Validation schemas
 const createBookingSchema = z.object({
@@ -188,6 +189,24 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             }
         }
 
+        // Sync to Google Calendar (if connected)
+        await syncBookingToCalendar({
+            bookingId: booking.id,
+            tenantId,
+            prisma: fastify.prisma as any,
+        });
+
+        // Create in-app notification
+        await fastify.prisma.notification.create({
+            data: {
+                tenantId,
+                type: 'NEW_BOOKING',
+                title: 'New Booking',
+                message: `${body.customerName} booked ${service.name} for ${body.startTime.toLocaleDateString()}`,
+                metadata: { bookingId: booking.id, bookingReference: booking.bookingReference },
+            },
+        });
+
         return booking;
     });
 
@@ -253,6 +272,17 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
                 customerPhone: booking.customerPhone,
             });
         }
+
+        // Create in-app notification
+        await fastify.prisma.notification.create({
+            data: {
+                tenantId: request.user.tenantId,
+                type: 'BOOKING_CANCELLED',
+                title: 'Booking Cancelled',
+                message: `Booking ${existing.bookingReference || booking.id} has been cancelled`,
+                metadata: { bookingId: booking.id },
+            },
+        });
 
         return booking;
     });

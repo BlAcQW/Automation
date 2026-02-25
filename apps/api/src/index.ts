@@ -15,9 +15,12 @@ import servicesRoutes from './routes/services/index.js';
 import availabilityRoutes from './routes/availability/index.js';
 import bookingsRoutes from './routes/bookings/index.js';
 import conversationsRoutes from './routes/conversations/index.js';
+import customersRoutes from './routes/customers';
 import whatsappRoutes from './routes/whatsapp/index.js';
 import productsRoutes from './routes/products/index.js';
 import ordersRoutes from './routes/orders/index.js';
+import calendarRoutes from './routes/calendar/index.js';
+import notificationsRoutes from './routes/notifications/index.js';
 
 const app = Fastify({
     logger: {
@@ -66,9 +69,12 @@ async function buildApp() {
     await app.register(availabilityRoutes, { prefix: '/availability' });
     await app.register(bookingsRoutes, { prefix: '/bookings' });
     await app.register(conversationsRoutes, { prefix: '/conversations' });
+    await app.register(customersRoutes, { prefix: '/customers' });
     await app.register(whatsappRoutes, { prefix: '/whatsapp' });
     await app.register(productsRoutes, { prefix: '/products' });
     await app.register(ordersRoutes, { prefix: '/orders' });
+    await app.register(calendarRoutes, { prefix: '/calendar' });
+    await app.register(notificationsRoutes, { prefix: '/notifications' });
 
     return app;
 }

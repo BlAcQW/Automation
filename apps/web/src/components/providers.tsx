@@ -19,7 +19,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
     return (
         <QueryClientProvider client={queryClient}>
-            <AuthProvider>{children}</AuthProvider>
+            <AuthProvider>
+                {children}
+                <Toaster position="top-right" />
+            </AuthProvider>
         </QueryClientProvider>
     );
 }
+
+import { Toaster } from 'react-hot-toast';

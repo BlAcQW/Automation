@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { decrypt } from '../../services/crypto.js';
 
 const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
     // All routes require authentication
@@ -170,8 +171,39 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             }),
         ]);
 
-        // TODO: Actually send via WhatsApp API
-        // This would queue a job to send the message
+        // Send message via WhatsApp Cloud API
+        const tenant = await fastify.prisma.tenant.findUnique({
+            where: { id: request.user.tenantId },
+        });
+
+        if (tenant?.whatsappPhoneNumberId && tenant.whatsappAccessToken) {
+            try {
+                const accessToken = decrypt(tenant.whatsappAccessToken);
+                const response = await fetch(
+                    `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            messaging_product: 'whatsapp',
+                            to: conversation.customerPhone,
+                            type: 'text',
+                            text: { body: body.content },
+                        }),
+                    }
+                );
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    fastify.log.error({ status: response.status, error }, 'Failed to send WhatsApp reply');
+                }
+            } catch (err) {
+                fastify.log.error(err, 'Error sending WhatsApp reply');
+            }
+        }
 
         return message;
     });
@@ -248,6 +280,71 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         return {
             id: updated.id,
             state: updated.state,
+        };
+    });
+
+    // POST /conversations/:id/assign - Assign conversation to an agent
+    fastify.post('/:id/assign', async (request) => {
+        const { id } = request.params as { id: string };
+
+        const conversation = await fastify.prisma.conversation.findFirst({
+            where: { id, tenantId: request.user.tenantId },
+        });
+
+        if (!conversation) {
+            throw fastify.httpErrors.notFound('Conversation not found');
+        }
+
+        if (conversation.state !== 'HUMAN_ACTIVE') {
+            throw fastify.httpErrors.badRequest('Conversation is not in human takeover mode');
+        }
+
+        if (conversation.assignedUserId) {
+            throw fastify.httpErrors.conflict('Conversation already assigned to another agent');
+        }
+
+        const updated = await fastify.prisma.conversation.update({
+            where: { id },
+            data: {
+                assignedUserId: request.user.userId,
+                assignedAt: new Date(),
+            },
+        });
+
+        return {
+            id: updated.id,
+            assignedUserId: updated.assignedUserId,
+            message: 'Conversation assigned successfully',
+        };
+    });
+
+    // GET /conversations/pending - Get unassigned human-active conversations
+    fastify.get('/pending', async (request) => {
+        const conversations = await fastify.prisma.conversation.findMany({
+            where: {
+                tenantId: request.user.tenantId,
+                state: 'HUMAN_ACTIVE',
+                assignedUserId: null,
+            },
+            orderBy: { updatedAt: 'desc' },
+            include: {
+                messages: {
+                    take: 1,
+                    orderBy: { createdAt: 'desc' },
+                },
+            },
+        });
+
+        return {
+            data: conversations.map((c) => ({
+                id: c.id,
+                customerPhone: c.customerPhone,
+                customerName: c.customerName,
+                takeoverReason: c.takeoverReason,
+                lastMessage: c.messages[0]?.content,
+                updatedAt: c.updatedAt,
+            })),
+            count: conversations.length,
         };
     });
 };

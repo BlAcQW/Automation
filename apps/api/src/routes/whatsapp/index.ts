@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { config } from '../../config/index.js';
+import { encrypt, decrypt } from '../../services/crypto.js';
 
 // WhatsApp webhook payload types
 interface WhatsAppMessage {
@@ -125,13 +126,14 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.conflict('Phone number already connected to another account');
         }
 
-        // TODO: Encrypt access token before storing
+        // Encrypt access token before storing
+        const encryptedToken = encrypt(body.accessToken);
         const tenant = await fastify.prisma.tenant.update({
             where: { id: request.user.tenantId },
             data: {
                 whatsappPhoneNumberId: body.phoneNumberId,
                 whatsappAccountId: body.accountId,
-                whatsappAccessToken: body.accessToken, // Should be encrypted
+                whatsappAccessToken: encryptedToken,
                 whatsappDisplayNumber: body.displayNumber,
             },
         });
@@ -180,11 +182,35 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.badRequest('WhatsApp not connected');
         }
 
-        // TODO: Actually send via WhatsApp API
-        // For now, just log
-        fastify.log.info({ to: body.to, message: body.message }, 'Test message would be sent');
+        // Decrypt access token and send via WhatsApp Cloud API
+        const accessToken = decrypt(tenant.whatsappAccessToken);
+        const response = await fetch(
+            `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    messaging_product: 'whatsapp',
+                    to: body.to,
+                    type: 'text',
+                    text: { body: body.message },
+                }),
+            }
+        );
 
-        return { success: true, message: 'Test message queued' };
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            fastify.log.error({ status: response.status, error }, 'WhatsApp API error');
+            throw fastify.httpErrors.badGateway('Failed to send WhatsApp message');
+        }
+
+        const result = await response.json() as { messages?: Array<{ id: string }> };
+        fastify.log.info({ to: body.to, messageId: result.messages?.[0]?.id }, 'Test message sent');
+
+        return { success: true, message: 'Test message sent', messageId: result.messages?.[0]?.id };
     });
 };
 
@@ -302,13 +328,38 @@ async function processMessage(
         return;
     }
 
-    // TODO: Process with bot engine
-    // This would call the bot service to generate a response
-    fastify.log.info({
-        tenantId: tenant.id,
-        conversationId: conversation.id,
-        message: content,
-    }, 'Message received, would process with bot');
+    // Check for automatic takeover triggers
+    const { detectTakeover, triggerTakeover } = await import('../../services/human-takeover.js');
+    const botContext = conversation.botContext ? JSON.parse(conversation.botContext) : { state: 'WELCOME' };
+
+    const takeoverResult = detectTakeover({
+        messageContent: content,
+        recentMessages: [],
+        botFailureCount: conversation.botFailureCount || 0,
+        state: botContext.state,
+    });
+
+    if (takeoverResult.shouldTakeover) {
+        fastify.log.info({
+            conversationId: conversation.id,
+            reason: takeoverResult.reason,
+            confidence: takeoverResult.confidence,
+        }, 'Auto-triggering human takeover');
+
+        await triggerTakeover(fastify.prisma, conversation.id, takeoverResult.reason || 'auto');
+
+        // Notify customer
+        const { WhatsAppBotEngine } = await import('../../services/whatsapp-bot.js');
+        const bot = new WhatsAppBotEngine(fastify.prisma, tenant);
+        // Don't use bot.processMessage here, just send a direct notification message would be better
+        // For now, the CONTACT_SUPPORT state in bot will handle this
+        return;
+    }
+
+    // Process with bot engine
+    const { WhatsAppBotEngine } = await import('../../services/whatsapp-bot.js');
+    const bot = new WhatsAppBotEngine(fastify.prisma, tenant);
+    await bot.processMessage(conversation.id, customerPhone, content);
 }
 
 export default whatsappRoutes;

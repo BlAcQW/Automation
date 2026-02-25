@@ -36,6 +36,7 @@ model Tenant {
   workingHours         WorkingHours[]
   blackoutDates        BlackoutDate[]
   calendarIntegrations CalendarIntegration[]
+  notifications        Notification[]
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -176,14 +177,18 @@ enum BookingStatus {
 // ============================================
 
 model Conversation {
-  id            String            @id @default(cuid())
-  tenantId      String
-  customerPhone String
-  customerName  String?
-  state         ConversationState @default(BOT_ACTIVE)
-  botContext    Json?             // Current bot flow state
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  id              String            @id @default(cuid())
+  tenantId        String
+  customerPhone   String
+  customerName    String?
+  state           ConversationState @default(BOT_ACTIVE)
+  botContext      Json?             // Current bot flow state
+  assignedUserId  String?           // Staff member assigned to this conversation
+  assignedAt      DateTime?         // When the conversation was assigned
+  takeoverReason  String?           // Reason for human takeover
+  botFailureCount Int               @default(0)  // Count of bot failures for auto-takeover
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   messages Message[]
@@ -351,4 +356,31 @@ enum PaymentStatus {
   UNPAID
   PAID
   REFUNDED
+}
+
+// ============================================
+// IN-APP NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  tenantId  String
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  metadata  Json?            // e.g. { bookingId, conversationId }
+  createdAt DateTime         @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isRead])
+  @@index([tenantId, createdAt])
+}
+
+enum NotificationType {
+  NEW_BOOKING
+  BOOKING_CANCELLED
+  NEW_CONVERSATION
+  SYSTEM
 }

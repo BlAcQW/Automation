@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import {
-    Building, User as UserIcon, Lock, Calendar, Save, Loader2, CheckCircle, ExternalLink, CreditCard, BarChart3, Mail, MessageSquareMore,
+    Building, User as UserIcon, Lock, Calendar, Save, Loader2, CheckCircle, ExternalLink, CreditCard, BarChart3, Mail, MessageSquareMore, BellRing,
+    LayoutGrid, Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Copy,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +15,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DashboardInput } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 
 const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD'] as const;
 type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
@@ -55,9 +58,13 @@ interface BillingStatus {
 }
 
 export default function SettingsPage() {
-    const { tenant, user } = useAuth();
+    const { tenant, user, refreshUser } = useAuth();
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState('');
+
+    // Out-of-window messages master toggle
+    const [outOfWindowEnabled, setOutOfWindowEnabled] = useState(true);
+    const [togglingMessages, setTogglingMessages] = useState(false);
 
     // Business settings
     const [businessName, setBusinessName] = useState('');
@@ -83,6 +90,9 @@ export default function SettingsPage() {
     const [paymentsCurrency, setPaymentsCurrency] = useState<SupportedCurrency>('NGN');
     const [paymentsSubmitting, setPaymentsSubmitting] = useState(false);
 
+    // The Paystack webhook URL the tenant must register in their dashboard.
+    const webhookUrl = `${(process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '')}/payments/webhook`;
+
     const timezones = [
         'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
         'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Singapore',
@@ -93,6 +103,7 @@ export default function SettingsPage() {
         if (tenant) {
             setBusinessName(tenant.name);
             setTimezone(tenant.timezone || 'UTC');
+            setOutOfWindowEnabled(tenant.outOfWindowMessagesEnabled ?? true);
         }
         if (user) {
             setName(user.name);
@@ -172,6 +183,23 @@ export default function SettingsPage() {
         }
     };
 
+    const toggleOutOfWindow = async (next: boolean) => {
+        setTogglingMessages(true);
+        // Optimistic flip — revert on failure.
+        setOutOfWindowEnabled(next);
+        try {
+            await api.patch('/auth/profile', { outOfWindowMessagesEnabled: next });
+            await refreshUser();
+            toast.success(next ? 'Reminders & updates enabled' : 'Reminders & updates turned off');
+        } catch (err) {
+            setOutOfWindowEnabled(!next);
+            toast.error('Could not update the setting');
+            console.error('Failed to toggle out-of-window messages:', err);
+        } finally {
+            setTogglingMessages(false);
+        }
+    };
+
     const saveProfile = async () => {
         setSaving(true);
         setSuccess('');
@@ -248,6 +276,45 @@ export default function SettingsPage() {
                 </motion.div>
             )}
 
+            {/* More — hub links to secondary pages not in the bottom tab bar */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>
+                        <LayoutGrid className="w-5 h-5 text-emerald-500" />
+                        More
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {(tenant?.businessType === 'PRODUCT'
+                            ? [
+                                  { name: 'Inventory', href: '/inventory', icon: Boxes },
+                                  { name: 'Customers', href: '/customers', icon: Users },
+                                  { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+                                  { name: 'Message Templates', href: '/templates', icon: FileText },
+                              ]
+                            : [
+                                  { name: 'Availability', href: '/availability', icon: Clock },
+                                  { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+                                  { name: 'Message Templates', href: '/templates', icon: FileText },
+                              ]
+                        ).map((link) => (
+                            <Link
+                                key={link.href}
+                                href={link.href}
+                                className="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                            >
+                                <link.icon className="w-5 h-5 text-slate-400" />
+                                <span className="flex-1 text-sm font-medium text-slate-900 dark:text-white">
+                                    {link.name}
+                                </span>
+                                <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+                            </Link>
+                        ))}
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* Business Settings */}
             <Card>
                 <CardHeader>
@@ -276,6 +343,36 @@ export default function SettingsPage() {
                         <Button onClick={saveBusiness} isLoading={saving}>
                             <Save className="w-4 h-4" /> Save Changes
                         </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Automated Reminders & Updates — master toggle for out-of-window messages */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>
+                        <BellRing className="w-5 h-5 text-emerald-500" />
+                        Automated Reminders &amp; Updates
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <p className="text-sm font-medium text-slate-900 dark:text-white">
+                                Send reminders &amp; order updates
+                            </p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                When off, Bookly won&apos;t send appointment reminders or order
+                                shipping/delivery updates. This saves messaging cost — but customers
+                                won&apos;t be reminded of their appointments.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={outOfWindowEnabled}
+                            onChange={toggleOutOfWindow}
+                            disabled={togglingMessages}
+                            label="Automated reminders and updates"
+                        />
                     </div>
                 </CardContent>
             </Card>
@@ -421,11 +518,35 @@ export default function SettingsPage() {
                                     Disconnect
                                 </Button>
                             </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                                Configure your Paystack webhook to{' '}
-                                <code className="text-emerald-700 dark:text-emerald-400">YOUR_API_URL/payments/webhook</code>{' '}
-                                so order payments confirm automatically.
-                            </p>
+                            <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-2">
+                                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                                    Webhook URL
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <code className="flex-1 min-w-0 truncate text-xs bg-slate-100 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 rounded-lg px-3 py-2">
+                                        {webhookUrl}
+                                    </code>
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(webhookUrl)
+                                                .then(() => toast.success('Webhook URL copied'))
+                                                .catch(() => toast.error('Could not copy — select it manually'));
+                                        }}
+                                    >
+                                        <Copy className="w-4 h-4 mr-1.5" />
+                                        Copy
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    Paste this into Paystack Dashboard → Settings → API Keys &amp; Webhooks →
+                                    Webhook URL, so payments confirm automatically. Without it, payments
+                                    still confirm when the customer returns to the app — but the webhook
+                                    is instant.
+                                </p>
+                            </div>
                         </div>
                     ) : (
                         <form onSubmit={connectPayments} className="space-y-4">
@@ -820,7 +941,7 @@ function SmsFallbackCard() {
                             </Button>
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                            When a WhatsApp template send fails, BookingFlow falls back to SMS via Arkesel.
+                            When a WhatsApp template send fails, Bookly falls back to SMS via Arkesel.
                             One SMS counts as one outbound message toward your monthly quota.
                         </p>
                     </div>
@@ -848,7 +969,7 @@ function SmsFallbackCard() {
                         />
                         <DashboardInput
                             label="Sender ID (1-11 chars)"
-                            placeholder="BookingFlow"
+                            placeholder="Bookly"
                             value={senderId}
                             onChange={(e) => setSenderId(e.target.value)}
                             required
@@ -957,7 +1078,7 @@ function EmailFallbackCard() {
                     <form onSubmit={connect} className="space-y-4">
                         <div className="rounded-xl border border-blue-200 dark:border-blue-700/50 bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
                             Platform fallback is enabled by default — emails go out from
-                            BookingFlow&apos;s shared sender when WhatsApp + SMS fail. Connect your
+                            Bookly&apos;s shared sender when WhatsApp + SMS fail. Connect your
                             own Gmail below to send from your own brand instead.
                         </div>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -990,7 +1111,7 @@ function EmailFallbackCard() {
                         />
                         <DashboardInput
                             label="From name (optional)"
-                            placeholder="BookingFlow"
+                            placeholder="Bookly"
                             value={fromName}
                             onChange={(e) => setFromName(e.target.value)}
                         />

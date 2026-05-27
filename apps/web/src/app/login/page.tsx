@@ -5,10 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { motion } from 'framer-motion';
-import { MessageSquare, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
+import { GlowButton } from '@/components/primitives/glow-button';
 import { Input } from '@/components/ui/input';
 
+/**
+ * Login — ui.md split layout. Form left, atmospheric Bookly glow right.
+ * Single column below `lg`.
+ */
 export default function LoginPage() {
     const router = useRouter();
     const { login } = useAuth();
@@ -21,7 +26,6 @@ export default function LoginPage() {
         e.preventDefault();
         setError('');
         setIsLoading(true);
-
         try {
             await login(email, password);
             router.push('/dashboard');
@@ -33,39 +37,37 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen bg-[#060b18] bg-grid flex items-center justify-center px-4 relative overflow-hidden">
-            {/* Background orbs */}
-            <div className="bg-orb bg-orb-1" />
-            <div className="bg-orb bg-orb-2" />
-
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="w-full max-w-md relative z-10"
-            >
-                {/* Logo */}
-                <div className="text-center mb-8">
-                    <Link href="/" className="inline-flex items-center space-x-2.5">
-                        <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-glow-sm">
-                            <MessageSquare className="w-6 h-6 text-white" />
-                        </div>
-                        <span className="text-2xl font-bold text-white tracking-tight">BookingFlow</span>
-                    </Link>
+        <div className="min-h-screen grid lg:grid-cols-2 bg-ink-950 text-ink-50 relative overflow-hidden">
+            {/* Form column */}
+            <div className="flex items-center justify-center px-4 sm:px-8 py-12 relative">
+                {/* Mobile-only background atmosphere */}
+                <div className="lg:hidden absolute inset-0 pointer-events-none">
+                    <div className="bg-orb bg-orb-1" />
+                    <div className="bg-orb bg-orb-2" />
                 </div>
 
-                {/* Card */}
-                <div className="glass-card rounded-2xl p-8">
-                    <div className="text-center mb-8">
-                        <h1 className="text-2xl font-bold text-white mb-2">Welcome back</h1>
-                        <p className="text-slate-400">Sign in to your account</p>
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    className="w-full max-w-md relative z-10"
+                >
+                    <div className="mb-10">
+                        <Link href="/" className="inline-block">
+                            <BooklyWordmark size="lg" />
+                        </Link>
                     </div>
+
+                    <h1 className="font-display text-display-md text-ink-50 mb-2 tracking-tight">
+                        Welcome back
+                    </h1>
+                    <p className="text-body text-ink-300 mb-8">Sign in to your Bookly account.</p>
 
                     {error && (
                         <motion.div
-                            initial={{ opacity: 0, y: -10 }}
+                            initial={{ opacity: 0, y: -6 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl mb-6 text-sm"
+                            className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-3 rounded-xl mb-6 text-body-sm"
                         >
                             {error}
                         </motion.div>
@@ -81,7 +83,6 @@ export default function LoginPage() {
                             placeholder="you@example.com"
                             required
                         />
-
                         <Input
                             type="password"
                             label="Password"
@@ -91,37 +92,55 @@ export default function LoginPage() {
                             placeholder="••••••••"
                             required
                         />
-
-                        <Button
+                        <GlowButton
                             type="submit"
-                            isLoading={isLoading}
+                            disabled={isLoading}
                             className="w-full"
                             size="lg"
                         >
-                            Sign In <ArrowRight className="w-5 h-5" />
-                        </Button>
+                            {isLoading ? 'Signing in…' : (
+                                <>Sign in <ArrowRight className="w-4 h-4" /></>
+                            )}
+                        </GlowButton>
                     </form>
 
-                    <div className="mt-6 text-center">
-                        <p className="text-slate-400">
-                            Don&apos;t have an account?{' '}
-                            <Link href="/register" className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">
-                                Sign up
-                            </Link>
-                        </p>
-                    </div>
-                </div>
+                    <p className="mt-8 text-center text-body-sm text-ink-300">
+                        Don&apos;t have an account?{' '}
+                        <Link href="/register" className="text-bookly-emerald-400 hover:text-bookly-emerald-300 font-medium transition-colors">
+                            Start free
+                        </Link>
+                    </p>
+                    <p className="mt-6 text-center">
+                        <Link href="/admin/login" className="text-caption uppercase tracking-wider text-ink-400 hover:text-ink-200 transition-colors">
+                            Platform admin →
+                        </Link>
+                    </p>
+                </motion.div>
+            </div>
 
-                {/* Admin Link */}
-                <div className="mt-6 text-center">
-                    <Link
-                        href="/admin/login"
-                        className="text-slate-600 hover:text-slate-400 text-sm transition-colors"
-                    >
-                        Platform Admin Login →
-                    </Link>
-                </div>
-            </motion.div>
+            {/* Atmospheric right rail — desktop only */}
+            <aside className="hidden lg:flex relative items-center justify-center bg-ink-1000 overflow-hidden border-l border-ink-700">
+                <div aria-hidden className="absolute inset-0 bookly-glow opacity-90" />
+                <div aria-hidden className="absolute inset-0 bg-grid opacity-40" />
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+                    className="relative z-10 text-center max-w-md px-8"
+                >
+                    <p className="text-caption uppercase tracking-[0.18em] text-bookly-emerald-400 mb-5">
+                        WhatsApp × Automation
+                    </p>
+                    <p className="font-display text-display-md text-ink-50 leading-tight">
+                        Your business,{' '}
+                        <span className="text-gradient">running itself</span>{' '}
+                        on WhatsApp.
+                    </p>
+                    <p className="mt-6 text-body-lg text-ink-200">
+                        Bookings. Payments. Reminders. All handled while you sleep.
+                    </p>
+                </motion.div>
+            </aside>
         </div>
     );
 }

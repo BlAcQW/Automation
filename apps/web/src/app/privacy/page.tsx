@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: 'Privacy Policy — BookingFlow',
-    description: 'How BookingFlow collects, uses, and protects your data.',
+    title: 'Privacy Policy — Bookly',
+    description: 'How Bookly collects, uses, and protects your data.',
 };
 
 const LAST_UPDATED = 'May 14, 2026';
@@ -16,7 +16,7 @@ export default function PrivacyPolicyPage() {
 
             <Section title="1. Who we are">
                 <p>
-                    BookingFlow (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) provides a multi-tenant
+                    Bookly (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) provides a multi-tenant
                     Software-as-a-Service platform that enables small and medium businesses to manage customer
                     bookings, orders, and conversations over WhatsApp. This policy explains what personal data we
                     collect when you use our platform, how we use it, and the rights you have over it.
@@ -131,7 +131,7 @@ export default function PrivacyPolicyPage() {
 
             <Section title="8. Children">
                 <p>
-                    BookingFlow is intended for use by businesses and adult consumers. We do not knowingly
+                    Bookly is intended for use by businesses and adult consumers. We do not knowingly
                     collect data from anyone under 13 years of age. If you believe we have inadvertently
                     collected such data, contact us and we will delete it.
                 </p>

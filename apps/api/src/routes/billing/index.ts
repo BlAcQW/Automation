@@ -11,7 +11,6 @@ import {
     type PlanId,
 } from '../../services/plans.js';
 import {
-    currentMonthKey,
     evaluateSubscription,
     getQuotaState,
 } from '../../services/usage.js';
@@ -68,7 +67,11 @@ const billingRoutes: FastifyPluginAsync = async (fastify) => {
             },
             usage: {
                 messages: { used: quota.used, limit: quota.limit, ok: quota.ok },
-                month: currentMonthKey(),
+                // Backward-compat field — the YYYY-MM-DD identifier of the
+                // tenant's current 30-day cycle (Phase 4c).
+                month: quota.cycleStart.toISOString().slice(0, 10),
+                cycleStart: quota.cycleStart,
+                cycleEnd: quota.cycleEnd,
             },
             availablePlans: Object.values(PLAN_CATALOG).sort(
                 (a, b) => a.monthlyPrice - b.monthlyPrice,

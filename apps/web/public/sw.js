@@ -1,11 +1,17 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'bookingflow-v1';
+// Bump this whenever the caching strategy changes — the `activate` handler
+// deletes every cache that isn't the current name, so an old cache holding a
+// stale build is purged.
+const CACHE_NAME = 'bookly-v1';
+// Only truly-static, public assets. Auth-gated HTML documents (e.g.
+// /dashboard) are NOT precached — their markup embeds build-specific chunk
+// URLs that go stale, which would resurrect the stale-code class of bug.
 const STATIC_ASSETS = [
     '/',
-    '/dashboard',
     '/login',
     '/register',
+    '/offline',
     '/manifest.json',
 ];
 
@@ -40,9 +46,18 @@ self.addEventListener('fetch', (event) => {
     // Skip non-GET requests
     if (request.method !== 'GET') return;
 
-    // Skip API calls and external requests — always go to network
+    // Skip API calls and external requests — always go to network.
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/') || url.origin !== self.location.origin) {
+        return;
+    }
+
+    // Never intercept application code/CSS chunks. Caching `/_next/` assets
+    // would let the SW serve a stale build of a page (the cause of the
+    // `ReferenceError: webhookUrl is not defined` crash). The browser's own
+    // HTTP cache handles these correctly — content-hashed in prod, always
+    // fresh in dev.
+    if (url.pathname.startsWith('/_next/')) {
         return;
     }
 
@@ -57,10 +72,23 @@ self.addEventListener('fetch', (event) => {
                     });
                     return response;
                 })
-                .catch(() => {
-                    return caches.match(request).then((cachedResponse) => {
-                        return cachedResponse || caches.match('/');
-                    });
+                .catch(async () => {
+                    // Offline fallback. `respondWith` rejects ("Failed to
+                    // convert value to 'Response'") if handed `undefined`, so
+                    // always resolve to a real Response: the requested page if
+                    // cached, else the branded /offline screen, else a minimal
+                    // inline document.
+                    const cached =
+                        (await caches.match(request)) ||
+                        (await caches.match('/offline')) ||
+                        (await caches.match('/'));
+                    return (
+                        cached ||
+                        new Response(
+                            '<!doctype html><meta charset="utf-8"><title>Offline</title><p>You are offline. Reconnect and try again.',
+                            { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+                        )
+                    );
                 })
         );
         return;

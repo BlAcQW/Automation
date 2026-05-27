@@ -45,6 +45,10 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                 state: c.state,
                 lastMessage: c.messages[0]?.content,
                 lastMessageAt: c.messages[0]?.createdAt,
+                // Direction of the latest message — the client derives an
+                // "unread / needs reply" signal from `INBOUND` (customer
+                // spoke last and nobody has replied since).
+                lastMessageDirection: c.messages[0]?.direction ?? null,
                 updatedAt: c.updatedAt,
             })),
             pagination: {

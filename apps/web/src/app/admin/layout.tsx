@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { useRouter, usePathname } from 'next/navigation';
 import { adminApi } from '@/lib/api';
 import { Shield } from 'lucide-react';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
 import Link from 'next/link';
 import clsx from 'clsx';
 import {
@@ -103,8 +104,8 @@ export default function AdminLayout({
     // Loading state
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-slate-600 border-t-slate-400 rounded-full animate-spin" />
+            <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+                <BooklyDots size="lg" />
             </div>
         );
     }

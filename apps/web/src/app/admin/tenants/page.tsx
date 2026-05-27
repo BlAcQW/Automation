@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 export default function AdminTenantsPage() {
     const [page, setPage] = useState(1);
@@ -60,7 +61,7 @@ export default function AdminTenantsPage() {
             <Card className="glass-card border-white/5">
                 {isLoading ? (
                     <div className="flex items-center justify-center h-64">
-                        <div className="w-8 h-8 border-4 border-slate-600 border-t-slate-400 rounded-full animate-spin" />
+                        <BooklyDots size="md" />
                     </div>
                 ) : (
                     <>

@@ -63,3 +63,37 @@ describe('buildTextBundle', () => {
         expect(bundle!.emailHtml).toContain('&lt;script&gt;');
     });
 });
+
+describe('buildTextBundle — customer self-service link injection', () => {
+    it('appends the tracking link to an ORDER_SHIPPED SMS', () => {
+        const b = buildTextBundle('ORDER_SHIPPED', ['ORD-XYZ'], {
+            trackUrl: 'https://bookly.ikieguy.online/track/abc123',
+        });
+        expect(b!.sms).toContain('Track your order: https://bookly.ikieguy.online/track/abc123');
+        expect(b!.emailText).toContain('Track your order:');
+        expect(b!.emailHtml).toContain('Track your order</a>');
+    });
+
+    it('appends the cancel link to a BOOKING_REMINDER SMS', () => {
+        const b = buildTextBundle('BOOKING_REMINDER', ['Haircut', '10:00'], {
+            cancelUrl: 'https://bookly.ikieguy.online/c/xyz789',
+        });
+        expect(b!.sms).toContain('Need to cancel? https://bookly.ikieguy.online/c/xyz789');
+    });
+
+    it('leaves the SMS untouched when no links are supplied', () => {
+        const b = buildTextBundle('ORDER_SHIPPED', ['ORD-XYZ']);
+        expect(b!.sms).not.toContain('Track your order');
+    });
+
+    it('does not put a tracking link on a booking purpose', () => {
+        const b = buildTextBundle('BOOKING_REMINDER', ['Haircut', '10:00'], {
+            trackUrl: 'https://bookly.ikieguy.online/track/abc123',
+        });
+        expect(b!.sms).not.toContain('Track your order');
+    });
+
+    it('still returns null on a variable-count mismatch even with links', () => {
+        expect(buildTextBundle('ORDER_SHIPPED', [], { trackUrl: 'x' })).toBeNull();
+    });
+});

@@ -11,6 +11,9 @@ import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
 import { ProductModal } from '@/components/products/product-modal';
+import { PageHeader } from '@/components/ui/page-header';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { useProductRouteGuard } from '@/lib/use-product-route-guard';
 import { toast } from 'react-hot-toast';
 
 interface Product {
@@ -25,6 +28,9 @@ interface Product {
 }
 
 export default function ProductsPage() {
+    // PRODUCT mode is parked — bounce to /dashboard until the flag flips.
+    const productEnabled = useProductRouteGuard();
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [search, setSearch] = useState('');
@@ -70,6 +76,9 @@ export default function ProductsPage() {
         (p.category && p.category.toLowerCase().includes(search.toLowerCase()))
     );
 
+    // Guard renders below — all hooks above run unconditionally first.
+    if (!productEnabled) return null;
+
     const stats = {
         total: products.length,
         active: products.filter((p: Product) => p.isActive).length,
@@ -79,20 +88,16 @@ export default function ProductsPage() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                        Products
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        Manage your product catalog and inventory
-                    </p>
-                </div>
-                <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-emerald-500/20">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Product
-                </Button>
-            </div>
+            <PageHeader
+                title="Products"
+                subtitle="Manage your product catalog and inventory"
+                actions={
+                    <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-emerald-500/20">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Product
+                    </Button>
+                }
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
@@ -138,7 +143,7 @@ export default function ProductsPage() {
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
                             <tr>
@@ -155,7 +160,7 @@ export default function ProductsPage() {
                                 <tr>
                                     <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
-                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <BooklyDots size="sm" />
                                             <p>Loading products...</p>
                                         </div>
                                     </td>
@@ -173,7 +178,21 @@ export default function ProductsPage() {
                                 filteredProducts.map((product: Product) => (
                                     <tr key={product.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
                                         <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
-                                            {product.name}
+                                            <div className="flex items-center gap-3">
+                                                {product.imageUrl ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img
+                                                        src={product.imageUrl}
+                                                        alt={product.name}
+                                                        className="w-10 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                                                    />
+                                                ) : (
+                                                    <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
+                                                        <Package className="w-5 h-5 text-slate-300" />
+                                                    </div>
+                                                )}
+                                                <span>{product.name}</span>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-slate-500">
                                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
@@ -212,6 +231,67 @@ export default function ProductsPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile: stacked cards instead of a side-scrolling table */}
+                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
+                    {isLoading ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <BooklyDots size="sm" />
+                                <p>Loading products...</p>
+                            </div>
+                        </div>
+                    ) : filteredProducts.length === 0 ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <Package className="w-8 h-8 text-slate-300" />
+                                <p>No products found</p>
+                            </div>
+                        </div>
+                    ) : (
+                        filteredProducts.map((product: Product) => (
+                            <div key={product.id} className="flex items-center gap-3 p-4">
+                                {product.imageUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={product.imageUrl}
+                                        alt={product.name}
+                                        className="w-12 h-12 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                                    />
+                                ) : (
+                                    <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
+                                        <Package className="w-6 h-6 text-slate-300" />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-slate-900 dark:text-white truncate">{product.name}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="font-mono text-sm text-slate-600 dark:text-slate-300">
+                                            ${Number(product.price).toFixed(2)}
+                                        </span>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${product.stock > 0
+                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400'
+                                            : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400'
+                                            }`}>
+                                            {product.stock} in stock
+                                        </span>
+                                        {!product.isActive && (
+                                            <span className="text-[11px] font-medium text-slate-400">Inactive</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleEdit(product)}>
+                                        <Edit className="w-4 h-4 text-slate-500" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-red-50 dark:hover:bg-red-900/10" onClick={() => handleDelete(product.id)}>
+                                        <Trash2 className="w-4 h-4 text-slate-500" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
 

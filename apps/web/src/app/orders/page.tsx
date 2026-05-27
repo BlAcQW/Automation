@@ -14,6 +14,9 @@ import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
+import { PageHeader } from '@/components/ui/page-header';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { useProductRouteGuard } from '@/lib/use-product-route-guard';
 
 interface Order {
     id: string;
@@ -32,6 +35,9 @@ interface Order {
 }
 
 export default function OrdersPage() {
+    // PRODUCT mode is parked — bounce to /dashboard until the flag flips.
+    const productEnabled = useProductRouteGuard();
+
     const queryClient = useQueryClient();
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -114,18 +120,14 @@ export default function OrdersPage() {
         }
     };
 
+    if (!productEnabled) return null;
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                        Orders
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        Track and manage customer orders
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="Orders"
+                subtitle="Track and manage customer orders"
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
@@ -187,7 +189,7 @@ export default function OrdersPage() {
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
                             <tr>
@@ -205,7 +207,7 @@ export default function OrdersPage() {
                                 <tr>
                                     <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
-                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <BooklyDots size="sm" />
                                             <p>Loading orders...</p>
                                         </div>
                                     </td>
@@ -277,6 +279,73 @@ export default function OrdersPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile: stacked order cards */}
+                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
+                    {isLoading ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <BooklyDots size="sm" />
+                                <p>Loading orders...</p>
+                            </div>
+                        </div>
+                    ) : filteredOrders.length === 0 ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <Package className="w-8 h-8 text-slate-300" />
+                                <p>No orders found</p>
+                            </div>
+                        </div>
+                    ) : (
+                        filteredOrders.map((order: Order) => (
+                            <button
+                                key={order.id}
+                                onClick={() => handleViewOrder(order)}
+                                className="w-full text-left p-4 active:bg-slate-50 dark:active:bg-slate-700/30 transition-colors"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-slate-900 dark:text-white truncate">{order.customerName}</p>
+                                        <p className="text-xs text-slate-500 font-mono">{order.orderRef ?? order.orderNumber}</p>
+                                    </div>
+                                    <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white shrink-0">
+                                        ${Number(order.totalAmount).toFixed(2)}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium ${getStatusColor(order.status)}`}>
+                                        {order.status}
+                                    </span>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
+                                        {order.paymentStatus}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 ml-auto">
+                                        {format(new Date(order.createdAt), 'MMM d, yyyy')}
+                                    </span>
+                                </div>
+                                {order.paymentStatus === 'UNPAID' && (
+                                    <div className="flex items-center gap-3 mt-2">
+                                        {order.paymentAuthorizationUrl && (
+                                            <span
+                                                onClick={(e) => copyPaymentLink(order, e)}
+                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"
+                                            >
+                                                <Link2 className="w-3 h-3" /> Copy link
+                                            </span>
+                                        )}
+                                        <span
+                                            onClick={(e) => resendPaymentLink(order, e)}
+                                            className="inline-flex items-center gap-1 text-xs text-slate-500"
+                                        >
+                                            <RefreshCw className={`w-3 h-3 ${resendingId === order.id ? 'animate-spin' : ''}`} />
+                                            {resendingId === order.id ? 'Generating…' : 'New link'}
+                                        </span>
+                                    </div>
+                                )}
+                            </button>
+                        ))
+                    )}
                 </div>
             </div>
 

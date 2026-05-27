@@ -1,13 +1,13 @@
 {
-    "name": "BookingFlow",
-    "short_name": "BookingFlow",
-    "description": "WhatsApp Booking Automation Platform — automate appointments, reminders, and customer management.",
+    "name": "Bookly",
+    "short_name": "Bookly",
+    "description": "WhatsApp-first SaaS for small businesses. Bookings, payments, customer chats — all automated, all from one dashboard.",
     "start_url": "/dashboard",
     "scope": "/",
     "display": "standalone",
     "orientation": "portrait-primary",
-    "background_color": "#0a0f1a",
-    "theme_color": "#10b981",
+    "background_color": "#0A0F0D",
+    "theme_color": "#10B981",
     "categories": [
         "business",
         "productivity"

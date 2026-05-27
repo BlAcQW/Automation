@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TemplateModal, TEMPLATE_VARIABLE_ORDER, type TemplateRow } from '@/components/templates/template-modal';
+import { PageHeader } from '@/components/ui/page-header';
 
 export default function TemplatesPage() {
     const queryClient = useQueryClient();
@@ -46,16 +47,11 @@ export default function TemplatesPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Message Templates</h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        Register Meta-approved WhatsApp templates so reminders and confirmations
-                        get delivered outside the 24-hour customer-service window.
-                    </p>
-                </div>
-                <Button onClick={openCreate}>+ Register Template</Button>
-            </div>
+            <PageHeader
+                title="Message Templates"
+                subtitle="Register Meta-approved WhatsApp templates so reminders and confirmations get delivered outside the 24-hour customer-service window."
+                actions={<Button onClick={openCreate}>+ Register Template</Button>}
+            />
 
             <Card className="p-4 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/50">
                 <p className="text-sm text-amber-800 dark:text-amber-200">
@@ -92,7 +88,7 @@ export default function TemplatesPage() {
                         </Button>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full">
                             <thead>
                                 <tr className="text-left text-sm text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
@@ -157,6 +153,43 @@ export default function TemplatesPage() {
                                 })}
                             </tbody>
                         </table>
+                    </div>
+                )}
+
+                {/* Mobile: stacked template cards */}
+                {!isLoading && !!data?.data?.length && (
+                    <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-800">
+                        {data.data.map((t) => (
+                            <div key={t.id} className="flex items-start gap-3 p-4">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <p className="font-medium text-slate-900 dark:text-white truncate">{t.name}</p>
+                                        <Badge variant={t.isApproved ? 'default' : 'yellow'}>
+                                            {t.isApproved ? 'Approved' : 'Pending'}
+                                        </Badge>
+                                    </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 capitalize">
+                                        {t.purpose.replace(/_/g, ' ').toLowerCase()} · {t.language} · {t.variableCount} vars
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                        onClick={() => openEdit(t)}
+                                        className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                                        aria-label="Edit template"
+                                    >
+                                        <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => remove(t)}
+                                        className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                        aria-label="Delete template"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 )}
             </Card>

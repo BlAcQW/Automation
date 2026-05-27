@@ -36,12 +36,21 @@ model Tenant {
   subscriptionCustomerCode String?     // Paystack customer_code (CUS_xxx)
   currentPeriodEnd         DateTime?
   trialEndsAt              DateTime?
+  // Phase 4c — per-tenant 30-day quota cycle anchor. Decouples quota refresh
+  // from the calendar 1st: each tenant gets 5,000 messages every 30 days
+  // counted from their signup, not from the start of the calendar month
+  // (which double-counts mid-month subscribers). Nullable for back-compat —
+  // null falls back to `createdAt` so legacy tenants behave the same.
+  quotaCycleStart          DateTime?
   // Phase 5 — SMS fallback (Arkesel) + Email fallback (Gmail SMTP).
   arkeselApiKey            String?    // Encrypted at rest via crypto.ts
   arkeselSenderId          String?    // 1-11 chars, alphanumeric or phone
   gmailUser                String?    // Tenant's Gmail address
   gmailAppPassword         String?    // 16-char app password, encrypted
   gmailFromName            String?    // Display name in From: header
+  // Master switch — when false, the worker skips all out-of-window messages
+  // (BOOKING_REMINDER, ORDER_SHIPPED, ORDER_DELIVERED) to save messaging cost.
+  outOfWindowMessagesEnabled Boolean    @default(true)
   isActive              Boolean      @default(true)
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
@@ -182,6 +191,7 @@ model Booking {
   paymentAuthorizationUrl String?
   paidAt                  DateTime?
   depositAmount           Decimal?      @db.Decimal(10, 2) // snapshot at booking time
+  publicToken             String?       @unique // non-guessable token for the SMS cancel link
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
@@ -355,6 +365,7 @@ model Order {
   paidAt                  DateTime?
   deliveryAddress         String?
   notes                   String?
+  publicToken             String?       @unique // non-guessable token for the order tracking link
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 

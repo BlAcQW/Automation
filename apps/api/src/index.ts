@@ -32,6 +32,7 @@ import notificationsRoutes from './routes/notifications/index.js';
 import templatesRoutes from './routes/templates/index.js';
 import paymentsRoutes from './routes/payments/index.js';
 import billingRoutes from './routes/billing/index.js';
+import publicRoutes from './routes/public/index.js';
 import smsRoutes from './routes/sms/index.js';
 import emailRoutes from './routes/email/index.js';
 
@@ -149,6 +150,7 @@ async function buildApp() {
     await app.register(templatesRoutes, { prefix: '/templates' });
     await app.register(paymentsRoutes, { prefix: '/payments' });
     await app.register(billingRoutes, { prefix: '/billing' });
+    await app.register(publicRoutes, { prefix: '/public' });
     await app.register(smsRoutes, { prefix: '/sms' });
     await app.register(emailRoutes, { prefix: '/email' });
 
@@ -170,7 +172,7 @@ async function start() {
 
         workers = startNotificationWorkers(config.redisUrl);
 
-        server.log.info(`BookingFlow API running at http://${config.host}:${config.port}`);
+        server.log.info(`Bookly API running at http://${config.host}:${config.port}`);
     } catch (err) {
         app.log.error(err);
         process.exit(1);

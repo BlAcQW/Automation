@@ -5,7 +5,7 @@ import { generateAdminTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
 import { PLAN_IDS } from '../../services/plans.js';
-import { currentMonthKey } from '../../services/usage.js';
+import { currentCycleKey } from '../../services/usage.js';
 
 // Validation schemas
 const loginSchema = z.object({
@@ -145,7 +145,6 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             }
             : {};
 
-        const month = currentMonthKey();
         const [tenants, total] = await Promise.all([
             fastify.prisma.tenant.findMany({
                 where,
@@ -160,11 +159,14 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                             services: true,
                         },
                     },
-                    // Only the current month's usage row; bounded fetch.
+                    // Phase 4c — each tenant has its own 30-day quota cycle
+                    // (keyed YYYY-MM-DD). Fetch the most-recent usage row;
+                    // we'll match it against the tenant's current cycle key
+                    // below — non-matching rows count as 0 this cycle.
                     tenantUsages: {
-                        where: { month },
-                        select: { messageCount: true },
+                        orderBy: { month: 'desc' },
                         take: 1,
+                        select: { month: true, messageCount: true },
                     },
                 },
             }),
@@ -172,20 +174,29 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         ]);
 
         return {
-            data: tenants.map((t) => ({
-                id: t.id,
-                name: t.name,
-                timezone: t.timezone,
-                isActive: t.isActive,
-                planId: t.planId,
-                messagesThisMonth: t.tenantUsages[0]?.messageCount ?? 0,
-                whatsappConnected: !!t.whatsappPhoneNumberId,
-                whatsappDisplayNumber: t.whatsappDisplayNumber,
-                usersCount: t._count.users,
-                bookingsCount: t._count.bookings,
-                servicesCount: t._count.services,
-                createdAt: t.createdAt,
-            })),
+            data: tenants.map((t) => {
+                const cycleKey = currentCycleKey({
+                    quotaCycleStart: t.quotaCycleStart,
+                    createdAt: t.createdAt,
+                });
+                const latestUsage = t.tenantUsages[0];
+                const messagesThisCycle =
+                    latestUsage?.month === cycleKey ? latestUsage.messageCount : 0;
+                return {
+                    id: t.id,
+                    name: t.name,
+                    timezone: t.timezone,
+                    isActive: t.isActive,
+                    planId: t.planId,
+                    messagesThisMonth: messagesThisCycle,
+                    whatsappConnected: !!t.whatsappPhoneNumberId,
+                    whatsappDisplayNumber: t.whatsappDisplayNumber,
+                    usersCount: t._count.users,
+                    bookingsCount: t._count.bookings,
+                    servicesCount: t._count.services,
+                    createdAt: t.createdAt,
+                };
+            }),
             pagination: {
                 page: query.page,
                 limit: query.limit,

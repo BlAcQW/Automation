@@ -66,13 +66,13 @@ const DashboardInput = forwardRef<HTMLInputElement, DashboardInputProps>(
         return (
             <div className="space-y-1.5">
                 {label && (
-                    <label htmlFor={inputId} className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    <label htmlFor={inputId} className="block text-caption uppercase tracking-wider text-ink-300">
                         {label}
                     </label>
                 )}
                 <div className="relative group">
                     {icon && (
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 group-focus-within:text-bookly-emerald-400 transition-colors">
                             {icon}
                         </div>
                     )}
@@ -81,20 +81,20 @@ const DashboardInput = forwardRef<HTMLInputElement, DashboardInputProps>(
                         id={inputId}
                         className={cn(
                             'w-full rounded-xl border transition-all duration-200',
-                            'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600',
-                            'text-slate-900 dark:text-white placeholder:text-slate-400',
-                            'focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50',
-                            'hover:border-slate-300 dark:hover:border-slate-500',
+                            'bg-ink-900 border-ink-700',
+                            'text-ink-50 placeholder:text-ink-300',
+                            'focus:outline-none focus:ring-4 focus:ring-bookly-emerald-500/15 focus:border-bookly-emerald-500',
+                            'hover:border-ink-600',
                             icon ? 'pl-10 pr-4' : 'px-4',
                             'py-2.5',
-                            error && 'border-red-500 focus:ring-red-500/20 focus:border-red-500',
+                            error && 'border-rose-500 focus:ring-rose-500/15 focus:border-rose-500',
                             className
                         )}
                         {...props}
                     />
                 </div>
                 {error && (
-                    <p className="text-sm text-red-500 dark:text-red-400 animate-in slide-in-from-top-1 fade-in duration-200">{error}</p>
+                    <p className="text-sm text-rose-300 animate-in slide-in-from-top-1 fade-in duration-200">{error}</p>
                 )}
             </div>
         );

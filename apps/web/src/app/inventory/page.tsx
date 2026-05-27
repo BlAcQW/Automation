@@ -9,6 +9,9 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
+import { PageHeader } from '@/components/ui/page-header';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { useProductRouteGuard } from '@/lib/use-product-route-guard';
 import { toast } from 'react-hot-toast';
 
 interface Product {
@@ -21,6 +24,9 @@ interface Product {
 }
 
 export default function InventoryPage() {
+    // PRODUCT mode is parked — bounce to /dashboard until the flag flips.
+    const productEnabled = useProductRouteGuard();
+
     const [search, setSearch] = useState('');
     const queryClient = useQueryClient();
 
@@ -65,18 +71,14 @@ export default function InventoryPage() {
         outOfStock: products.filter((p: Product) => p.stock === 0).length,
     };
 
+    if (!productEnabled) return null;
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                        Inventory
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        Track stock levels and manage inventory
-                    </p>
-                </div>
-            </div>
+            <PageHeader
+                title="Inventory"
+                subtitle="Track stock levels and manage inventory"
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
@@ -122,7 +124,7 @@ export default function InventoryPage() {
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
                             <tr>
@@ -138,7 +140,7 @@ export default function InventoryPage() {
                                 <tr>
                                     <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
-                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <BooklyDots size="sm" />
                                             <p>Loading inventory...</p>
                                         </div>
                                     </td>
@@ -207,6 +209,70 @@ export default function InventoryPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile: stacked inventory cards */}
+                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
+                    {isLoading ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <BooklyDots size="sm" />
+                                <p>Loading inventory...</p>
+                            </div>
+                        </div>
+                    ) : filteredProducts.length === 0 ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <Boxes className="w-8 h-8 text-slate-300" />
+                                <p>No products found</p>
+                            </div>
+                        </div>
+                    ) : (
+                        filteredProducts.map((product: Product) => (
+                            <div key={product.id} className="flex items-center gap-3 p-4">
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-slate-900 dark:text-white truncate">{product.name}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="font-mono text-sm text-slate-600 dark:text-slate-300">
+                                            {product.stock} in stock
+                                        </span>
+                                        {product.stock === 0 ? (
+                                            <span className="inline-flex items-center gap-1 text-red-500 text-[11px] font-medium bg-red-50 dark:bg-red-500/10 px-2 py-0.5 rounded-full">
+                                                <AlertTriangle className="w-3 h-3" /> Out
+                                            </span>
+                                        ) : product.stock < 10 ? (
+                                            <span className="inline-flex items-center gap-1 text-yellow-600 dark:text-yellow-400 text-[11px] font-medium bg-yellow-50 dark:bg-yellow-500/10 px-2 py-0.5 rounded-full">
+                                                <AlertTriangle className="w-3 h-3" /> Low
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[11px] font-medium bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                                <PackageCheck className="w-3 h-3" /> In stock
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-9 w-9 hover:bg-slate-200 dark:hover:bg-slate-600"
+                                        onClick={() => handleStockChange(product.id, product.stock, -1)}
+                                        disabled={product.stock <= 0}
+                                    >
+                                        <Minus className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-9 w-9 hover:bg-slate-200 dark:hover:bg-slate-600"
+                                        onClick={() => handleStockChange(product.id, product.stock, 1)}
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>

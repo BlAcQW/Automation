@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
+import { generatePublicToken } from '../../lib/public-token.js';
 
 // Validation schemas
 const orderItemSchema = z.object({
@@ -216,6 +217,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                     totalAmount,
                     deliveryAddress: body.deliveryAddress,
                     notes: body.notes,
+                    publicToken: generatePublicToken(),
                     items: {
                         create: orderItems,
                     },

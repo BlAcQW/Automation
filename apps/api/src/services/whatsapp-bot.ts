@@ -2,8 +2,10 @@ import { TemplatePurpose, type Prisma } from '@prisma/client';
 import type { Queue as BullQueue } from 'bullmq';
 import { decrypt } from './crypto.js';
 import { computeAvailableSlots } from './availability.js';
-import { deleteCalendarEvent, updateCalendarEvent } from './calendar.js';
+import { updateCalendarEvent } from './calendar.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
+import { cancelBooking } from './booking-cancel.js';
+import { generatePublicToken } from '../lib/public-token.js';
 import { initializeTransaction } from './paystack.js';
 import { tryReserveOutbound, rollbackOutboundReservation } from './usage.js';
 
@@ -85,9 +87,10 @@ export interface BotContext {
 
 interface SendMessagePayload {
     to: string;
-    type: 'text' | 'interactive';
+    type: 'text' | 'interactive' | 'image';
     text?: { body: string };
     interactive?: any;
+    image?: { link: string; caption?: string };
 }
 
 // Main bot engine class
@@ -534,17 +537,18 @@ export class WhatsAppBotEngine {
                     break;
                 }
 
-                const booking = await this.prisma.booking.findFirst({
+                // Guard: the booking must belong to this customer before we
+                // hand off to the shared cancel routine.
+                const cancelTarget = await this.prisma.booking.findFirst({
                     where: {
                         id: context.activeBookingId,
                         tenantId: this.tenantId,
                         customerPhone,
-                        status: 'CONFIRMED',
                     },
-                    include: { service: true },
+                    select: { id: true },
                 });
 
-                if (!booking) {
+                if (!cancelTarget) {
                     messages.push(this.createTextMessage('That appointment is no longer cancellable.'));
                     messages.push(this.createMainMenu());
                     context.activeBookingId = undefined;
@@ -552,37 +556,23 @@ export class WhatsAppBotEngine {
                     break;
                 }
 
-                await this.prisma.booking.update({
-                    where: { id: booking.id },
-                    data: { status: 'CANCELLED' },
+                const cancelResult = await cancelBooking({
+                    prisma: this.prisma,
+                    bookingId: cancelTarget.id,
+                    reason: 'customer_whatsapp',
+                    notificationsQueue: this.notificationsQueue,
+                    remindersQueue: this.remindersQueue,
                 });
 
-                // Best-effort: drop the linked Google Calendar event + remove
-                // any pending reminder job.
-                if (booking.calendarEventId) {
-                    await deleteCalendarEvent(booking.id, this.tenantId, this.prisma).catch(() => {});
+                if (cancelResult.ok) {
+                    messages.push(this.createTextMessage(
+                        `✅ Cancelled.\n\n` +
+                        `📋 ${cancelResult.booking.serviceName}\n` +
+                        `Reference: ${cancelResult.booking.bookingReference}`,
+                    ));
+                } else {
+                    messages.push(this.createTextMessage('That appointment is no longer cancellable.'));
                 }
-                await cancelReminder(this.remindersQueue, booking.id).catch(() => {});
-
-                // Customer-facing confirmation goes out as a template so it
-                // works even if the WA window closes before delivery.
-                await scheduleNotification({
-                    queue: this.notificationsQueue,
-                    purpose: TemplatePurpose.BOOKING_CANCELLED,
-                    tenantId: this.tenantId,
-                    customerPhone,
-                    variables: [
-                        booking.service.name,
-                        booking.startTime.toLocaleDateString(),
-                    ],
-                    jobId: `booking_cancelled_${booking.id}`,
-                }).catch(() => {});
-
-                messages.push(this.createTextMessage(
-                    `✅ Cancelled.\n\n` +
-                    `📋 ${booking.service.name}\n` +
-                    `Reference: ${booking.bookingReference}`,
-                ));
                 messages.push(this.createMainMenu());
                 context.activeBookingId = undefined;
                 context.state = BotState.MAIN_MENU;
@@ -705,18 +695,26 @@ export class WhatsAppBotEngine {
                         messages.push(this.createCartMenu());
                         context.state = BotState.VIEW_CART;
                     }
+                } else if (content === 'checkout') {
+                    this.pushCheckoutStart(context, messages);
                 } else {
                     const product = await this.prisma.product.findFirst({
                         where: { tenantId: this.tenantId, id: content, isActive: true },
                     });
                     if (product) {
                         context.currentProductId = product.id;
-                        messages.push(this.createTextMessage(
+                        const detail =
                             `📦 *${product.name}*\n\n` +
                             `${product.description || ''}\n\n` +
                             `💰 Price: $${product.price}\n` +
-                            `📊 In Stock: ${product.stock > 0 ? 'Yes' : 'Out of Stock'}`
-                        ));
+                            `📊 In Stock: ${product.stock > 0 ? 'Yes' : 'Out of Stock'}`;
+                        // Send the photo (with the detail as caption) when the
+                        // product has an image; fall back to plain text otherwise.
+                        if (product.imageUrl) {
+                            messages.push(this.createImageMessage(product.imageUrl, detail));
+                        } else {
+                            messages.push(this.createTextMessage(detail));
+                        }
                         if (product.stock > 0) {
                             messages.push(this.createAddToCartMenu());
                             context.state = BotState.VIEW_PRODUCT;
@@ -757,6 +755,8 @@ export class WhatsAppBotEngine {
                     const products = await this.getProducts();
                     messages.push(this.createProductList(products));
                     context.state = BotState.BROWSE_PRODUCTS;
+                } else if (content === 'checkout') {
+                    this.pushCheckoutStart(context, messages);
                 } else {
                     messages.push(this.createAddToCartMenu());
                 }
@@ -764,14 +764,7 @@ export class WhatsAppBotEngine {
 
             case BotState.VIEW_CART:
                 if (content === 'checkout') {
-                    if (!context.cart || context.cart.length === 0) {
-                        messages.push(this.createTextMessage('Your cart is empty!'));
-                        messages.push(this.createProductMainMenu());
-                        context.state = BotState.MAIN_MENU;
-                    } else {
-                        messages.push(this.createTextMessage('Please enter your name:'));
-                        context.state = BotState.CHECKOUT;
-                    }
+                    this.pushCheckoutStart(context, messages);
                 } else if (content === 'clear') {
                     context.cart = [];
                     messages.push(this.createTextMessage('Cart cleared!'));
@@ -810,6 +803,11 @@ export class WhatsAppBotEngine {
                         customerPhone,
                     });
 
+                    // Tracking link the customer can open anytime to see status.
+                    const trackLine = order.publicToken
+                        ? `\n\n🔎 Track your order:\n${config.frontendUrl}/track/${order.publicToken}`
+                        : '';
+
                     if (paymentLink) {
                         messages.push(this.createTextMessage(
                             `✅ Order placed!\n\n` +
@@ -818,7 +816,8 @@ export class WhatsAppBotEngine {
                             `📍 ${context.deliveryAddress}\n` +
                             `💰 Total: ${this.paymentCurrency} ${total.toFixed(2)}\n\n` +
                             `🔗 Pay here:\n${paymentLink}\n\n` +
-                            `We'll confirm once payment is received.`,
+                            `We'll confirm once payment is received.` +
+                            trackLine,
                         ));
                     } else {
                         // No Paystack configured (or init failed) — fall back
@@ -829,12 +828,15 @@ export class WhatsAppBotEngine {
                             `👤 ${context.customerName}\n` +
                             `📍 ${context.deliveryAddress}\n` +
                             `💰 Total: $${total.toFixed(2)}\n\n` +
-                            `We'll notify you when your order is on its way!`,
+                            `We'll notify you when your order is on its way!` +
+                            trackLine,
                         ));
                     }
 
                     context.cart = [];
                 } catch (err) {
+                    // eslint-disable-next-line no-console
+                    console.error('Order checkout failed during bot flow', err);
                     messages.push(this.createTextMessage('Sorry, there was an error placing your order. Please try again.'));
                 }
                 messages.push(this.createProductMainMenu());
@@ -869,6 +871,10 @@ export class WhatsAppBotEngine {
 
     private createTextMessage(body: string): SendMessagePayload {
         return { to: '', type: 'text', text: { body } };
+    }
+
+    private createImageMessage(link: string, caption?: string): SendMessagePayload {
+        return { to: '', type: 'image', image: { link, caption } };
     }
 
     private createMainMenu(): SendMessagePayload {
@@ -1291,6 +1297,7 @@ export class WhatsAppBotEngine {
                     endTime,
                     status: requiresDeposit ? 'PENDING_PAYMENT' : 'CONFIRMED',
                     bookingReference: this.generateReference(),
+                    publicToken: generatePublicToken(),
                     depositAmount: requiresDeposit ? service.depositAmount : null,
                 },
             });
@@ -1327,6 +1334,22 @@ export class WhatsAppBotEngine {
         return `🛒 *Your Cart*\n\n${items}\n\n💰 Total: $${total.toFixed(2)}`;
     }
 
+    /**
+     * Start the checkout flow. Shared by every product-browsing state because
+     * WhatsApp keeps old interactive buttons tappable — a customer can tap the
+     * "Checkout" button from an earlier cart message while browsing products.
+     */
+    private pushCheckoutStart(context: BotContext, messages: SendMessagePayload[]): void {
+        if (!context.cart || context.cart.length === 0) {
+            messages.push(this.createTextMessage('Your cart is empty! Add items before checking out.'));
+            messages.push(this.createProductMainMenu());
+            context.state = BotState.MAIN_MENU;
+        } else {
+            messages.push(this.createTextMessage('Please enter your name:'));
+            context.state = BotState.CHECKOUT;
+        }
+    }
+
     private async createOrder(context: BotContext): Promise<any> {
         const orderRef = this.generateOrderNumber();
         const total = context.cart!.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -1340,6 +1363,7 @@ export class WhatsAppBotEngine {
                 deliveryAddress: context.deliveryAddress,
                 status: 'PENDING',
                 totalAmount: total,
+                publicToken: generatePublicToken(),
                 items: {
                     create: context.cart!.map(item => ({
                         productId: item.productId,
@@ -1386,7 +1410,9 @@ export class WhatsAppBotEngine {
 
             const init = await initializeTransaction({
                 secretKey,
-                email: `${digits || 'customer'}@customer.bookingflow.local`,
+                // Paystack rejects reserved TLDs like `.local` — use a real
+                // public TLD for this placeholder email (customer never sees it).
+                email: `${digits || 'customer'}@customer.bookingflow.app`,
                 amountKobo: Math.round(args.amount * 100),
                 currency: this.paymentCurrency,
                 reference: `bf_${args.id}_${Date.now()}`,

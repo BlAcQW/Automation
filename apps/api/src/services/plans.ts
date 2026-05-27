@@ -1,5 +1,5 @@
 /**
- * BookingFlow SaaS plan catalog.
+ * Bookly SaaS plan catalog.
  *
  * Defined in code (not DB) so the catalog can evolve without a migration.
  * `Tenant.planId` is a free-form string at the schema layer; we validate

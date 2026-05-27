@@ -22,9 +22,9 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
                 className={cn(
                     'rounded-2xl border transition-all duration-300',
                     glass
-                        ? 'bg-white/5 backdrop-blur-xl border-white/10 shadow-xl'
-                        : 'bg-white dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 shadow-sm',
-                    hover && 'hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600',
+                        ? 'bg-ink-900/50 backdrop-blur-xl border-ink-700/60 shadow-card-lg'
+                        : 'bg-ink-900 border-ink-700/70 shadow-card',
+                    hover && 'hover:shadow-card-hover hover:border-bookly-emerald-500/40',
                     className
                 )}
                 {...motionProps}
@@ -42,7 +42,7 @@ const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     ({ className, ...props }, ref) => (
         <div
             ref={ref}
-            className={cn('px-6 py-4 border-b border-slate-200/80 dark:border-slate-700/80', className)}
+            className={cn('px-6 py-4 border-b border-ink-700/70', className)}
             {...props}
         />
     )
@@ -53,7 +53,7 @@ const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingEleme
     ({ className, ...props }, ref) => (
         <h3
             ref={ref}
-            className={cn('font-semibold text-slate-900 dark:text-white flex items-center gap-2', className)}
+            className={cn('font-display font-semibold text-ink-50 flex items-center gap-2', className)}
             {...props}
         />
     )

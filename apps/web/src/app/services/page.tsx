@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
 import { ServiceModal } from '@/components/services/service-modal';
+import { PageHeader } from '@/components/ui/page-header';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { toast } from 'react-hot-toast';
 
 interface Service {
@@ -77,20 +79,16 @@ export default function ServicesPage() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                        Services
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        Manage your service offerings and pricing
-                    </p>
-                </div>
-                <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-emerald-500/20">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Service
-                </Button>
-            </div>
+            <PageHeader
+                title="Services"
+                subtitle="Manage your service offerings and pricing"
+                actions={
+                    <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-emerald-500/20">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Service
+                    </Button>
+                }
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard
@@ -129,7 +127,7 @@ export default function ServicesPage() {
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
                             <tr>
@@ -146,7 +144,7 @@ export default function ServicesPage() {
                                 <tr>
                                     <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
-                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <BooklyDots size="sm" />
                                             <p>Loading services...</p>
                                         </div>
                                     </td>
@@ -205,6 +203,53 @@ export default function ServicesPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile: stacked service cards */}
+                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
+                    {isLoading ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <BooklyDots size="sm" />
+                                <p>Loading services...</p>
+                            </div>
+                        </div>
+                    ) : filteredServices.length === 0 ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <Briefcase className="w-8 h-8 text-slate-300" />
+                                <p>No services found</p>
+                            </div>
+                        </div>
+                    ) : (
+                        filteredServices.map((service: Service) => (
+                            <div key={service.id} className="flex items-center gap-3 p-4">
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-slate-900 dark:text-white truncate">{service.name}</p>
+                                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                                        <span className="font-mono text-slate-600 dark:text-slate-300">
+                                            ${Number(service.price).toFixed(2)}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <Clock className="w-3.5 h-3.5" />
+                                            {service.durationMinutes} min
+                                        </span>
+                                        {!service.isActive && (
+                                            <span className="text-slate-400">Inactive</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleEdit(service)}>
+                                        <Edit className="w-4 h-4 text-slate-500" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-red-50 dark:hover:bg-red-900/10" onClick={() => handleDelete(service.id)}>
+                                        <Trash2 className="w-4 h-4 text-slate-500" />
+                                    </Button>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
 

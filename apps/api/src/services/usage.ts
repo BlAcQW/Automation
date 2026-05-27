@@ -1,13 +1,20 @@
 /**
- * Per-tenant monthly outbound-message usage helpers (Phase 4a).
+ * Per-tenant 30-day outbound-message usage helpers (Phase 4a + 4c).
  *
- * - `currentMonthKey`: formats a Date as "YYYY-MM" UTC.
- * - `getQuotaState`: reads the current month's TenantUsage row and compares
- *   against the plan's monthlyMessageQuota.
- * - `incrementMessageUsage`: atomic upsert. Use AFTER a successful send.
- * - `checkOutboundQuota`: convenience that loads tenant.planId + evaluates.
+ * Phase 4c moved the quota cycle from "calendar month" to "30 days anchored
+ * to each tenant's signup." A tenant who signs up on May 12 gets 5,000 msgs
+ * for May 12–Jun 10, fresh 5,000 for Jun 11–Jul 10, and so on — the cycle
+ * never snaps back to the calendar 1st. This stops mid-month subscribers
+ * from accidentally getting double quota in their first 30 days.
  *
- * Both helpers are safe to call from the BullMQ worker, the bot, and
+ * - `currentCycleKey(tenant)`: the YYYY-MM-DD identifier of the tenant's
+ *   current 30-day window (used as the `month` column on TenantUsage so the
+ *   unique key `[tenantId, month]` doesn't need a schema change).
+ * - `getQuotaState`: reads the current cycle's TenantUsage row.
+ * - `tryReserveOutbound`: atomic upsert + increment under quota cap.
+ * - `checkOutboundQuota`: convenience that resolves plan + evaluates.
+ *
+ * All helpers are safe to call from the BullMQ worker, the bot, and
  * authenticated HTTP routes — the Prisma `$extends` tenant guard skips when
  * the call originates from the worker (no tenant context) and is satisfied
  * by the explicit `tenantId` filter otherwise.
@@ -25,6 +32,66 @@ export type AnyPrismaClient = PrismaClient | ExtendedPrismaClient;
 // Phase 4b — grace period between PAST_DUE and auto-downgrade to Free.
 const PAST_DUE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Phase 4c — quota cycle length in ms (30 days).
+const CYCLE_LENGTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Tenant fields the cycle helpers need. Accepting a plain object keeps these
+ * helpers easy to unit-test without a real Prisma row. Both fields are
+ * tolerated as nullable to defend against partial mocks / legacy rows.
+ */
+export interface TenantCycleAnchor {
+    quotaCycleStart: Date | null | undefined;
+    createdAt: Date | null | undefined;
+}
+
+/**
+ * The start of the tenant's CURRENT 30-day quota cycle.
+ *
+ * Anchor = `quotaCycleStart` (set at signup, never re-set) with `createdAt`
+ * as a fallback for tenants that predate the column. If both are missing
+ * (test mocks, edge cases), fall back to `now` so callers never crash. The
+ * current cycle is the most recent `anchor + N*30days` window containing
+ * `now`.
+ */
+export function currentCycleStart(
+    tenant: TenantCycleAnchor,
+    now: Date = new Date(),
+): Date {
+    const anchor = tenant.quotaCycleStart ?? tenant.createdAt ?? now;
+    const elapsed = now.getTime() - anchor.getTime();
+    if (elapsed < CYCLE_LENGTH_MS) return anchor;
+    const periodsElapsed = Math.floor(elapsed / CYCLE_LENGTH_MS);
+    return new Date(anchor.getTime() + periodsElapsed * CYCLE_LENGTH_MS);
+}
+
+/**
+ * The end of the tenant's current 30-day quota cycle (= next reset date).
+ */
+export function currentCycleEnd(
+    tenant: TenantCycleAnchor,
+    now: Date = new Date(),
+): Date {
+    return new Date(currentCycleStart(tenant, now).getTime() + CYCLE_LENGTH_MS);
+}
+
+/**
+ * Stable string identifier for the tenant's current cycle — stored in the
+ * `TenantUsage.month` column (kept the column name to avoid a rename
+ * migration; semantically it's now a cycle key, e.g. "2026-05-12").
+ */
+export function currentCycleKey(
+    tenant: TenantCycleAnchor,
+    now: Date = new Date(),
+): string {
+    return currentCycleStart(tenant, now).toISOString().slice(0, 10);
+}
+
+/**
+ * @deprecated — kept for backward compat with one external caller that
+ * doesn't have tenant context. Returns the calendar-month key as before.
+ * Prefer `currentCycleKey(tenant)` for any quota-bearing operation.
+ */
 export function currentMonthKey(now: Date = new Date()): string {
     return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
 }
@@ -34,6 +101,20 @@ export interface QuotaState {
     used: number;
     limit: number;
     planId: string;
+    /** Start of the current 30-day cycle (the tenant's personal anchor). */
+    cycleStart: Date;
+    /** Date the quota next refreshes (start + 30 days). */
+    cycleEnd: Date;
+}
+
+async function loadCycleAnchor(
+    prisma: AnyPrismaClient,
+    tenantId: string,
+): Promise<TenantCycleAnchor | null> {
+    return prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { quotaCycleStart: true, createdAt: true },
+    });
 }
 
 export async function getQuotaState(
@@ -42,8 +123,15 @@ export async function getQuotaState(
     planId: string | null | undefined,
 ): Promise<QuotaState> {
     const plan = getPlan(planId);
+    const anchor = await loadCycleAnchor(prisma, tenantId);
+    // Fallback: if the tenant somehow doesn't exist, return an empty cycle
+    // anchored at now so callers don't crash. The quota check still works
+    // (used=0 < limit).
+    const safeAnchor: TenantCycleAnchor = anchor ?? { quotaCycleStart: null, createdAt: new Date() };
+    const cycleStart = currentCycleStart(safeAnchor);
+    const cycleEnd = currentCycleEnd(safeAnchor);
     const row = await prisma.tenantUsage.findUnique({
-        where: { tenantId_month: { tenantId, month: currentMonthKey() } },
+        where: { tenantId_month: { tenantId, month: currentCycleKey(safeAnchor) } },
         select: { messageCount: true },
     });
     const used = row?.messageCount ?? 0;
@@ -52,6 +140,8 @@ export async function getQuotaState(
         used,
         limit: plan.monthlyMessageQuota,
         planId: plan.id,
+        cycleStart,
+        cycleEnd,
     };
 }
 
@@ -83,7 +173,7 @@ export async function tryReserveOutbound(
     const resolved = await evaluateSubscription(prisma, tenantId);
     const limit = resolved.plan.monthlyMessageQuota;
     const planId = resolved.plan.id;
-    const month = currentMonthKey();
+    const month = currentCycleKey(resolved.cycleAnchor);
 
     // Ensure the row exists so updateMany can hit it. Create with count=0
     // (not 1) so the atomic increment below is the canonical counter.
@@ -127,7 +217,9 @@ export async function rollbackOutboundReservation(
     prisma: AnyPrismaClient,
     tenantId: string,
 ): Promise<void> {
-    const month = currentMonthKey();
+    const anchor = await loadCycleAnchor(prisma, tenantId);
+    if (!anchor) return;
+    const month = currentCycleKey(anchor);
     await prisma.tenantUsage.updateMany({
         where: { tenantId, month, messageCount: { gt: 0 } },
         data: { messageCount: { decrement: 1 } },
@@ -146,7 +238,9 @@ export async function incrementMessageUsage(
     prisma: AnyPrismaClient,
     tenantId: string,
 ): Promise<number> {
-    const month = currentMonthKey();
+    const anchor = await loadCycleAnchor(prisma, tenantId);
+    if (!anchor) return 0;
+    const month = currentCycleKey(anchor);
     const row = await prisma.tenantUsage.upsert({
         where: { tenantId_month: { tenantId, month } },
         create: { tenantId, month, messageCount: 1 },
@@ -175,12 +269,14 @@ export interface ResolvedPlan {
     status: SubscriptionStatus | null;
     trialEndsAt: Date | null;
     currentPeriodEnd: Date | null;
+    /** Anchor for the per-tenant 30-day quota cycle (Phase 4c). */
+    cycleAnchor: TenantCycleAnchor;
 }
 
 /**
  * Read tenant subscription state and, if a deadline has lapsed, demote to
- * Free + CANCELLED. Returns the post-evaluation plan so callers don't need
- * a second query.
+ * Free + CANCELLED. Returns the post-evaluation plan AND the quota cycle
+ * anchor so callers don't need a second query.
  *
  * Lazy: only writes when state actually changes. The two transitions are:
  *   - TRIALING + trialEndsAt < now            → Free / CANCELLED
@@ -199,11 +295,24 @@ export async function evaluateSubscription(
             subscriptionStatus: true,
             trialEndsAt: true,
             currentPeriodEnd: true,
+            quotaCycleStart: true,
+            createdAt: true,
         },
     });
     if (!tenant) {
-        return { plan: getPlan('free'), status: null, trialEndsAt: null, currentPeriodEnd: null };
+        return {
+            plan: getPlan('free'),
+            status: null,
+            trialEndsAt: null,
+            currentPeriodEnd: null,
+            cycleAnchor: { quotaCycleStart: null, createdAt: new Date() },
+        };
     }
+
+    const cycleAnchor: TenantCycleAnchor = {
+        quotaCycleStart: tenant.quotaCycleStart ?? null,
+        createdAt: tenant.createdAt ?? new Date(),
+    };
 
     const now = Date.now();
     const status = tenant.subscriptionStatus;
@@ -229,6 +338,7 @@ export async function evaluateSubscription(
             status: 'CANCELLED',
             trialEndsAt: tenant.trialEndsAt,
             currentPeriodEnd: tenant.currentPeriodEnd,
+            cycleAnchor,
         };
     }
 
@@ -237,5 +347,6 @@ export async function evaluateSubscription(
         status,
         trialEndsAt: tenant.trialEndsAt,
         currentPeriodEnd: tenant.currentPeriodEnd,
+        cycleAnchor,
     };
 }

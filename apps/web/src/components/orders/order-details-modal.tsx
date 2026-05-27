@@ -53,10 +53,12 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
     const queryClient = useQueryClient();
     const [isUpdating, setIsUpdating] = useState(false);
 
-    if (!order) return null;
-
+    // Hooks must run unconditionally — the `!order` guard lives below all of
+    // them. The mutationFns guard `order` themselves since they're defined
+    // while `order` is still typed `Order | null`.
     const updateStatusMutation = useMutation({
         mutationFn: async (newStatus: string) => {
+            if (!order) return;
             await api.patch(`/orders/${order.id}`, { status: newStatus });
         },
         onSuccess: () => {
@@ -68,6 +70,7 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
 
     const cancelMutation = useMutation({
         mutationFn: async () => {
+            if (!order) return;
             await api.post(`/orders/${order.id}/cancel`);
         },
         onSuccess: () => {
@@ -76,6 +79,8 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
         },
         onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to cancel order'),
     });
+
+    if (!order) return null;
 
     const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newStatus = e.target.value;

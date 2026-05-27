@@ -1,11 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { TemplatePurpose } from '@prisma/client';
 import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
-import { scheduleNotification, scheduleReminder } from '../../services/notification.js';
-import { syncBookingToCalendar } from '../../services/calendar.js';
+import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
 import {
     initializeTransaction,
     verifyTransaction,
@@ -34,13 +32,21 @@ interface PaystackWebhookEvent {
     };
 }
 
-function buildCallbackUrl(): string | undefined {
-    return config.paystack.callbackUrl ?? (config.frontendUrl ? `${config.frontendUrl}/orders/paid` : undefined);
+/**
+ * Where Paystack redirects the customer after they pay. Per-kind so an order
+ * payment lands on `/pay/order` and a booking deposit on `/pay/booking` —
+ * both public, unauthenticated confirmation pages that verify-on-return.
+ */
+function paymentCallbackUrl(kind: 'order' | 'booking'): string | undefined {
+    return config.frontendUrl ? `${config.frontendUrl}/pay/${kind}` : undefined;
 }
 
 function syntheticCustomerEmail(customerPhone: string): string {
     const digits = customerPhone.replace(/[^0-9]/g, '');
-    return `${digits || 'customer'}@customer.bookingflow.local`;
+    // Paystack rejects reserved TLDs like `.local` ("Invalid Email Address
+    // Passed") — use a real public TLD. The customer doesn't see this; it's
+    // a placeholder for Paystack's required `email` field.
+    return `${digits || 'customer'}@customer.bookingflow.app`;
 }
 
 const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -184,7 +190,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                 amountKobo,
                 currency: tenant.paymentCurrency,
                 reference,
-                callbackUrl: buildCallbackUrl(),
+                callbackUrl: paymentCallbackUrl('order'),
                 metadata: { tenantId, orderId: order.id, customerPhone: order.customerPhone },
             });
         } catch (err) {
@@ -283,11 +289,11 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         try {
             result = await initializeTransaction({
                 secretKey,
-                email: `${booking.customerPhone.replace(/[^0-9]/g, '') || 'customer'}@customer.bookingflow.local`,
+                email: syntheticCustomerEmail(booking.customerPhone),
                 amountKobo,
                 currency: tenant.paymentCurrency,
                 reference,
-                callbackUrl: config.paystack.callbackUrl ?? (config.frontendUrl ? `${config.frontendUrl}/bookings/paid` : undefined),
+                callbackUrl: paymentCallbackUrl('booking'),
                 metadata: { tenantId, bookingId: booking.id, customerPhone: booking.customerPhone },
             });
         } catch (err) {
@@ -406,90 +412,19 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(200).send({ ignored: `status_${verified.status}` });
             }
 
-            // Atomic claim: only the writer that sees UNPAID flips to PAID.
-            // A concurrent webhook delivery sees count === 0 and returns
-            // idempotently, so side effects (template, calendar, audit) only
-            // run once per real payment.
-            const claimed = await fastify.prisma.booking.updateMany({
-                where: { id: booking.id, paymentStatus: 'UNPAID' },
-                data: {
-                    paymentStatus: 'PAID',
-                    paidAt: verified.paidAt ?? new Date(),
-                    status: 'CONFIRMED',
-                },
+            // Flip UNPAID → PAID + side effects (template, reminder, calendar,
+            // audit). Idempotent — a concurrent delivery gets `applied: false`.
+            const { applied } = await fulfillBookingCharge({
+                fastify,
+                logger: request.log,
+                tenantId,
+                booking,
+                verified,
+                reference,
             });
-            if (claimed.count === 0) {
+            if (!applied) {
                 return reply.code(200).send({ ok: true, idempotent: true });
             }
-
-            // BOOKING_CONFIRMATION template (uses the existing purpose).
-            const dateStr = booking.startTime.toLocaleDateString();
-            const timeStr = booking.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            await scheduleNotification({
-                queue: fastify.queues.notifications,
-                purpose: TemplatePurpose.BOOKING_CONFIRMATION,
-                tenantId,
-                customerPhone: booking.customerPhone,
-                variables: [
-                    booking.customerName,
-                    booking.service.name,
-                    dateStr,
-                    timeStr,
-                    booking.bookingReference,
-                ],
-                jobId: `booking_confirmation_${booking.id}`,
-            });
-
-            // Reminder 60 min before. scheduleReminder no-ops on past times.
-            await scheduleReminder({
-                queue: fastify.queues.reminders,
-                tenantId,
-                bookingId: booking.id,
-                customerPhone: booking.customerPhone,
-                variables: [booking.service.name, timeStr],
-                sendAt: new Date(booking.startTime.getTime() - 60 * 60 * 1000),
-            });
-
-            // Best-effort Google Calendar sync. On failure (token expired,
-            // OAuth revoked, network), surface a dashboard notification so
-            // the operator knows to reconnect — otherwise the booking is
-            // CONFIRMED in our system but missing from the salon's calendar,
-            // which causes double-booking.
-            await syncBookingToCalendar({
-                bookingId: booking.id,
-                tenantId,
-                prisma: fastify.prisma,
-            }).catch(async (err) => {
-                request.log.warn({ err, bookingId: booking.id }, 'Calendar sync failed post-payment');
-                await fastify.prisma.notification.create({
-                    data: {
-                        tenantId,
-                        type: 'SYSTEM',
-                        title: 'Reconnect Google Calendar',
-                        message: `Booking ${booking.bookingReference} couldn't sync to your calendar. Reauthorize at /settings.`,
-                        metadata: {
-                            bookingId: booking.id,
-                            error: err instanceof Error ? err.message : String(err),
-                        },
-                    },
-                }).catch(() => undefined);
-            });
-
-            await audit({
-                prisma: fastify.prisma,
-                action: 'payments.charge.success',
-                actorType: 'SYSTEM',
-                tenantId,
-                targetType: 'Booking',
-                targetId: booking.id,
-                metadata: {
-                    entity: 'booking',
-                    reference,
-                    amountKobo: verified.amountKobo,
-                    currency: verified.currency,
-                    channel: verified.channel,
-                },
-            });
 
             return reply.code(200).send({ ok: true, entity: 'booking' });
         }
@@ -531,43 +466,18 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(200).send({ ignored: `status_${verified.status}` });
         }
 
-        // Atomic claim: same TOCTOU guard as the booking branch.
-        const claimed = await fastify.prisma.order.updateMany({
-            where: { id: order.id, paymentStatus: 'UNPAID' },
-            data: {
-                paymentStatus: 'PAID',
-                paidAt: verified.paidAt ?? new Date(),
-                status: 'CONFIRMED',
-            },
+        // Flip UNPAID → PAID + side effects (confirmation template, audit).
+        // Idempotent — same TOCTOU guard as the booking branch.
+        const { applied } = await fulfillOrderCharge({
+            fastify,
+            tenantId,
+            order,
+            verified,
+            reference,
         });
-        if (claimed.count === 0) {
+        if (!applied) {
             return reply.code(200).send({ ok: true, idempotent: true });
         }
-
-        await scheduleNotification({
-            queue: fastify.queues.notifications,
-            purpose: TemplatePurpose.ORDER_CONFIRMATION,
-            tenantId,
-            customerPhone: order.customerPhone,
-            variables: [order.orderRef, Number(order.totalAmount).toFixed(2)],
-            jobId: `order_confirmation_${order.id}`,
-        });
-
-        await audit({
-            prisma: fastify.prisma,
-            action: 'payments.charge.success',
-            actorType: 'SYSTEM',
-            tenantId,
-            targetType: 'Order',
-            targetId: order.id,
-            metadata: {
-                entity: 'order',
-                reference,
-                amountKobo: verified.amountKobo,
-                currency: verified.currency,
-                channel: verified.channel,
-            },
-        });
 
         return reply.code(200).send({ ok: true, entity: 'order' });
     });

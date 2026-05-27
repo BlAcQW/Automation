@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
 import { BookingDetailsModal } from '@/components/bookings/booking-details-modal';
+import { PageHeader } from '@/components/ui/page-header';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 interface Booking {
     id: string;
@@ -131,22 +133,10 @@ export default function BookingsPage() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-                <div>
-                    <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-                        Bookings
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">
-                        Manage appointments and schedules
-                    </p>
-                </div>
-                {/* 
-                <Button className="shadow-lg shadow-emerald-500/20">
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Booking
-                </Button> 
-                */}
-            </div>
+            <PageHeader
+                title="Bookings"
+                subtitle="Manage appointments and schedules"
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <StatCard
@@ -207,7 +197,7 @@ export default function BookingsPage() {
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
                             <tr>
@@ -225,7 +215,7 @@ export default function BookingsPage() {
                                 <tr>
                                     <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
-                                            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                            <BooklyDots size="sm" />
                                             <p>Loading bookings...</p>
                                         </div>
                                     </td>
@@ -306,6 +296,64 @@ export default function BookingsPage() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile: stacked booking cards */}
+                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
+                    {isLoading ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <BooklyDots size="sm" />
+                                <p>Loading bookings...</p>
+                            </div>
+                        </div>
+                    ) : filteredBookings.length === 0 ? (
+                        <div className="px-4 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center gap-2">
+                                <Calendar className="w-8 h-8 text-slate-300" />
+                                <p>No bookings found</p>
+                            </div>
+                        </div>
+                    ) : (
+                        filteredBookings.map((booking: Booking) => (
+                            <button
+                                key={booking.id}
+                                onClick={() => handleViewBooking(booking)}
+                                className="w-full text-left p-4 active:bg-slate-50 dark:active:bg-slate-700/30 transition-colors"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="font-medium text-slate-900 dark:text-white truncate">{booking.customerName}</p>
+                                        <p className="text-xs text-slate-500 truncate">{booking.service.name}</p>
+                                    </div>
+                                    {getStatusBadge(booking.status)}
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    <span>{format(new Date(booking.startTime), 'MMM d, yyyy')} · {format(new Date(booking.startTime), 'h:mm a')}</span>
+                                </div>
+                                {booking.depositAmount && booking.paymentStatus === 'UNPAID' && booking.status === 'PENDING_PAYMENT' && (
+                                    <div className="flex items-center gap-3 mt-2">
+                                        {booking.paymentAuthorizationUrl && (
+                                            <span
+                                                onClick={(e) => copyPaymentLink(booking, e)}
+                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"
+                                            >
+                                                <Link2 className="w-3 h-3" /> Copy link
+                                            </span>
+                                        )}
+                                        <span
+                                            onClick={(e) => resendPaymentLink(booking, e)}
+                                            className="inline-flex items-center gap-1 text-xs text-slate-500"
+                                        >
+                                            <RefreshCw className={`w-3 h-3 ${resendingId === booking.id ? 'animate-spin' : ''}`} />
+                                            {resendingId === booking.id ? 'Generating…' : 'New link'}
+                                        </span>
+                                    </div>
+                                )}
+                            </button>
+                        ))
+                    )}
                 </div>
             </div>
 

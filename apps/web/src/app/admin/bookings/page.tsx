@@ -7,6 +7,7 @@ import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 type BookingStatus = 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
 
@@ -74,7 +75,7 @@ export default function AdminBookingsPage() {
             <Card className="glass-card border-white/5">
                 {isLoading ? (
                     <div className="flex items-center justify-center h-64">
-                        <div className="w-8 h-8 border-4 border-slate-600 border-t-slate-400 rounded-full animate-spin" />
+                        <BooklyDots size="md" />
                     </div>
                 ) : (
                     <>

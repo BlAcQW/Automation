@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: 'Terms of Service — BookingFlow',
-    description: 'Terms that govern your use of the BookingFlow platform.',
+    title: 'Terms of Service — Bookly',
+    description: 'Terms that govern your use of the Bookly platform.',
 };
 
 const LAST_UPDATED = 'May 14, 2026';
@@ -16,14 +16,14 @@ export default function TermsPage() {
 
             <Section title="1. Acceptance">
                 <p>
-                    By creating an account or using BookingFlow (the &ldquo;Service&rdquo;), you agree to be
+                    By creating an account or using Bookly (the &ldquo;Service&rdquo;), you agree to be
                     bound by these Terms of Service. If you do not agree, do not use the Service.
                 </p>
             </Section>
 
             <Section title="2. Description of service">
                 <p>
-                    BookingFlow is a Software-as-a-Service platform that lets businesses receive customer
+                    Bookly is a Software-as-a-Service platform that lets businesses receive customer
                     bookings, orders, and conversations through WhatsApp Cloud API, with optional
                     integrations for payments (Paystack), calendars (Google, Outlook), SMS (Arkesel), and
                     email (Gmail SMTP).
@@ -105,7 +105,7 @@ export default function TermsPage() {
 
             <Section title="10. Limitation of liability">
                 <p>
-                    To the maximum extent permitted by law, BookingFlow&apos;s aggregate liability for any
+                    To the maximum extent permitted by law, Bookly&apos;s aggregate liability for any
                     claim arising out of these Terms or your use of the Service is limited to the total fees
                     you paid us in the 12 months preceding the claim.
                 </p>

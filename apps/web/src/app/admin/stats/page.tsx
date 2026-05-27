@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { Building2, Users, Calendar, MessageSquare, TrendingUp, CalendarCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 interface StatBlockProps {
     label: string;
@@ -41,7 +42,7 @@ export default function AdminStatsPage() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="w-8 h-8 border-4 border-slate-600 border-t-slate-400 rounded-full animate-spin" />
+                <BooklyDots size="md" />
             </div>
         );
     }

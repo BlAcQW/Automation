@@ -2,296 +2,352 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* Bookly typography — Geist (Vercel's open-source sans + mono) from Google
+   Fonts. One family handles display, body, and code. Exposed as the
+   `--font-sans` / `--font-mono` CSS vars consumed by tailwind.config.ts. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  --background: #ffffff;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --primary: #10b981;
-  --primary-foreground: #ffffff;
-  --secondary: #f1f5f9;
-  --secondary-foreground: #0f172a;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #06d6a0;
-  --accent-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #10b981;
+    --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, 'Menlo', monospace;
 }
 
+/* ============================================================
+   Bookly design tokens — ui.md §3.1
+   ============================================================ */
+
+/* Dark is the Bookly default. next-themes adds `class="dark"` to <html> at
+   runtime; we ALSO set the dark tokens on :root so SSR + first paint are
+   correct before any client JS runs. */
+:root,
 .dark {
-  --background: #0a0f1a;
-  --foreground: #f8fafc;
-  --card: #111827;
-  --card-foreground: #f8fafc;
-  --primary: #10b981;
-  --primary-foreground: #ffffff;
-  --secondary: #1e293b;
-  --secondary-foreground: #f8fafc;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #06d6a0;
-  --accent-foreground: #ffffff;
-  --border: #1e293b;
-  --input: #1e293b;
-  --ring: #10b981;
+    /* Brand greens */
+    --bookly-emerald-50: #ECFDF5;
+    --bookly-emerald-100: #D1FAE5;
+    --bookly-emerald-200: #A7F3D0;
+    --bookly-emerald-300: #6EE7B7;
+    --bookly-emerald-400: #34D399;
+    --bookly-emerald-500: #10B981; /* primary brand */
+    --bookly-emerald-600: #059669;
+    --bookly-emerald-700: #047857;
+    --bookly-emerald-800: #065F46;
+    --bookly-emerald-900: #064E3B;
+    --bookly-emerald-950: #022C22;
+
+    /* WhatsApp signal — ONLY for WA-related UI */
+    --wa-green: #25D366;
+    --wa-teal: #128C7E;
+    --wa-dark: #075E54;
+
+    /* Cinematic neutrals — dark mode is primary */
+    --ink-1000: #050807;
+    --ink-950: #0A0F0D;
+    --ink-900: #0F1614;
+    --ink-800: #161E1B;
+    --ink-700: #1E2825;
+    --ink-600: #2A3632;
+    --ink-500: #3D4B46;
+    --ink-400: #5C6B65;
+    --ink-300: #8A9994;
+    --ink-200: #B6C2BD;
+    --ink-100: #DCE5E1;
+    --ink-50: #F2F6F4;
+
+    /* Accents */
+    --mint: #5EEAD4;
+    --lime: #BEF264;
+    --amber: #FBBF24;
+    --rose: #FB7185;
+
+    /* Atmospheric */
+    --glow-emerald: 0 0 80px rgba(16, 185, 129, 0.35);
+    --glow-soft: 0 0 120px rgba(110, 231, 183, 0.15);
+    --grain-opacity: 0.04;
+
+    /* shadcn-compat surfaces (kept for components still keyed off them) */
+    --background: var(--ink-950);
+    --foreground: var(--ink-50);
+    --card: var(--ink-900);
+    --card-foreground: var(--ink-50);
+    --primary: var(--bookly-emerald-500);
+    --primary-foreground: var(--ink-1000);
+    --secondary: var(--ink-800);
+    --secondary-foreground: var(--ink-50);
+    --muted: var(--ink-800);
+    --muted-foreground: var(--ink-300);
+    --accent: var(--mint);
+    --accent-foreground: var(--ink-1000);
+    --border: var(--ink-700);
+    --input: var(--ink-700);
+    --ring: var(--bookly-emerald-500);
+    --surface: var(--ink-950);
+    --surface-2: var(--ink-900);
+}
+
+/* Light mode — opt-in via theme toggle. Spec §3.1 light overrides. */
+.light {
+    --ink-1000: #FFFFFF;
+    --ink-950: #FAFBFA;
+    --ink-900: #F2F6F4;
+    --ink-800: #E7EDEA;
+    --ink-700: #D4DEDA;
+    --ink-600: #B6C2BD;
+    --ink-500: #8A9994;
+    --ink-400: #5C6B65;
+    --ink-300: #5C6B65;
+    --ink-200: #3D4B46;
+    --ink-100: #1E2825;
+    --ink-50: #0A0F0D;
+
+    --background: var(--ink-950);
+    --foreground: var(--ink-50);
+    --card: var(--ink-900);
+    --card-foreground: var(--ink-50);
+    --muted: var(--ink-800);
+    --muted-foreground: var(--ink-300);
+    --border: var(--ink-700);
+    --input: var(--ink-700);
+    --surface: var(--ink-950);
+    --surface-2: var(--ink-900);
+}
+
+/* Legacy `.dark` class (next-themes attribute='class' compatibility) — maps
+   to the dark token set so anything we haven't migrated yet still gets the
+   correct surface. */
+.dark {
+    color-scheme: dark;
 }
 
 * {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
 }
 
 html,
 body {
-  max-width: 100vw;
-  overflow-x: hidden;
-  font-family: 'Inter', system-ui, sans-serif;
+    max-width: 100vw;
+    overflow-x: hidden;
+    font-family: var(--font-sans), 'Satoshi', system-ui, sans-serif;
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar styling */
+/* Selection — emerald wash */
+::selection {
+    background: rgba(16, 185, 129, 0.3);
+    color: var(--ink-50);
+}
+
+/* Scrollbar — quiet in the dark UI */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--muted-foreground);
-  border-radius: 999px;
-  opacity: 0.5;
+    background: var(--ink-600);
+    border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--foreground);
+    background: var(--ink-400);
 }
 
-/* Utility classes */
+/* ============================================================
+   Utilities
+   ============================================================ */
+
 @layer utilities {
 
-  /* Glass effects */
-  .glass {
-    background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(16px) saturate(180%);
-    -webkit-backdrop-filter: blur(16px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .glass-card {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(20px) saturate(200%);
-    -webkit-backdrop-filter: blur(20px) saturate(200%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  }
-
-  .glass-card-hover {
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .glass-card-hover:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
-    transform: translateY(-2px);
-  }
-
-  /* Gradients */
-  .gradient-primary {
-    background: linear-gradient(135deg, #10b981 0%, #06d6a0 50%, #34d399 100%);
-  }
-
-  .gradient-accent {
-    background: linear-gradient(135deg, #06d6a0 0%, #059669 100%);
-  }
-
-  .gradient-dark {
-    background: linear-gradient(135deg, #0a0f1a 0%, #111827 50%, #0f172a 100%);
-  }
-
-  .text-gradient {
-    background: linear-gradient(135deg, #10b981 0%, #06d6a0 50%, #34d399 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .text-gradient-hero {
-    background: linear-gradient(135deg, #ffffff 0%, #10b981 30%, #06d6a0 60%, #34d399 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  /* Glows */
-  .shadow-glow {
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
-  }
-
-  .shadow-glow-lg {
-    box-shadow: 0 0 40px rgba(16, 185, 129, 0.4);
-  }
-
-  .shadow-glow-xl {
-    box-shadow: 0 0 60px rgba(16, 185, 129, 0.3), 0 0 100px rgba(16, 185, 129, 0.1);
-  }
-
-  /* Shimmer border effect */
-  .shimmer-border {
-    position: relative;
-    overflow: hidden;
-  }
-
-  .shimmer-border::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(135deg,
-        transparent 20%,
-        rgba(16, 185, 129, 0.5) 40%,
-        rgba(6, 214, 160, 0.5) 60%,
-        transparent 80%);
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    animation: shimmer 3s linear infinite;
-  }
-
-  @keyframes shimmer {
-    0% {
-      background-position: -200% center;
+    /* The signature Bookly glow — atmospheric radial */
+    .bookly-glow {
+        background: radial-gradient(ellipse at center,
+                rgba(16, 185, 129, 0.45) 0%,
+                rgba(16, 185, 129, 0.15) 30%,
+                transparent 70%);
+        filter: blur(60px);
     }
 
-    100% {
-      background-position: 200% center;
-    }
-  }
-
-  /* Background orbs for hero sections */
-  .bg-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.15;
-    animation: float 8s ease-in-out infinite;
-  }
-
-  .bg-orb-1 {
-    width: 600px;
-    height: 600px;
-    background: #10b981;
-    top: -200px;
-    right: -200px;
-    animation-delay: 0s;
-  }
-
-  .bg-orb-2 {
-    width: 400px;
-    height: 400px;
-    background: #06d6a0;
-    bottom: -100px;
-    left: -100px;
-    animation-delay: -4s;
-  }
-
-  .bg-orb-3 {
-    width: 300px;
-    height: 300px;
-    background: #34d399;
-    top: 50%;
-    left: 50%;
-    animation-delay: -2s;
-  }
-
-  @keyframes float {
-
-    0%,
-    100% {
-      transform: translate(0, 0) scale(1);
+    .bookly-glow-soft {
+        background: radial-gradient(ellipse at center,
+                rgba(110, 231, 183, 0.25) 0%,
+                rgba(110, 231, 183, 0.08) 35%,
+                transparent 70%);
+        filter: blur(80px);
     }
 
-    33% {
-      transform: translate(30px, -30px) scale(1.05);
+    /* Glass surfaces — used sparingly in marketing nav etc. */
+    .glass {
+        background: rgba(15, 22, 20, 0.6);
+        backdrop-filter: blur(16px) saturate(180%);
+        -webkit-backdrop-filter: blur(16px) saturate(180%);
+        border: 1px solid rgba(30, 40, 37, 0.6);
     }
 
-    66% {
-      transform: translate(-20px, 20px) scale(0.95);
+    .glass-card {
+        background: rgba(15, 22, 20, 0.5);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(30, 40, 37, 0.6);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     }
-  }
 
-  /* Grid pattern background */
-  .bg-grid {
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-    background-size: 64px 64px;
-  }
+    .glass-card-hover {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
 
-  /* Noise texture overlay */
-  .bg-noise {
-    position: relative;
-  }
+    .glass-card-hover:hover {
+        background: rgba(22, 30, 27, 0.6);
+        border-color: rgba(16, 185, 129, 0.3);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 40px rgba(16, 185, 129, 0.15);
+    }
 
-  .bg-noise::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    opacity: 0.015;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-    pointer-events: none;
-  }
+    /* Gradients */
+    .gradient-primary {
+        background: linear-gradient(135deg, var(--bookly-emerald-500) 0%, var(--bookly-emerald-400) 50%, var(--bookly-emerald-300) 100%);
+    }
+
+    .gradient-dark {
+        background: linear-gradient(180deg, var(--ink-950) 0%, var(--ink-900) 100%);
+    }
+
+    .text-gradient {
+        background: linear-gradient(135deg, var(--bookly-emerald-400) 0%, var(--bookly-emerald-300) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .text-gradient-hero {
+        background: linear-gradient(135deg, var(--ink-50) 0%, var(--bookly-emerald-300) 60%, var(--bookly-emerald-400) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    /* Background orbs for hero sections */
+    .bg-orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(100px);
+        opacity: 0.25;
+        animation: orbFloat 12s ease-in-out infinite;
+        pointer-events: none;
+    }
+
+    .bg-orb-1 {
+        width: 600px;
+        height: 600px;
+        background: var(--bookly-emerald-500);
+        top: -200px;
+        right: -200px;
+    }
+
+    .bg-orb-2 {
+        width: 400px;
+        height: 400px;
+        background: var(--bookly-emerald-400);
+        bottom: -100px;
+        left: -100px;
+        animation-delay: -4s;
+    }
+
+    .bg-orb-3 {
+        width: 300px;
+        height: 300px;
+        background: var(--mint);
+        top: 50%;
+        left: 50%;
+        animation-delay: -2s;
+    }
+
+    @keyframes orbFloat {
+        0%, 100% { transform: translate(0, 0) scale(1); }
+        33% { transform: translate(30px, -30px) scale(1.05); }
+        66% { transform: translate(-20px, 20px) scale(0.95); }
+    }
+
+    /* Subtle grid background — Linear / Vercel vibe */
+    .bg-grid {
+        background-image:
+            linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 64px 64px;
+    }
+
+    /* Dot grid (canvas-style for the bot builder later) */
+    .bg-dots {
+        background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        background-size: 24px 24px;
+    }
+
+    /* Hide scrollbars (used by horizontally-scrolling chat filter chips etc.) */
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* Atmospheric grain — applied via <GrainOverlay /> */
+    .grain-layer {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        pointer-events: none;
+        background-image: url('/grain.png');
+        background-repeat: repeat;
+        background-size: 200px 200px;
+        mix-blend-mode: overlay;
+        opacity: var(--grain-opacity);
+    }
+
+    /* Status dot — emerald pulse for "All systems operational" */
+    .status-dot {
+        position: relative;
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--bookly-emerald-500);
+    }
+
+    .status-dot::after {
+        content: '';
+        position: absolute;
+        inset: -4px;
+        border-radius: 50%;
+        background: var(--bookly-emerald-500);
+        opacity: 0.4;
+        animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes statusPulse {
+        0%, 100% { transform: scale(1); opacity: 0.4; }
+        50% { transform: scale(1.5); opacity: 0; }
+    }
 }
 
-/* Animation delays */
-.delay-100 {
-  animation-delay: 100ms;
-}
-
-.delay-200 {
-  animation-delay: 200ms;
-}
-
-.delay-300 {
-  animation-delay: 300ms;
-}
-
-.delay-400 {
-  animation-delay: 400ms;
-}
-
-.delay-500 {
-  animation-delay: 500ms;
-}
-
-/* Selection color */
-::selection {
-  background: rgba(16, 185, 129, 0.3);
-  color: white;
-}
-
-/* Scrollbar hide utility */
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
+/* prefers-reduced-motion — kill everything that moves */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }

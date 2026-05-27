@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
+import { BooklyDots } from '@/components/primitives/bookly-dots';
 import toast from 'react-hot-toast';
 
 export default function AdminAdminsPage() {
@@ -81,7 +82,7 @@ export default function AdminAdminsPage() {
             <Card className="glass-card border-white/5">
                 {isLoading ? (
                     <div className="flex items-center justify-center h-64">
-                        <div className="w-8 h-8 border-4 border-slate-600 border-t-slate-400 rounded-full animate-spin" />
+                        <BooklyDots size="md" />
                     </div>
                 ) : error ? (
                     <div className="p-6 text-red-400">Failed to load admins.</div>

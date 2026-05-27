@@ -4,6 +4,8 @@ import { nanoid } from 'nanoid';
 import { TemplatePurpose } from '@prisma/client';
 import { syncBookingToCalendar, deleteCalendarEvent } from '../../services/calendar.js';
 import { scheduleNotification, scheduleReminder, cancelReminder } from '../../services/notification.js';
+import { cancelBooking } from '../../services/booking-cancel.js';
+import { generatePublicToken } from '../../lib/public-token.js';
 
 // Validation schemas
 const createBookingSchema = z.object({
@@ -157,6 +159,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
                     startTime,
                     endTime,
                     bookingReference,
+                    publicToken: generatePublicToken(),
                     notes: body.notes,
                 },
                 include: { service: true },
@@ -258,50 +261,32 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/:id/cancel', async (request) => {
         const { id } = request.params as { id: string };
 
+        // Tenant-scope guard before handing off to the shared cancel routine.
         const existing = await fastify.prisma.booking.findFirst({
             where: { id, tenantId: request.user.tenantId },
-            include: { service: true },
+            select: { id: true },
         });
-
         if (!existing) {
             throw fastify.httpErrors.notFound('Booking not found');
         }
 
-        if (existing.status !== 'CONFIRMED') {
-            throw fastify.httpErrors.badRequest('Booking cannot be cancelled');
+        const result = await cancelBooking({
+            prisma: fastify.prisma,
+            bookingId: id,
+            reason: 'dashboard',
+            notificationsQueue: fastify.queues.notifications,
+            remindersQueue: fastify.queues.reminders,
+        });
+
+        if (!result.ok) {
+            throw fastify.httpErrors.badRequest(
+                result.reason === 'already_cancelled'
+                    ? 'Booking is already cancelled'
+                    : 'Booking cannot be cancelled',
+            );
         }
 
-        const booking = await fastify.prisma.booking.update({
-            where: { id },
-            data: { status: 'CANCELLED' },
-        });
-
-        // Send cancellation template + drop any pending reminder.
-        await scheduleNotification({
-            queue: fastify.queues.notifications,
-            purpose: TemplatePurpose.BOOKING_CANCELLED,
-            tenantId: request.user.tenantId,
-            customerPhone: booking.customerPhone,
-            variables: [
-                existing.service.name,
-                existing.startTime.toLocaleDateString(),
-            ],
-            jobId: `booking_cancelled_${booking.id}`,
-        });
-        await cancelReminder(fastify.queues.reminders, booking.id);
-
-        // Create in-app notification
-        await fastify.prisma.notification.create({
-            data: {
-                tenantId: request.user.tenantId,
-                type: 'BOOKING_CANCELLED',
-                title: 'Booking Cancelled',
-                message: `Booking ${existing.bookingReference || booking.id} has been cancelled`,
-                metadata: { bookingId: booking.id },
-            },
-        });
-
-        return booking;
+        return { success: true, bookingId: result.booking.id };
     });
 
     // GET /bookings/by-reference/:ref - Find by booking reference

@@ -15,7 +15,55 @@ import { sendTemplateMessage } from './whatsapp-templates.js';
 import { tryReserveOutbound, rollbackOutboundReservation } from './usage.js';
 import { sendSms } from './arkesel.js';
 import { sendEmail, resolveGmailCreds } from './gmail-smtp.js';
-import { buildTextBundle, type TextBundle } from './notification-text.js';
+import { buildTextBundle, type TextBundle, type MessageLinks } from './notification-text.js';
+import { config } from '../config/index.js';
+
+/** Purposes sent outside the WhatsApp 24h window — gated by the tenant toggle. */
+const OUT_OF_WINDOW_PURPOSES: ReadonlySet<TemplatePurpose> = new Set([
+    'BOOKING_REMINDER',
+    'ORDER_SHIPPED',
+    'ORDER_DELIVERED',
+] as TemplatePurpose[]);
+
+/**
+ * Resolve the customer self-service link for a message, if applicable.
+ * Order purposes → tracking link (resolved via orderRef). BOOKING_REMINDER
+ * → cancel link (resolved via bookingId). Best-effort: returns undefined on
+ * any miss so a message still sends without the link.
+ */
+async function resolveMessageLinks(
+    purpose: TemplatePurpose,
+    variables: string[],
+    bookingId?: string,
+): Promise<MessageLinks | undefined> {
+    try {
+        if (
+            purpose === 'ORDER_CONFIRMATION' ||
+            purpose === 'ORDER_SHIPPED' ||
+            purpose === 'ORDER_DELIVERED'
+        ) {
+            const order = await prisma.order.findUnique({
+                where: { orderRef: variables[0] },
+                select: { publicToken: true },
+            });
+            if (order?.publicToken) {
+                return { trackUrl: `${config.frontendUrl}/track/${order.publicToken}` };
+            }
+        }
+        if (purpose === 'BOOKING_REMINDER' && bookingId) {
+            const booking = await prisma.booking.findUnique({
+                where: { id: bookingId },
+                select: { publicToken: true },
+            });
+            if (booking?.publicToken) {
+                return { cancelUrl: `${config.frontendUrl}/c/${booking.publicToken}` };
+            }
+        }
+    } catch {
+        // Link resolution is best-effort — never block a send on it.
+    }
+    return undefined;
+}
 
 const prisma = new PrismaClient();
 
@@ -67,7 +115,23 @@ async function sendByPurpose(
     purpose: TemplatePurpose,
     customerPhone: string,
     variables: string[],
+    bookingId?: string,
 ): Promise<'ok' | 'retry'> {
+    // Master toggle — if the tenant has switched off out-of-window messages,
+    // skip reminders + order updates entirely (no send, no quota burn).
+    if (OUT_OF_WINDOW_PURPOSES.has(purpose)) {
+        const tenant = await prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { outOfWindowMessagesEnabled: true },
+        });
+        if (tenant && !tenant.outOfWindowMessagesEnabled) {
+            console.log(
+                `Out-of-window messages disabled for tenant ${tenantId} — skipping ${purpose}`,
+            );
+            return 'ok';
+        }
+    }
+
     // Pre-flight: validate config before reserving a quota slot.
     const creds = await loadTenantCreds(tenantId);
     if (!creds) {
@@ -139,7 +203,9 @@ async function sendByPurpose(
 
     // Phase 5 — try Arkesel SMS, then Gmail SMTP. The reservation we hold
     // counts toward the tenant's quota regardless of which channel succeeds.
-    const bundle = buildTextBundle(purpose, variables);
+    // Resolve the customer self-service link so the SMS/email carry it.
+    const links = await resolveMessageLinks(purpose, variables, bookingId);
+    const bundle = buildTextBundle(purpose, variables, links);
     const smsOutcome = await trySmsFallback({ tenantId, customerPhone, bundle });
     if (smsOutcome === 'sent') {
         await auditFallback(tenantId, 'fallback.sms.success', { purpose });
@@ -314,7 +380,7 @@ async function processReminder(job: Job<ReminderJob>): Promise<void> {
         return;
     }
 
-    const outcome = await sendByPurpose(tenantId, purpose, customerPhone, variables);
+    const outcome = await sendByPurpose(tenantId, purpose, customerPhone, variables, bookingId);
     if (outcome === 'retry') {
         throw new Error(`Failed to send reminder template — BullMQ will retry`);
     }

@@ -5,13 +5,15 @@ import { generateTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
 
-// Validation schemas
+// Validation schemas. `businessType` is optional and defaults to SERVICE so
+// older / SERVICE-only clients can omit it. The handler decides whether to
+// honour a PRODUCT value below — gated by the ENABLE_PRODUCT_MODE flag.
 const registerSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8),
     name: z.string().min(2),
     businessName: z.string().min(2),
-    businessType: z.enum(['PRODUCT', 'SERVICE']),
+    businessType: z.enum(['PRODUCT', 'SERVICE']).optional().default('SERVICE'),
     timezone: z.string().default('UTC'),
 });
 
@@ -39,14 +41,23 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             // trial. The lazy `evaluateSubscription` helper downgrades them
             // to Free + CANCELLED once `trialEndsAt` lapses unless they've
             // started a paid subscription.
+            // When PRODUCT mode is parked, force every new tenant to SERVICE
+            // regardless of what the client sent. The PRODUCT code stays in
+            // place for the eventual relaunch.
+            const businessType = config.featureFlags.productMode ? body.businessType : 'SERVICE';
+
+            const now = new Date();
             const tenant = await tx.tenant.create({
                 data: {
                     name: body.businessName,
-                    businessType: body.businessType,
+                    businessType,
                     timezone: body.timezone,
                     planId: 'pro',
                     subscriptionStatus: 'TRIALING',
-                    trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+                    trialEndsAt: new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+                    // Phase 4c — anchor the 30-day quota cycle to this signup
+                    // time so the counter doesn't reset on the calendar 1st.
+                    quotaCycleStart: now,
                 },
             });
 
@@ -237,6 +248,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 businessType: user.tenant.businessType,
                 timezone: user.tenant.timezone,
                 whatsappConnected: !!user.tenant.whatsappPhoneNumberId,
+                outOfWindowMessagesEnabled: user.tenant.outOfWindowMessagesEnabled,
             },
         };
     });
@@ -296,6 +308,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             name: z.string().min(2).optional(),
             businessName: z.string().min(2).optional(),
             timezone: z.string().optional(),
+            outOfWindowMessagesEnabled: z.boolean().optional(),
         }).parse(request.body);
 
         // Update user name if provided
@@ -307,12 +320,19 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // Update tenant (business) settings if provided
-        if (body.businessName || body.timezone) {
+        if (
+            body.businessName ||
+            body.timezone ||
+            body.outOfWindowMessagesEnabled !== undefined
+        ) {
             await fastify.prisma.tenant.update({
                 where: { id: request.user.tenantId },
                 data: {
                     ...(body.businessName && { name: body.businessName }),
                     ...(body.timezone && { timezone: body.timezone }),
+                    ...(body.outOfWindowMessagesEnabled !== undefined && {
+                        outOfWindowMessagesEnabled: body.outOfWindowMessagesEnabled,
+                    }),
                 },
             });
         }

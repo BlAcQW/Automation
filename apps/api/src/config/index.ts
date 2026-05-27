@@ -69,7 +69,7 @@ const envSchema = z.object({
     // where Paystack redirects the customer after payment).
     PAYSTACK_CALLBACK_URL: z.string().optional(),
 
-    // Phase 4b — BookingFlow platform Paystack (separate from per-tenant keys).
+    // Phase 4b — Bookly platform Paystack (separate from per-tenant keys).
     // Used by /billing routes to charge tenants for the SaaS subscription.
     BOOKINGFLOW_PAYSTACK_SECRET_KEY: z.string().optional(),
     BOOKINGFLOW_PAYSTACK_PUBLIC_KEY: z.string().optional(),
@@ -107,6 +107,12 @@ const envSchema = z.object({
     // Observability (optional)
     SENTRY_DSN: z.string().optional(),
     SENTRY_TRACES_SAMPLE_RATE: z.string().optional(),
+
+    // Feature flags. PRODUCT mode is parked until the SERVICE side is proven
+    // in production — flip this back to "true" to re-enable product/order
+    // signup and the PRODUCT-side dashboard. The frontend reads a sibling
+    // NEXT_PUBLIC_ENABLE_PRODUCT_MODE for its own gating.
+    ENABLE_PRODUCT_MODE: z.string().optional(),
 });
 
 // In test mode, fall back to deterministic dummy values so unit tests that
@@ -167,7 +173,7 @@ export const config = {
         callbackUrl: env.PAYSTACK_CALLBACK_URL,
     },
 
-    // Phase 4b — BookingFlow's own Paystack for SaaS billing.
+    // Phase 4b — Bookly's own Paystack for SaaS billing.
     platformPaystack: {
         secretKey: env.BOOKINGFLOW_PAYSTACK_SECRET_KEY,
         publicKey: env.BOOKINGFLOW_PAYSTACK_PUBLIC_KEY,
@@ -183,7 +189,7 @@ export const config = {
     platformGmail: {
         user: env.SMTP_USER || env.BOOKINGFLOW_GMAIL_USER,
         appPassword: env.SMTP_PASS || env.BOOKINGFLOW_GMAIL_APP_PASSWORD,
-        fromName: env.SMTP_FROM_NAME || env.BOOKINGFLOW_GMAIL_FROM_NAME || 'BookingFlow',
+        fromName: env.SMTP_FROM_NAME || env.BOOKINGFLOW_GMAIL_FROM_NAME || 'Bookly',
         host: env.SMTP_HOST || 'smtp.gmail.com',
         port: env.SMTP_PORT ? parseInt(env.SMTP_PORT, 10) : 465,
         secure: env.SMTP_SECURE ? env.SMTP_SECURE === 'true' : true,
@@ -208,6 +214,13 @@ export const config = {
         env.NODE_ENV === 'development' ? 'http://localhost:3001' : null,
         env.FRONTEND_URL,
     ].filter((origin): origin is string => Boolean(origin)),
+
+    featureFlags: {
+        // PRODUCT mode (signup, product/order/inventory dashboards, product
+        // bot flow). Default OFF so the platform launches as service-only.
+        // Flip ENABLE_PRODUCT_MODE=true to re-enable.
+        productMode: env.ENABLE_PRODUCT_MODE === 'true',
+    },
 };
 
 export type Config = typeof config;

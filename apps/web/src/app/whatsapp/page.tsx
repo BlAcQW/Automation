@@ -33,7 +33,7 @@ export default function WhatsAppSetupPage() {
     const [connecting, setConnecting] = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
     const [testPhone, setTestPhone] = useState('');
-    const [testMessage, setTestMessage] = useState('Hello! This is a test message from BookingFlow.');
+    const [testMessage, setTestMessage] = useState('Hello! This is a test message from Bookly.');
     const [sending, setSending] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [sdkReady, setSdkReady] = useState(false);
@@ -354,7 +354,7 @@ export default function WhatsAppSetupPage() {
                             </div>
 
                             {/* Quick Stats */}
-                            <div className="grid grid-cols-3 gap-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 {[
                                     { label: 'Status', value: 'Active', icon: ShieldCheck, color: 'text-emerald-500' },
                                     { label: 'Bot', value: 'Running', icon: Bot, color: 'text-blue-500' },

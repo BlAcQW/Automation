@@ -30,7 +30,63 @@ function htmlBundle(parts: string[]): string {
     return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937;">${parts.join('')}</div>`;
 }
 
+/**
+ * Optional customer self-service links appended to the SMS / email body.
+ *  - `trackUrl`  — order tracking page, for ORDER_* purposes
+ *  - `cancelUrl` — appointment cancel page, for BOOKING_REMINDER
+ */
+export interface MessageLinks {
+    trackUrl?: string;
+    cancelUrl?: string;
+}
+
+/**
+ * Build the SMS / email bundle for a notification purpose, optionally
+ * appending a tracking or cancel link. The link is appended to the SMS and
+ * email bodies only — WhatsApp template sends are unaffected (they use the
+ * approved template, not this bundle).
+ */
 export function buildTextBundle(
+    purpose: TemplatePurpose,
+    variables: string[],
+    links?: MessageLinks,
+): TextBundle | null {
+    const base = baseTextBundle(purpose, variables);
+    if (!base) return base;
+    if (!links) return base;
+
+    // Order purposes get the tracking link; booking reminders get the cancel link.
+    const isOrderPurpose =
+        purpose === 'ORDER_CONFIRMATION' ||
+        purpose === 'ORDER_SHIPPED' ||
+        purpose === 'ORDER_DELIVERED';
+
+    if (isOrderPurpose && links.trackUrl) {
+        return {
+            sms: `${base.sms}\n\nTrack your order: ${links.trackUrl}`,
+            emailSubject: base.emailSubject,
+            emailText: `${base.emailText}\n\nTrack your order: ${links.trackUrl}`,
+            emailHtml: base.emailHtml.replace(
+                '</div>',
+                `<p><a href="${escapeHtml(links.trackUrl)}">Track your order</a></p></div>`,
+            ),
+        };
+    }
+    if (purpose === 'BOOKING_REMINDER' && links.cancelUrl) {
+        return {
+            sms: `${base.sms}\n\nNeed to cancel? ${links.cancelUrl}`,
+            emailSubject: base.emailSubject,
+            emailText: `${base.emailText}\n\nNeed to cancel? ${links.cancelUrl}`,
+            emailHtml: base.emailHtml.replace(
+                '</div>',
+                `<p><a href="${escapeHtml(links.cancelUrl)}">Cancel this appointment</a></p></div>`,
+            ),
+        };
+    }
+    return base;
+}
+
+function baseTextBundle(
     purpose: TemplatePurpose,
     variables: string[],
 ): TextBundle | null {

@@ -12,17 +12,17 @@ const buttonVariants = cva(
         variants: {
             variant: {
                 default:
-                    'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:brightness-110 focus-visible:ring-emerald-500',
+                    'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-ink-1000 shadow-lg shadow-bookly-emerald-500/25 hover:shadow-bookly-emerald-500/40 hover:brightness-105 focus-visible:ring-bookly-emerald-500',
                 secondary:
-                    'bg-white/10 text-white border border-white/10 hover:bg-white/20 hover:border-white/20 backdrop-blur-sm',
+                    'bg-ink-800 text-ink-100 hover:bg-ink-700 focus-visible:ring-ink-500',
                 outline:
-                    'border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-slate-700',
+                    'border border-ink-700 bg-ink-900 text-ink-50 hover:bg-ink-800 hover:border-ink-600',
                 ghost:
-                    'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
+                    'text-ink-200 hover:bg-ink-800/60 hover:text-ink-50',
                 destructive:
-                    'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500/20',
+                    'bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20',
                 glow:
-                    'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_50px_rgba(16,185,129,0.6)] hover:brightness-110',
+                    'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-ink-1000 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_50px_rgba(16,185,129,0.6)] hover:brightness-105',
             },
             size: {
                 sm: 'h-9 px-3 text-sm rounded-lg',

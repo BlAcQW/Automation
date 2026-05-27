@@ -35,6 +35,7 @@ interface Tenant {
     businessType: 'PRODUCT' | 'SERVICE';
     timezone: string;
     whatsappConnected?: boolean;
+    outOfWindowMessagesEnabled?: boolean;
 }
 
 interface AuthState {

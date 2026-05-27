@@ -42,10 +42,12 @@ interface BookingDetailsModalProps {
 export function BookingDetailsModal({ isOpen, onClose, booking }: BookingDetailsModalProps) {
     const queryClient = useQueryClient();
 
-    if (!booking) return null;
-
+    // Hooks must run unconditionally — the `!booking` guard lives below the
+    // hook. The mutationFn guards `booking` itself since it's defined while
+    // `booking` is still typed `Booking | null`.
     const updateStatusMutation = useMutation({
         mutationFn: async (status: string) => {
+            if (!booking) return;
             await api.patch(`/bookings/${booking.id}`, { status });
         },
         onSuccess: () => {
@@ -54,6 +56,8 @@ export function BookingDetailsModal({ isOpen, onClose, booking }: BookingDetails
         },
         onError: () => toast.error('Failed to update status'),
     });
+
+    if (!booking) return null;
 
     const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newStatus = e.target.value;

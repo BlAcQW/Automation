@@ -24,6 +24,8 @@ export default function AdminLoginPage() {
         try {
             const response = await adminApi.post('/admin/auth/login', { email, password });
             localStorage.setItem('adminAccessToken', response.data.accessToken);
+            const isProd = process.env.NODE_ENV === 'production';
+            document.cookie = `adminAccessToken=${encodeURIComponent(response.data.accessToken)}; path=/; max-age=900; samesite=lax${isProd ? '; secure' : ''}`;
             router.push('/admin');
         } catch (err: any) {
             setError(err.response?.data?.message || 'Invalid email or password');

@@ -1,254 +1,108 @@
 /**
  * Notification Service
- * 
- * Handles scheduling and sending notifications via WhatsApp.
- * Uses BullMQ for reliable job processing with retries.
+ *
+ * Schedules WhatsApp template messages via BullMQ. All proactive sends use
+ * approved Meta templates; this module is the producer.
  */
 
 import { Queue } from 'bullmq';
-import { NotificationJob, ReminderJob, QUEUE_NAMES } from '../plugins/redis.js';
-
-// Types
-export type NotificationType =
-    | 'booking_confirmation'
-    | 'booking_reminder'
-    | 'booking_cancellation'
-    | 'order_confirmation'
-    | 'order_shipped'
-    | 'order_delivered';
+import { TemplatePurpose } from '@prisma/client';
+import { NotificationJob, ReminderJob } from '../plugins/redis.js';
 
 export interface ScheduleNotificationOptions {
+    queue: Queue | null;
+    purpose: TemplatePurpose;
     tenantId: string;
-    type: NotificationType;
     customerPhone: string;
-    data: Record<string, any>;
-    delay?: number; // ms delay before sending
+    variables: string[];
+    /** ms delay before sending */
+    delay?: number;
+    /** stable id for deduplication (e.g. `booking_confirmation_<bookingId>`) */
+    jobId?: string;
 }
 
-export interface ScheduleReminderOptions {
-    tenantId: string;
-    bookingId: string;
-    customerPhone: string;
-    serviceName: string;
-    startTime: Date;
-    reminderMinutes?: number; // minutes before appointment (default: 60)
-}
-
-/**
- * Schedule a notification to be sent
- */
 export async function scheduleNotification(
-    queue: Queue | null,
-    options: ScheduleNotificationOptions
+    options: ScheduleNotificationOptions,
 ): Promise<string | null> {
-    if (!queue) {
+    if (!options.queue) {
         console.warn('Notification queue not available - notification not scheduled');
         return null;
     }
 
-    const jobId = `${options.type}-${options.tenantId}-${Date.now()}`;
+    const job: NotificationJob = {
+        purpose: options.purpose,
+        tenantId: options.tenantId,
+        customerPhone: options.customerPhone,
+        variables: options.variables,
+    };
 
-    const job = await queue.add(
-        options.type,
-        {
-            type: options.type,
-            tenantId: options.tenantId,
-            customerPhone: options.customerPhone,
-            ...options.data,
-        },
-        {
-            delay: options.delay || 0,
-            jobId,
-        }
-    );
+    const jobId = options.jobId ?? `${options.purpose}-${options.tenantId}-${Date.now()}`;
 
-    return job.id || null;
+    const added = await options.queue.add(options.purpose, job, {
+        delay: options.delay ?? 0,
+        jobId,
+    });
+
+    return added.id ?? null;
 }
 
-/**
- * Schedule a booking reminder
- */
+export interface ScheduleReminderOptions {
+    queue: Queue | null;
+    purpose?: TemplatePurpose; // defaults to BOOKING_REMINDER
+    tenantId: string;
+    bookingId: string;
+    customerPhone: string;
+    /** Positional template variables — typically [serviceName, time]. */
+    variables: string[];
+    /** Absolute send time. The job is scheduled with the corresponding delay. */
+    sendAt: Date;
+}
+
 export async function scheduleReminder(
-    queue: Queue | null,
-    options: ScheduleReminderOptions
+    options: ScheduleReminderOptions,
 ): Promise<string | null> {
-    if (!queue) {
+    if (!options.queue) {
         console.warn('Reminder queue not available - reminder not scheduled');
         return null;
     }
 
-    const reminderMinutes = options.reminderMinutes ?? 60;
-    const reminderTime = new Date(options.startTime.getTime() - reminderMinutes * 60 * 1000);
-    const delay = reminderTime.getTime() - Date.now();
-
-    // Don't schedule if reminder time already passed
+    const delay = options.sendAt.getTime() - Date.now();
     if (delay <= 0) {
         console.warn('Reminder time already passed - not scheduling');
         return null;
     }
 
-    const jobId = `reminder-${options.bookingId}-${reminderMinutes}min`;
+    const job: ReminderJob = {
+        purpose: options.purpose ?? TemplatePurpose.BOOKING_REMINDER,
+        tenantId: options.tenantId,
+        bookingId: options.bookingId,
+        customerPhone: options.customerPhone,
+        variables: options.variables,
+    };
 
-    const job = await queue.add(
-        'booking_reminder',
-        {
-            tenantId: options.tenantId,
-            bookingId: options.bookingId,
-            customerPhone: options.customerPhone,
-            serviceName: options.serviceName,
-            startTime: options.startTime.toISOString(),
-        } as ReminderJob,
-        {
-            delay,
-            jobId,
-        }
-    );
+    const jobId = `reminder-${options.bookingId}`;
 
-    return job.id || null;
+    const added = await options.queue.add('booking_reminder', job, {
+        delay,
+        jobId,
+    });
+
+    return added.id ?? null;
 }
 
 /**
- * Cancel a scheduled reminder by booking ID
+ * Cancel a scheduled reminder by bookingId. The jobId scheme is stable per
+ * booking (`reminder-<bookingId>`), so we no longer have to know the
+ * reminder lead-time.
  */
-export async function cancelReminder(
-    queue: Queue | null,
-    bookingId: string
-): Promise<boolean> {
+export async function cancelReminder(queue: Queue | null, bookingId: string): Promise<boolean> {
     if (!queue) return false;
 
-    const jobId = `reminder-${bookingId}-60min`;
+    const jobId = `reminder-${bookingId}`;
     const job = await queue.getJob(jobId);
-
     if (job) {
         await job.remove();
         return true;
     }
-
     return false;
-}
-
-/**
- * Schedule booking confirmation notification
- */
-export async function scheduleBookingConfirmation(
-    queue: Queue | null,
-    tenantId: string,
-    booking: {
-        id: string;
-        customerPhone: string;
-        customerName: string;
-        serviceName: string;
-        startTime: Date;
-        bookingReference: string;
-    }
-): Promise<string | null> {
-    return scheduleNotification(queue, {
-        tenantId,
-        type: 'booking_confirmation',
-        customerPhone: booking.customerPhone,
-        data: {
-            bookingId: booking.id,
-            customerName: booking.customerName,
-            serviceName: booking.serviceName,
-            startTime: booking.startTime.toISOString(),
-            bookingReference: booking.bookingReference,
-        },
-    });
-}
-
-/**
- * Schedule order confirmation notification
- */
-export async function scheduleOrderConfirmation(
-    queue: Queue | null,
-    tenantId: string,
-    order: {
-        id: string;
-        orderNumber: string;
-        customerPhone: string;
-        customerName: string;
-        totalAmount: number;
-    }
-): Promise<string | null> {
-    return scheduleNotification(queue, {
-        tenantId,
-        type: 'order_confirmation',
-        customerPhone: order.customerPhone,
-        data: {
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-            customerName: order.customerName,
-            totalAmount: order.totalAmount,
-        },
-    });
-}
-
-/**
- * Schedule order status update notification
- */
-export async function scheduleOrderStatusUpdate(
-    queue: Queue | null,
-    tenantId: string,
-    order: {
-        id: string;
-        orderNumber: string;
-        customerPhone: string;
-        status: 'shipped' | 'delivered';
-    }
-): Promise<string | null> {
-    const type = order.status === 'shipped' ? 'order_shipped' : 'order_delivered';
-
-    return scheduleNotification(queue, {
-        tenantId,
-        type,
-        customerPhone: order.customerPhone,
-        data: {
-            orderId: order.id,
-            orderNumber: order.orderNumber,
-        },
-    });
-}
-
-/**
- * Get message template for notification type
- */
-export function getNotificationMessage(type: NotificationType, data: Record<string, any>): string {
-    const templates: Record<NotificationType, (data: Record<string, any>) => string> = {
-        booking_confirmation: (d) =>
-            `✅ Booking Confirmed!\n\n` +
-            `📋 ${d.serviceName}\n` +
-            `📅 ${new Date(d.startTime).toLocaleDateString()}\n` +
-            `⏰ ${new Date(d.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n` +
-            `🔖 Ref: ${d.bookingReference}\n\n` +
-            `We'll send you a reminder 1 hour before your appointment.`,
-
-        booking_reminder: (d) =>
-            `⏰ Reminder: Your appointment is in 1 hour!\n\n` +
-            `📋 ${d.serviceName}\n` +
-            `⏰ ${new Date(d.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n\n` +
-            `See you soon!`,
-
-        booking_cancellation: (d) =>
-            `❌ Booking Cancelled\n\n` +
-            `Your booking for ${d.serviceName} on ${new Date(d.startTime).toLocaleDateString()} has been cancelled.\n\n` +
-            `If you didn't request this, please contact us.`,
-
-        order_confirmation: (d) =>
-            `✅ Order Confirmed!\n\n` +
-            `📦 Order #${d.orderNumber}\n` +
-            `💰 Total: $${d.totalAmount}\n\n` +
-            `We'll notify you when your order ships.`,
-
-        order_shipped: (d) =>
-            `🚚 Your order is on its way!\n\n` +
-            `📦 Order #${d.orderNumber}\n\n` +
-            `Track your delivery for updates.`,
-
-        order_delivered: (d) =>
-            `📬 Order Delivered!\n\n` +
-            `📦 Order #${d.orderNumber}\n\n` +
-            `Thank you for your order!`,
-    };
-
-    return templates[type](data);
 }

@@ -45,11 +45,31 @@ export function NotificationDropdown() {
     const [markingAll, setMarkingAll] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // Poll unread count every 30 seconds
+    // Poll unread count every 30 seconds, but only while the tab is visible.
+    // Background tabs and minimized windows shouldn't burn API requests.
     useEffect(() => {
-        fetchUnreadCount();
-        const interval = setInterval(fetchUnreadCount, 30000);
-        return () => clearInterval(interval);
+        if (typeof document === 'undefined') return;
+        let interval: ReturnType<typeof setInterval> | null = null;
+        const start = () => {
+            if (interval !== null) return;
+            fetchUnreadCount();
+            interval = setInterval(fetchUnreadCount, 30000);
+        };
+        const stop = () => {
+            if (interval !== null) {
+                clearInterval(interval);
+                interval = null;
+            }
+        };
+        const onVisibilityChange = () => {
+            document.visibilityState === 'visible' ? start() : stop();
+        };
+        if (document.visibilityState === 'visible') start();
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => {
+            stop();
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
     }, []);
 
     // Close on outside click

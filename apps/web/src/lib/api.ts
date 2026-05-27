@@ -24,8 +24,17 @@ api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
+        const isRefreshCall = originalRequest?.url?.includes('/auth/refresh');
 
-        // If 401 and not already retrying
+        // If refresh itself returned 401, the user is truly unauthenticated.
+        // Bail out — do not enter the retry path or we'll loop forever.
+        if (error.response?.status === 401 && isRefreshCall) {
+            localStorage.removeItem('accessToken');
+            if (typeof window !== 'undefined') window.location.href = '/login';
+            return Promise.reject(error);
+        }
+
+        // If 401 on a normal endpoint and not already retrying
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;
 
@@ -71,6 +80,13 @@ adminApi.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
+        const isRefreshCall = originalRequest?.url?.includes('/admin/auth/refresh');
+
+        if (error.response?.status === 401 && isRefreshCall) {
+            localStorage.removeItem('adminAccessToken');
+            if (typeof window !== 'undefined') window.location.href = '/admin/login';
+            return Promise.reject(error);
+        }
 
         if (error.response?.status === 401 && !originalRequest._retry) {
             originalRequest._retry = true;

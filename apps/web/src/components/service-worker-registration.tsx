@@ -9,15 +9,15 @@ export function ServiceWorkerRegistration() {
                 navigator.serviceWorker
                     .register('/sw.js')
                     .then((registration) => {
-                        console.log('SW registered: ', registration.scope);
-
-                        // Check for updates periodically
+                        // Check for SW updates periodically.
                         setInterval(() => {
                             registration.update();
-                        }, 60 * 60 * 1000); // Every hour
+                        }, 60 * 60 * 1000);
                     })
-                    .catch((error) => {
-                        console.log('SW registration failed: ', error);
+                    .catch(() => {
+                        // Service worker registration is a progressive enhancement —
+                        // failure here must not break the page. Sentry is configured
+                        // separately if installation telemetry is needed.
                     });
             });
         }

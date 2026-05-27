@@ -89,25 +89,27 @@ export default function DashboardPage() {
                 </p>
             </div>
 
-            {/* WhatsApp Warning */}
-            <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-2xl p-4 flex items-center gap-3"
-            >
-                <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                    <Smartphone className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="flex-1">
-                    <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">Connect WhatsApp</p>
-                    <p className="text-amber-700 dark:text-amber-300 text-sm">
-                        Connect your WhatsApp number to start receiving bookings.
-                    </p>
-                </div>
-                <Link href="/whatsapp" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-                    Connect
-                </Link>
-            </motion.div>
+            {/* WhatsApp Warning — only shown when not yet connected */}
+            {!tenant?.whatsappConnected && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-2xl p-4 flex items-center gap-3"
+                >
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                        <Smartphone className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="font-semibold text-amber-900 dark:text-amber-200 text-sm">Connect WhatsApp</p>
+                        <p className="text-amber-700 dark:text-amber-300 text-sm">
+                            Connect your WhatsApp number to start receiving bookings.
+                        </p>
+                    </div>
+                    <Link href="/whatsapp" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+                        Connect
+                    </Link>
+                </motion.div>
+            )}
 
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -17,6 +17,9 @@ const serviceSchema = z.object({
     price: z.coerce.number().min(0, 'Price must be positive'),
     durationMinutes: z.coerce.number().int().min(5, 'Duration must be at least 5 minutes'),
     category: z.string().optional(),
+    // Kept as a string so the empty input doesn't fail z.number() validation.
+    // Normalised to number | null in the submit handler.
+    depositAmount: z.string().optional(),
     isActive: z.boolean().optional(),
 });
 
@@ -29,6 +32,7 @@ interface Service {
     price: number | string;
     durationMinutes: number;
     category?: string;
+    depositAmount?: number | string | null;
     isActive: boolean;
 }
 
@@ -67,6 +71,10 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
                 price: service?.price ? Number(service.price) : 0,
                 durationMinutes: service?.durationMinutes || 60,
                 category: service?.category || '',
+                depositAmount:
+                    service?.depositAmount != null && service.depositAmount !== ''
+                        ? String(service.depositAmount)
+                        : '',
                 isActive: service?.isActive ?? true,
             });
         }
@@ -74,11 +82,18 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
 
     const mutation = useMutation({
         mutationFn: async (data: ServiceFormData) => {
+            // Convert the deposit form-string to a number | null for the API.
+            const trimmed = (data.depositAmount ?? '').toString().trim();
+            const depositAmount = trimmed === '' ? null : Number(trimmed);
+            const payload = {
+                ...data,
+                depositAmount: Number.isFinite(depositAmount as number) ? depositAmount : null,
+            };
             if (isEditing) {
-                const res = await api.patch(`/services/${service.id}`, data);
+                const res = await api.patch(`/services/${service.id}`, payload);
                 return res.data;
             } else {
-                const res = await api.post('/services', data);
+                const res = await api.post('/services', payload);
                 return res.data;
             }
         },
@@ -141,6 +156,19 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
                     error={errors.description?.message}
                     {...register('description')}
                 />
+
+                <DashboardInput
+                    label="Deposit (Optional)"
+                    type="number"
+                    step="0.01"
+                    placeholder="Leave blank for no deposit"
+                    error={errors.depositAmount?.message as string | undefined}
+                    {...register('depositAmount')}
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
+                    If set, customers booking this service via WhatsApp will be sent a Paystack payment link.
+                    The slot is held until paid.
+                </p>
 
                 <div className="flex justify-end gap-3 pt-4">
                     <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>

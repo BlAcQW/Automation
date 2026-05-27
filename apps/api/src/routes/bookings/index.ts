@@ -1,7 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
-import { syncBookingToCalendar, deleteCalendarEvent } from '../../services/calendar';
+import { TemplatePurpose } from '@prisma/client';
+import { syncBookingToCalendar, deleteCalendarEvent } from '../../services/calendar.js';
+import { scheduleNotification, scheduleReminder, cancelReminder } from '../../services/notification.js';
 
 // Validation schemas
 const createBookingSchema = z.object({
@@ -163,37 +165,41 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             isolationLevel: 'Serializable',
         });
 
-        // Queue confirmation notification (if Redis is configured)
-        if (fastify.hasRedis && fastify.queues.notifications) {
-            await fastify.queues.notifications.add('booking_confirmation', {
-                type: 'booking_confirmation',
-                tenantId,
-                bookingId: booking.id,
-                customerPhone: booking.customerPhone,
-            });
+        // Queue WhatsApp template-driven confirmation + reminder. All proactive
+        // sends go through approved templates so they pass the Meta 24-hour
+        // window check.
+        const bookingTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        await scheduleNotification({
+            queue: fastify.queues.notifications,
+            purpose: TemplatePurpose.BOOKING_CONFIRMATION,
+            tenantId,
+            customerPhone: booking.customerPhone,
+            variables: [
+                booking.customerName,
+                service.name,
+                startTime.toLocaleDateString(),
+                bookingTime,
+                booking.bookingReference,
+            ],
+            jobId: `booking_confirmation_${booking.id}`,
+        });
 
-            // Schedule reminder (1 hour before)
-            const reminderTime = new Date(startTime.getTime() - 60 * 60 * 1000);
-            if (reminderTime > new Date() && fastify.queues.reminders) {
-                await fastify.queues.reminders.add(
-                    'booking_reminder',
-                    {
-                        tenantId,
-                        bookingId: booking.id,
-                        customerPhone: booking.customerPhone,
-                        serviceName: service.name,
-                        startTime: startTime.toISOString(),
-                    },
-                    { delay: reminderTime.getTime() - Date.now() }
-                );
-            }
-        }
+        // Reminder 1 hour before the appointment.
+        const reminderTime = new Date(startTime.getTime() - 60 * 60 * 1000);
+        await scheduleReminder({
+            queue: fastify.queues.reminders,
+            tenantId,
+            bookingId: booking.id,
+            customerPhone: booking.customerPhone,
+            variables: [service.name, bookingTime],
+            sendAt: reminderTime,
+        });
 
         // Sync to Google Calendar (if connected)
         await syncBookingToCalendar({
             bookingId: booking.id,
             tenantId,
-            prisma: fastify.prisma as any,
+            prisma: fastify.prisma,
         });
 
         // Create in-app notification
@@ -229,14 +235,20 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             include: { service: true },
         });
 
-        // If cancelled, send notification (if Redis is configured)
-        if (body.status === 'CANCELLED' && fastify.hasRedis && fastify.queues.notifications) {
-            await fastify.queues.notifications.add('booking_cancellation', {
-                type: 'booking_cancellation',
+        // If cancelled, send cancellation template + drop any pending reminder.
+        if (body.status === 'CANCELLED') {
+            await scheduleNotification({
+                queue: fastify.queues.notifications,
+                purpose: TemplatePurpose.BOOKING_CANCELLED,
                 tenantId: request.user.tenantId,
-                bookingId: booking.id,
                 customerPhone: booking.customerPhone,
+                variables: [
+                    booking.service.name,
+                    booking.startTime.toLocaleDateString(),
+                ],
+                jobId: `booking_cancelled_${booking.id}`,
             });
+            await cancelReminder(fastify.queues.reminders, booking.id);
         }
 
         return booking;
@@ -248,6 +260,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
 
         const existing = await fastify.prisma.booking.findFirst({
             where: { id, tenantId: request.user.tenantId },
+            include: { service: true },
         });
 
         if (!existing) {
@@ -263,15 +276,19 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             data: { status: 'CANCELLED' },
         });
 
-        // Send cancellation notification (if Redis is configured)
-        if (fastify.hasRedis && fastify.queues.notifications) {
-            await fastify.queues.notifications.add('booking_cancellation', {
-                type: 'booking_cancellation',
-                tenantId: request.user.tenantId,
-                bookingId: booking.id,
-                customerPhone: booking.customerPhone,
-            });
-        }
+        // Send cancellation template + drop any pending reminder.
+        await scheduleNotification({
+            queue: fastify.queues.notifications,
+            purpose: TemplatePurpose.BOOKING_CANCELLED,
+            tenantId: request.user.tenantId,
+            customerPhone: booking.customerPhone,
+            variables: [
+                existing.service.name,
+                existing.startTime.toLocaleDateString(),
+            ],
+            jobId: `booking_cancelled_${booking.id}`,
+        });
+        await cancelReminder(fastify.queues.reminders, booking.id);
 
         // Create in-app notification
         await fastify.prisma.notification.create({

@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 import {
     Search, Filter, Package, Truck,
-    CheckCircle, XCircle, Clock, DollarSign, Eye
+    CheckCircle, XCircle, Clock, DollarSign, Eye, Link2, RefreshCw,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { paymentBadgeClass } from '@/lib/payment';
 import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
@@ -15,21 +17,56 @@ import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 
 interface Order {
     id: string;
-    orderNumber: string;
+    orderRef: string;
+    orderNumber?: string; // legacy alias used by some older API responses
     customerName: string;
     customerPhone: string;
     status: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
     paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+    paymentReference: string | null;
+    paymentAuthorizationUrl: string | null;
+    paidAt: string | null;
     totalAmount: number;
     items: any[];
     createdAt: string;
 }
 
 export default function OrdersPage() {
+    const queryClient = useQueryClient();
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
+    const [resendingId, setResendingId] = useState<string | null>(null);
+
+    const copyPaymentLink = async (order: Order, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!order.paymentAuthorizationUrl) {
+            toast.error('No payment link on this order yet');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(order.paymentAuthorizationUrl);
+            toast.success('Payment link copied');
+        } catch {
+            toast.error('Could not copy — select the URL manually');
+        }
+    };
+
+    const resendPaymentLink = async (order: Order, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setResendingId(order.id);
+        try {
+            const res = await api.post(`/payments/orders/${order.id}/initialize`);
+            await navigator.clipboard.writeText(res.data.authorizationUrl).catch(() => undefined);
+            toast.success('New payment link copied');
+            await queryClient.invalidateQueries({ queryKey: ['orders'] });
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? 'Could not generate a new link');
+        } finally {
+            setResendingId(null);
+        }
+    };
 
     const { data: orders = [], isLoading } = useQuery({
         queryKey: ['orders', statusFilter],
@@ -61,7 +98,7 @@ export default function OrdersPage() {
 
     const filteredOrders = orders.filter((order: Order) =>
         order.customerName.toLowerCase().includes(search.toLowerCase()) ||
-        order.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
+        (order.orderRef ?? order.orderNumber ?? '').toLowerCase().includes(search.toLowerCase()) ||
         order.customerPhone.includes(search)
     );
 
@@ -158,6 +195,7 @@ export default function OrdersPage() {
                                 <th className="px-6 py-4">Customer</th>
                                 <th className="px-6 py-4">Date</th>
                                 <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">Payment</th>
                                 <th className="px-6 py-4">Amount</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
@@ -165,7 +203,7 @@ export default function OrdersPage() {
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                                             <p>Loading orders...</p>
@@ -174,7 +212,7 @@ export default function OrdersPage() {
                                 </tr>
                             ) : filteredOrders.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <Package className="w-8 h-8 text-slate-300" />
                                             <p>No orders found</p>
@@ -185,7 +223,7 @@ export default function OrdersPage() {
                                 filteredOrders.map((order: Order) => (
                                     <tr key={order.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => handleViewOrder(order)}>
                                         <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-300 font-medium">
-                                            {order.orderNumber}
+                                            {order.orderRef ?? order.orderNumber}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="font-medium text-slate-900 dark:text-white">{order.customerName}</div>
@@ -198,6 +236,33 @@ export default function OrdersPage() {
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium ${getStatusColor(order.status)}`}>
                                                 {order.status}
                                             </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
+                                                {order.paymentStatus}
+                                            </span>
+                                            {order.paymentStatus === 'UNPAID' && (
+                                                <div className="flex items-center gap-1 mt-1.5">
+                                                    {order.paymentAuthorizationUrl && (
+                                                        <button
+                                                            onClick={(e) => copyPaymentLink(order, e)}
+                                                            className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
+                                                            aria-label="Copy payment link"
+                                                        >
+                                                            <Link2 className="w-3 h-3" /> Copy link
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={(e) => resendPaymentLink(order, e)}
+                                                        disabled={resendingId === order.id}
+                                                        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline disabled:opacity-50"
+                                                        aria-label="Generate new payment link"
+                                                    >
+                                                        <RefreshCw className={`w-3 h-3 ${resendingId === order.id ? 'animate-spin' : ''}`} />
+                                                        {resendingId === order.id ? 'Generating…' : 'New link'}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 font-mono text-slate-900 dark:text-white font-medium">
                                             ${Number(order.totalAmount).toFixed(2)}

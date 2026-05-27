@@ -1,6 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { decrypt } from '../../services/crypto.js';
+import { checkOutboundQuota, incrementMessageUsage } from '../../services/usage.js';
 
 const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
     // All routes require authentication
@@ -137,7 +139,17 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // POST /conversations/:id/messages - Send message (triggers human takeover)
-    fastify.post('/:id/messages', async (request) => {
+    // Per-tenant 60/min — each tenant has its own bucket so noisy ones can't
+    // exhaust the global limit.
+    fastify.post('/:id/messages', {
+        config: {
+            rateLimit: {
+                max: 60,
+                timeWindow: '1 minute',
+                keyGenerator: (req: any) => `${req.user?.tenantId ?? req.ip}:conversation-reply`,
+            },
+        },
+    }, async (request) => {
         const { id } = request.params as { id: string };
         const body = z.object({
             content: z.string().min(1),
@@ -150,6 +162,32 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
 
         if (!conversation) {
             throw fastify.httpErrors.notFound('Conversation not found');
+        }
+
+        // Enforce the WhatsApp 24-hour customer-service window. Free-form
+        // text outside the window is rejected by Meta — surface that rule
+        // as a clear 400 before we waste the API call.
+        const WINDOW_MS = 24 * 60 * 60 * 1000;
+        const withinWindow =
+            conversation.lastInboundAt &&
+            Date.now() - conversation.lastInboundAt.getTime() < WINDOW_MS;
+
+        if (!withinWindow) {
+            throw fastify.httpErrors.badRequest(
+                'Cannot send a free-form message outside the 24-hour customer-service window. ' +
+                'Wait for the customer to message you again, or send an approved template.',
+            );
+        }
+
+        // Phase 4a — quota enforcement. If the tenant has burned through
+        // their monthly message allowance, return 402 with a clear pointer
+        // to the upgrade flow. Staff sees this as a toast in the dashboard.
+        const quota = await checkOutboundQuota(fastify.prisma, request.user.tenantId);
+        if (!quota.ok) {
+            throw fastify.httpErrors.paymentRequired(
+                `Monthly message quota exhausted (${quota.used}/${quota.limit} on plan ${quota.planId}). ` +
+                `Upgrade your plan in Settings → Plan & Usage.`,
+            );
         }
 
         // Create message and set human takeover
@@ -199,6 +237,10 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                 if (!response.ok) {
                     const error = await response.json().catch(() => ({}));
                     fastify.log.error({ status: response.status, error }, 'Failed to send WhatsApp reply');
+                } else {
+                    // Count successful staff replies toward the tenant's
+                    // monthly outbound-message quota (Phase 4a).
+                    await incrementMessageUsage(fastify.prisma, request.user.tenantId);
                 }
             } catch (err) {
                 fastify.log.error(err, 'Error sending WhatsApp reply');
@@ -234,7 +276,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             where: { id },
             data: {
                 state: 'BOT_ACTIVE',
-                botContext: null, // Reset bot context
+                botContext: Prisma.JsonNull, // Reset bot context
                 updatedAt: new Date(),
             },
         });

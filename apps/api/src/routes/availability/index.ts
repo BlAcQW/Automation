@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import { computeAvailableSlots } from '../../services/availability.js';
 
 // Validation schemas
 const workingHoursSchema = z.object({
@@ -176,133 +177,30 @@ const availabilityRoutes: FastifyPluginAsync = async (fastify) => {
             durationMinutes: z.coerce.number().default(60),
         }).parse(request.query);
 
-        const tenantId = request.user.tenantId;
-        const date = new Date(query.date);
-        const dayOfWeek = date.getDay();
-
-        // Get duration from service if provided
-        let duration = query.durationMinutes;
-        if (query.serviceId) {
-            const service = await fastify.prisma.service.findFirst({
-                where: { id: query.serviceId, tenantId },
-            });
-            if (service) {
-                duration = service.durationMinutes;
-            }
-        }
-
-        // Check if it's a blackout date
-        const isBlackout = await fastify.prisma.blackoutDate.findUnique({
-            where: {
-                tenantId_date: { tenantId, date },
-            },
+        const result = await computeAvailableSlots({
+            prisma: fastify.prisma,
+            tenantId: request.user.tenantId,
+            date: new Date(query.date),
+            durationMinutes: query.durationMinutes,
+            serviceId: query.serviceId,
         });
 
-        if (isBlackout) {
+        if (result.isBlackout) {
             return { data: [], isBlackout: true };
         }
-
-        // Get working hours for this day
-        const workingHours = await fastify.prisma.workingHours.findUnique({
-            where: {
-                tenantId_dayOfWeek: { tenantId, dayOfWeek },
-            },
-        });
-
-        if (!workingHours || !workingHours.isActive) {
+        if (result.notWorking) {
             return { data: [], notWorking: true };
         }
 
-        // Generate all possible slots
-        const slots = generateTimeSlots(
-            date,
-            workingHours.startTime,
-            workingHours.endTime,
-            duration
-        );
-
-        // Get existing bookings for this date
-        const startOfDay = new Date(date);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(date);
-        endOfDay.setHours(23, 59, 59, 999);
-
-        const bookings = await fastify.prisma.booking.findMany({
-            where: {
-                tenantId,
-                status: 'CONFIRMED',
-                startTime: { gte: startOfDay },
-                endTime: { lte: endOfDay },
-            },
-        });
-
-        // Filter out booked slots
-        const availableSlots = slots.filter((slot) => {
-            const slotStart = slot.start.getTime();
-            const slotEnd = slot.end.getTime();
-
-            return !bookings.some((booking) => {
-                const bookingStart = booking.startTime.getTime();
-                const bookingEnd = booking.endTime.getTime();
-
-                // Check for overlap
-                return slotStart < bookingEnd && slotEnd > bookingStart;
-            });
-        });
-
-        // Filter out past times
-        const now = new Date();
-        const futureSlots = availableSlots.filter(
-            (slot) => slot.start.getTime() > now.getTime()
-        );
-
         return {
-            data: futureSlots.map((s) => ({
+            data: result.slots.map((s) => ({
                 start: s.start.toISOString(),
                 end: s.end.toISOString(),
-                startTime: formatTime(s.start),
-                endTime: formatTime(s.end),
+                startTime: s.startTime,
+                endTime: s.endTime,
             })),
         };
     });
 };
-
-// Helper functions
-function generateTimeSlots(
-    date: Date,
-    startTime: string,
-    endTime: string,
-    durationMinutes: number
-): Array<{ start: Date; end: Date }> {
-    const slots: Array<{ start: Date; end: Date }> = [];
-
-    const [startHour, startMinute] = startTime.split(':').map(Number);
-    const [endHour, endMinute] = endTime.split(':').map(Number);
-
-    const start = new Date(date);
-    start.setHours(startHour, startMinute, 0, 0);
-
-    const end = new Date(date);
-    end.setHours(endHour, endMinute, 0, 0);
-
-    let current = new Date(start);
-
-    while (current.getTime() + durationMinutes * 60000 <= end.getTime()) {
-        const slotEnd = new Date(current.getTime() + durationMinutes * 60000);
-        slots.push({
-            start: new Date(current),
-            end: slotEnd,
-        });
-
-        // Advance by 30 minutes for slot starts
-        current = new Date(current.getTime() + 30 * 60000);
-    }
-
-    return slots;
-}
-
-function formatTime(date: Date): string {
-    return date.toTimeString().slice(0, 5);
-}
 
 export default availabilityRoutes;

@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 import {
     Calendar, Search, Filter, Clock, MapPin,
-    MoreHorizontal, CheckCircle, XCircle, AlertCircle
+    MoreHorizontal, CheckCircle, XCircle, AlertCircle,
+    Link2, RefreshCw,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { paymentBadgeClass } from '@/lib/payment';
 import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
 import { StatCard } from '@/components/ui/stat-card';
@@ -20,7 +23,12 @@ interface Booking {
     customerPhone: string;
     startTime: string;
     endTime: string;
-    status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+    status: 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+    paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+    paymentReference: string | null;
+    paymentAuthorizationUrl: string | null;
+    paidAt: string | null;
+    depositAmount: number | string | null;
     notes?: string;
     service: {
         id: string;
@@ -31,10 +39,41 @@ interface Booking {
 }
 
 export default function BookingsPage() {
+    const queryClient = useQueryClient();
     const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
     const [search, setSearch] = useState('');
     const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [resendingId, setResendingId] = useState<string | null>(null);
+
+    const copyPaymentLink = async (booking: Booking, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!booking.paymentAuthorizationUrl) {
+            toast.error('No payment link on this booking yet');
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(booking.paymentAuthorizationUrl);
+            toast.success('Payment link copied');
+        } catch {
+            toast.error('Could not copy — select the URL manually');
+        }
+    };
+
+    const resendPaymentLink = async (booking: Booking, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setResendingId(booking.id);
+        try {
+            const res = await api.post(`/payments/bookings/${booking.id}/initialize`);
+            await navigator.clipboard.writeText(res.data.authorizationUrl).catch(() => undefined);
+            toast.success('New payment link copied');
+            await queryClient.invalidateQueries({ queryKey: ['bookings'] });
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? 'Could not generate a new link');
+        } finally {
+            setResendingId(null);
+        }
+    };
 
     const { data: bookingsResponse, isLoading } = useQuery({
         queryKey: ['bookings', selectedStatus, search],
@@ -75,6 +114,8 @@ export default function BookingsPage() {
 
     const getStatusBadge = (status: string) => {
         switch (status) {
+            case 'PENDING_PAYMENT':
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">Pending Payment</span>;
             case 'CONFIRMED':
                 return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">Confirmed</span>;
             case 'COMPLETED':
@@ -140,7 +181,7 @@ export default function BookingsPage() {
 
             <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
                 <div className="flex p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
-                    {['ALL', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((status) => (
+                    {['ALL', 'PENDING_PAYMENT', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((status) => (
                         <button
                             key={status}
                             onClick={() => setSelectedStatus(status)}
@@ -175,13 +216,14 @@ export default function BookingsPage() {
                                 <th className="px-6 py-4">Service</th>
                                 <th className="px-6 py-4">Date & Time</th>
                                 <th className="px-6 py-4">Status</th>
+                                <th className="px-6 py-4">Payment</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                                             <p>Loading bookings...</p>
@@ -190,7 +232,7 @@ export default function BookingsPage() {
                                 </tr>
                             ) : filteredBookings.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <Calendar className="w-8 h-8 text-slate-300" />
                                             <p>No bookings found</p>
@@ -220,6 +262,39 @@ export default function BookingsPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             {getStatusBadge(booking.status)}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {booking.depositAmount ? (
+                                                <>
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium ${paymentBadgeClass(booking.paymentStatus)}`}>
+                                                        {booking.paymentStatus}
+                                                    </span>
+                                                    {booking.paymentStatus === 'UNPAID' && booking.status === 'PENDING_PAYMENT' && (
+                                                        <div className="flex items-center gap-1 mt-1.5">
+                                                            {booking.paymentAuthorizationUrl && (
+                                                                <button
+                                                                    onClick={(e) => copyPaymentLink(booking, e)}
+                                                                    className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
+                                                                    aria-label="Copy payment link"
+                                                                >
+                                                                    <Link2 className="w-3 h-3" /> Copy link
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={(e) => resendPaymentLink(booking, e)}
+                                                                disabled={resendingId === booking.id}
+                                                                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline disabled:opacity-50"
+                                                                aria-label="Generate new payment link"
+                                                            >
+                                                                <RefreshCw className={`w-3 h-3 ${resendingId === booking.id ? 'animate-spin' : ''}`} />
+                                                                {resendingId === booking.id ? 'Generating…' : 'New link'}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">—</span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleViewBooking(booking); }}>

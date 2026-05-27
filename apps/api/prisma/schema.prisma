@@ -23,6 +23,25 @@ model Tenant {
   whatsappAccountId     String?
   whatsappAccessToken   String?      // Encrypted
   whatsappDisplayNumber String?
+  paystackSecretKey     String?      // Encrypted (AES-GCM via crypto.ts)
+  paystackPublicKey     String?      // Public, plaintext OK
+  paymentCurrency       String       @default("NGN") // ISO 4217
+  // Phase 4a — SaaS plan id. Kept as String so the catalog (services/plans.ts)
+  // can grow without a migration. Validated against the catalog at the API boundary.
+  planId                String       @default("free")
+  // Phase 4b — Paystack subscription state. Null for tenants that predate 4b.
+  subscriptionStatus       SubscriptionStatus?
+  subscriptionRef          String?     // Paystack subscription_code (SUB_xxx)
+  subscriptionEmailToken   String?     // Paystack-issued token, required to disable
+  subscriptionCustomerCode String?     // Paystack customer_code (CUS_xxx)
+  currentPeriodEnd         DateTime?
+  trialEndsAt              DateTime?
+  // Phase 5 — SMS fallback (Arkesel) + Email fallback (Gmail SMTP).
+  arkeselApiKey            String?    // Encrypted at rest via crypto.ts
+  arkeselSenderId          String?    // 1-11 chars, alphanumeric or phone
+  gmailUser                String?    // Tenant's Gmail address
+  gmailAppPassword         String?    // 16-char app password, encrypted
+  gmailFromName            String?    // Display name in From: header
   isActive              Boolean      @default(true)
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
@@ -37,6 +56,8 @@ model Tenant {
   blackoutDates        BlackoutDate[]
   calendarIntegrations CalendarIntegration[]
   notifications        Notification[]
+  messageTemplates     MessageTemplate[]
+  tenantUsages         TenantUsage[]
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -50,7 +71,7 @@ enum BusinessType {
 model User {
   id           String   @id @default(cuid())
   tenantId     String
-  email        String   @unique
+  email        String
   passwordHash String
   name         String
   role         Role     @default(STAFF)
@@ -60,8 +81,8 @@ model User {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  @@unique([tenantId, email])
   @@index([tenantId])
-  @@index([email])
 }
 
 enum Role {
@@ -96,6 +117,7 @@ model Service {
   price           Decimal  @db.Decimal(10, 2)
   durationMinutes Int
   category        String?
+  depositAmount   Decimal? @db.Decimal(10, 2) // null = no deposit required
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -142,19 +164,26 @@ model BlackoutDate {
 // ============================================
 
 model Booking {
-  id               String        @id @default(cuid())
-  tenantId         String
-  serviceId        String
-  customerName     String
-  customerPhone    String
-  startTime        DateTime
-  endTime          DateTime
-  status           BookingStatus @default(CONFIRMED)
-  bookingReference String        @unique
-  calendarEventId  String?
-  notes            String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                      String        @id @default(cuid())
+  tenantId                String
+  serviceId               String
+  customerName            String
+  customerPhone           String
+  customerEmail           String?      // Phase 5: enables email fallback when present
+  startTime               DateTime
+  endTime                 DateTime
+  status                  BookingStatus @default(CONFIRMED)
+  bookingReference        String        @unique
+  calendarEventId         String?
+  notes                   String?
+  // Phase 3d — deposit / Paystack payment fields. Mirror Order's shape.
+  paymentStatus           PaymentStatus @default(UNPAID)
+  paymentReference        String?       @unique
+  paymentAuthorizationUrl String?
+  paidAt                  DateTime?
+  depositAmount           Decimal?      @db.Decimal(10, 2) // snapshot at booking time
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
 
   tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   service Service @relation(fields: [serviceId], references: [id])
@@ -163,9 +192,11 @@ model Booking {
   @@index([tenantId, startTime])
   @@index([customerPhone])
   @@index([bookingReference])
+  @@index([paymentReference])
 }
 
 enum BookingStatus {
+  PENDING_PAYMENT // Slot held; awaiting Paystack deposit
   CONFIRMED
   CANCELLED
   COMPLETED
@@ -187,6 +218,8 @@ model Conversation {
   assignedAt      DateTime?         // When the conversation was assigned
   takeoverReason  String?           // Reason for human takeover
   botFailureCount Int               @default(0)  // Count of bot failures for auto-takeover
+  contextVersion  Int               @default(0)  // Optimistic-lock counter — incremented on every botContext write; concurrent updates that read a stale version are dropped
+  lastInboundAt   DateTime?         // Timestamp of last customer message — drives the WhatsApp 24-hour customer-service window check
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
@@ -196,6 +229,7 @@ model Conversation {
   @@unique([tenantId, customerPhone])
   @@index([tenantId])
   @@index([customerPhone])
+  @@index([tenantId, lastInboundAt])
 }
 
 enum ConversationState {
@@ -307,18 +341,22 @@ model Product {
 // ============================================
 
 model Order {
-  id              String        @id @default(cuid())
-  tenantId        String
-  orderRef        String        @unique
-  customerName    String
-  customerPhone   String
-  totalAmount     Decimal       @db.Decimal(10, 2)
-  status          OrderStatus   @default(PENDING)
-  paymentStatus   PaymentStatus @default(UNPAID)
-  deliveryAddress String?
-  notes           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                      String        @id @default(cuid())
+  tenantId                String
+  orderRef                String        @unique
+  customerName            String
+  customerPhone           String
+  customerEmail           String?      // Phase 5: enables email fallback when present
+  totalAmount             Decimal       @db.Decimal(10, 2)
+  status                  OrderStatus   @default(PENDING)
+  paymentStatus           PaymentStatus @default(UNPAID)
+  paymentReference        String?       @unique // Paystack tx reference
+  paymentAuthorizationUrl String?              // Paystack hosted-page URL
+  paidAt                  DateTime?
+  deliveryAddress         String?
+  notes                   String?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
 
   tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   items  OrderItem[]
@@ -327,6 +365,7 @@ model Order {
   @@index([orderRef])
   @@index([customerPhone])
   @@index([status])
+  @@index([paymentReference])
 }
 
 model OrderItem {
@@ -383,4 +422,124 @@ enum NotificationType {
   BOOKING_CANCELLED
   NEW_CONVERSATION
   SYSTEM
+}
+
+// ============================================
+// WHATSAPP MESSAGE TEMPLATES
+// ============================================
+//
+// Per-tenant registry of WhatsApp Cloud API templates that the tenant has
+// registered (and Meta has approved) in their Business Manager. The
+// notification worker maps internal NotificationType -> MessageTemplate.purpose
+// and sends `type: 'template'` messages with positional body variables.
+//
+// Expected variable order per purpose (the tenant must design their template
+// body to match):
+//   BOOKING_CONFIRMATION  -> [customerName, serviceName, date, time, bookingRef]
+//   BOOKING_REMINDER      -> [serviceName, time]
+//   BOOKING_CANCELLED     -> [serviceName, date]
+//   BOOKING_RESCHEDULED   -> [serviceName, newDate, newTime]
+//   ORDER_CONFIRMATION    -> [orderRef, total]
+//   ORDER_SHIPPED         -> [orderRef]
+//   ORDER_DELIVERED       -> [orderRef]
+//
+model MessageTemplate {
+  id            String           @id @default(cuid())
+  tenantId      String
+  name          String           // Exact Meta template name (e.g. "booking_confirmation_v1")
+  language      String           @default("en_US")
+  category      TemplateCategory
+  purpose       TemplatePurpose
+  bodyPreview   String?          // Human preview for the dashboard
+  variableCount Int              @default(0)
+  isApproved    Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name, language])
+  @@unique([tenantId, purpose])
+  @@index([tenantId])
+}
+
+enum TemplateCategory {
+  UTILITY
+  MARKETING
+  AUTHENTICATION
+}
+
+enum TemplatePurpose {
+  BOOKING_CONFIRMATION
+  BOOKING_REMINDER
+  BOOKING_CANCELLED
+  BOOKING_RESCHEDULED
+  ORDER_CONFIRMATION
+  ORDER_SHIPPED
+  ORDER_DELIVERED
+}
+
+// ============================================
+// AUDIT LOG (Phase 2D)
+// ============================================
+//
+// Append-only audit trail of security-relevant events. Used for compliance
+// reporting and post-incident forensics. Not joined to Tenant via FK so that
+// tenant deletion does not erase the audit history of what was done before.
+//
+model AuditLog {
+  id         String    @id @default(cuid())
+  tenantId   String?   // null for platform-admin and system actions
+  actorType  ActorType
+  actorId    String?   // userId, adminId, etc.
+  action     String    // e.g. "auth.login.success", "tenant.updated"
+  targetType String?   // e.g. "Booking", "Tenant"
+  targetId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([action, createdAt])
+}
+
+enum ActorType {
+  USER
+  ADMIN
+  BOT
+  SYSTEM
+}
+
+// Phase 4b — SaaS subscription lifecycle.
+//   TRIALING : new tenant, 14-day Pro trial, no charge yet.
+//   ACTIVE   : Paystack subscription is paying on schedule.
+//   PAST_DUE : last charge failed; plan still resolves until currentPeriodEnd.
+//   CANCELLED: explicitly cancelled or expired; lazy evaluator drops planId to free.
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+// ============================================
+// SAAS PLAN USAGE (Phase 4a)
+// ============================================
+//
+// One row per tenant per month, holding the count of outbound WhatsApp
+// messages the tenant has consumed against their plan quota. Counter is
+// updated atomically via upsert so concurrent sends are safe.
+//
+model TenantUsage {
+  id           String   @id @default(cuid())
+  tenantId     String
+  month        String   // "YYYY-MM" UTC. Tenant-tz rollover is a Phase 8 polish.
+  messageCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, month])
+  @@index([tenantId])
 }

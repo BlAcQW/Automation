@@ -90,6 +90,7 @@ export default function AdminLayout({
 
     const logout = () => {
         localStorage.removeItem('adminAccessToken');
+        document.cookie = 'adminAccessToken=; path=/; max-age=0; samesite=lax';
         setAdmin(null);
         router.push('/admin/login');
     };

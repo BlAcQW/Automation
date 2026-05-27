@@ -1,116 +1,105 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-    scheduleNotification,
-    scheduleReminder,
-    cancelReminder,
-    scheduleBookingConfirmation,
-    scheduleOrderConfirmation,
-    getNotificationMessage,
-} from './notification';
+import { describe, it, expect, vi } from 'vitest';
+import { TemplatePurpose } from '@prisma/client';
+import { scheduleNotification, scheduleReminder, cancelReminder } from './notification';
 
 describe('Notification Service', () => {
     describe('scheduleNotification', () => {
-        it('should schedule a notification job', async () => {
-            const mockQueue = {
-                add: vi.fn().mockResolvedValue({ id: 'job-123' }),
-            };
+        it('schedules a template-driven notification job', async () => {
+            const mockQueue = { add: vi.fn().mockResolvedValue({ id: 'job-123' }) };
 
-            const result = await scheduleNotification(mockQueue as any, {
+            const result = await scheduleNotification({
+                queue: mockQueue as any,
+                purpose: TemplatePurpose.BOOKING_CONFIRMATION,
                 tenantId: 'tenant-123',
-                type: 'booking_confirmation',
                 customerPhone: '+1234567890',
-                data: { bookingId: 'booking-456' },
+                variables: ['John', 'Haircut', '2026-05-20', '10:00', 'BK-ABC123'],
+                jobId: 'booking_confirmation_booking-456',
             });
 
             expect(result).toBe('job-123');
             expect(mockQueue.add).toHaveBeenCalledWith(
-                'booking_confirmation',
+                TemplatePurpose.BOOKING_CONFIRMATION,
                 expect.objectContaining({
-                    type: 'booking_confirmation',
+                    purpose: TemplatePurpose.BOOKING_CONFIRMATION,
                     tenantId: 'tenant-123',
                     customerPhone: '+1234567890',
-                    bookingId: 'booking-456',
+                    variables: ['John', 'Haircut', '2026-05-20', '10:00', 'BK-ABC123'],
                 }),
-                expect.any(Object)
+                expect.objectContaining({ jobId: 'booking_confirmation_booking-456' }),
             );
         });
 
-        it('should return null if queue is not available', async () => {
-            const result = await scheduleNotification(null, {
+        it('returns null if queue is not available', async () => {
+            const result = await scheduleNotification({
+                queue: null,
+                purpose: TemplatePurpose.BOOKING_CONFIRMATION,
                 tenantId: 'tenant-123',
-                type: 'booking_confirmation',
                 customerPhone: '+1234567890',
-                data: {},
+                variables: [],
             });
-
             expect(result).toBeNull();
         });
 
-        it('should schedule with delay', async () => {
-            const mockQueue = {
-                add: vi.fn().mockResolvedValue({ id: 'job-123' }),
-            };
+        it('honours the delay option', async () => {
+            const mockQueue = { add: vi.fn().mockResolvedValue({ id: 'job-123' }) };
 
-            await scheduleNotification(mockQueue as any, {
+            await scheduleNotification({
+                queue: mockQueue as any,
+                purpose: TemplatePurpose.ORDER_SHIPPED,
                 tenantId: 'tenant-123',
-                type: 'order_shipped',
                 customerPhone: '+1234567890',
-                data: {},
+                variables: ['ORD-ABC123'],
                 delay: 5000,
             });
 
             expect(mockQueue.add).toHaveBeenCalledWith(
-                'order_shipped',
+                TemplatePurpose.ORDER_SHIPPED,
                 expect.any(Object),
-                expect.objectContaining({ delay: 5000 })
+                expect.objectContaining({ delay: 5000 }),
             );
         });
     });
 
     describe('scheduleReminder', () => {
-        it('should schedule reminder 60 minutes before appointment', async () => {
-            const mockQueue = {
-                add: vi.fn().mockResolvedValue({ id: 'reminder-123' }),
-            };
+        it('schedules a reminder job with stable jobId per booking', async () => {
+            const mockQueue = { add: vi.fn().mockResolvedValue({ id: 'reminder-123' }) };
+            const sendAt = new Date(Date.now() + 120 * 60_000); // 2 hours from now
 
-            const startTime = new Date(Date.now() + 120 * 60 * 1000); // 2 hours from now
-
-            const result = await scheduleReminder(mockQueue as any, {
+            const result = await scheduleReminder({
+                queue: mockQueue as any,
                 tenantId: 'tenant-123',
                 bookingId: 'booking-456',
                 customerPhone: '+1234567890',
-                serviceName: 'Haircut',
-                startTime,
+                variables: ['Haircut', '10:00'],
+                sendAt,
             });
 
             expect(result).toBe('reminder-123');
             expect(mockQueue.add).toHaveBeenCalledWith(
                 'booking_reminder',
                 expect.objectContaining({
+                    purpose: TemplatePurpose.BOOKING_REMINDER,
                     tenantId: 'tenant-123',
                     bookingId: 'booking-456',
-                    serviceName: 'Haircut',
+                    variables: ['Haircut', '10:00'],
                 }),
                 expect.objectContaining({
                     delay: expect.any(Number),
-                    jobId: 'reminder-booking-456-60min',
-                })
+                    jobId: 'reminder-booking-456',
+                }),
             );
         });
 
-        it('should NOT schedule if reminder time already passed', async () => {
-            const mockQueue = {
-                add: vi.fn().mockResolvedValue({ id: 'reminder-123' }),
-            };
+        it('does NOT schedule when sendAt is in the past', async () => {
+            const mockQueue = { add: vi.fn().mockResolvedValue({ id: 'reminder-123' }) };
 
-            const startTime = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
-
-            const result = await scheduleReminder(mockQueue as any, {
+            const result = await scheduleReminder({
+                queue: mockQueue as any,
                 tenantId: 'tenant-123',
                 bookingId: 'booking-456',
                 customerPhone: '+1234567890',
-                serviceName: 'Haircut',
-                startTime,
+                variables: ['Haircut', '10:00'],
+                sendAt: new Date(Date.now() - 5000),
             });
 
             expect(result).toBeNull();
@@ -119,136 +108,22 @@ describe('Notification Service', () => {
     });
 
     describe('cancelReminder', () => {
-        it('should cancel an existing reminder', async () => {
+        it('cancels an existing reminder by stable jobId', async () => {
             const mockJob = { remove: vi.fn().mockResolvedValue(true) };
-            const mockQueue = {
-                getJob: vi.fn().mockResolvedValue(mockJob),
-            };
+            const mockQueue = { getJob: vi.fn().mockResolvedValue(mockJob) };
 
             const result = await cancelReminder(mockQueue as any, 'booking-456');
 
             expect(result).toBe(true);
-            expect(mockQueue.getJob).toHaveBeenCalledWith('reminder-booking-456-60min');
+            expect(mockQueue.getJob).toHaveBeenCalledWith('reminder-booking-456');
             expect(mockJob.remove).toHaveBeenCalled();
         });
 
-        it('should return false if job not found', async () => {
-            const mockQueue = {
-                getJob: vi.fn().mockResolvedValue(null),
-            };
+        it('returns false when no job is found', async () => {
+            const mockQueue = { getJob: vi.fn().mockResolvedValue(null) };
 
             const result = await cancelReminder(mockQueue as any, 'booking-456');
-
             expect(result).toBe(false);
-        });
-    });
-
-    describe('scheduleBookingConfirmation', () => {
-        it('should schedule booking confirmation with all details', async () => {
-            const mockQueue = {
-                add: vi.fn().mockResolvedValue({ id: 'job-123' }),
-            };
-
-            await scheduleBookingConfirmation(mockQueue as any, 'tenant-123', {
-                id: 'booking-456',
-                customerPhone: '+1234567890',
-                customerName: 'John Doe',
-                serviceName: 'Haircut',
-                startTime: new Date('2024-01-15T10:00:00'),
-                bookingReference: 'BK-ABC123',
-            });
-
-            expect(mockQueue.add).toHaveBeenCalledWith(
-                'booking_confirmation',
-                expect.objectContaining({
-                    type: 'booking_confirmation',
-                    bookingId: 'booking-456',
-                    customerName: 'John Doe',
-                    serviceName: 'Haircut',
-                    bookingReference: 'BK-ABC123',
-                }),
-                expect.any(Object)
-            );
-        });
-    });
-
-    describe('scheduleOrderConfirmation', () => {
-        it('should schedule order confirmation', async () => {
-            const mockQueue = {
-                add: vi.fn().mockResolvedValue({ id: 'job-123' }),
-            };
-
-            await scheduleOrderConfirmation(mockQueue as any, 'tenant-123', {
-                id: 'order-456',
-                orderNumber: 'ORD-ABC123',
-                customerPhone: '+1234567890',
-                customerName: 'Jane Doe',
-                totalAmount: 99.99,
-            });
-
-            expect(mockQueue.add).toHaveBeenCalledWith(
-                'order_confirmation',
-                expect.objectContaining({
-                    type: 'order_confirmation',
-                    orderNumber: 'ORD-ABC123',
-                    totalAmount: 99.99,
-                }),
-                expect.any(Object)
-            );
-        });
-    });
-
-    describe('getNotificationMessage', () => {
-        it('should generate booking confirmation message', () => {
-            const message = getNotificationMessage('booking_confirmation', {
-                serviceName: 'Haircut',
-                startTime: '2024-01-15T10:00:00',
-                bookingReference: 'BK-ABC123',
-            });
-
-            expect(message).toContain('Booking Confirmed');
-            expect(message).toContain('Haircut');
-            expect(message).toContain('BK-ABC123');
-        });
-
-        it('should generate booking reminder message', () => {
-            const message = getNotificationMessage('booking_reminder', {
-                serviceName: 'Haircut',
-                startTime: '2024-01-15T10:00:00',
-            });
-
-            expect(message).toContain('Reminder');
-            expect(message).toContain('1 hour');
-            expect(message).toContain('Haircut');
-        });
-
-        it('should generate order confirmation message', () => {
-            const message = getNotificationMessage('order_confirmation', {
-                orderNumber: 'ORD-ABC123',
-                totalAmount: 99.99,
-            });
-
-            expect(message).toContain('Order Confirmed');
-            expect(message).toContain('ORD-ABC123');
-            expect(message).toContain('99.99');
-        });
-
-        it('should generate order shipped message', () => {
-            const message = getNotificationMessage('order_shipped', {
-                orderNumber: 'ORD-ABC123',
-            });
-
-            expect(message).toContain('on its way');
-            expect(message).toContain('ORD-ABC123');
-        });
-
-        it('should generate order delivered message', () => {
-            const message = getNotificationMessage('order_delivered', {
-                orderNumber: 'ORD-ABC123',
-            });
-
-            expect(message).toContain('Delivered');
-            expect(message).toContain('ORD-ABC123');
         });
     });
 });

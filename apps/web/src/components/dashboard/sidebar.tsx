@@ -21,6 +21,7 @@ import {
     Users,
     Boxes,
     Smartphone,
+    FileText,
     X,
     ChevronRight,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ const serviceNavigation = [
     { name: 'Availability', href: '/availability', icon: Clock },
     { name: 'Conversations', href: '/conversations', icon: MessageCircle },
     { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+    { name: 'Templates', href: '/templates', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -43,6 +45,7 @@ const productNavigation = [
     { name: 'Customers', href: '/customers', icon: Users },
     { name: 'Conversations', href: '/conversations', icon: MessageCircle },
     { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+    { name: 'Templates', href: '/templates', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

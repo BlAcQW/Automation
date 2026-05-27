@@ -59,7 +59,6 @@ export default function WhatsAppSetupPage() {
         const timeout = setTimeout(() => {
             if (!window.FB) {
                 setSdkFailed(true);
-                console.error('[BookingFlow] Facebook SDK failed to load after 15s');
             }
             clearInterval(interval);
         }, 15000);
@@ -74,8 +73,8 @@ export default function WhatsAppSetupPage() {
         try {
             const response = await api.get('/whatsapp/status');
             setStatus(response.data);
-        } catch (err) {
-            console.error('Failed to fetch WhatsApp status:', err);
+        } catch {
+            setMessage({ type: 'error', text: 'Failed to load WhatsApp status.' });
         } finally {
             setLoading(false);
         }
@@ -89,7 +88,6 @@ export default function WhatsAppSetupPage() {
                 xfbml: true,
                 version: 'v18.0'
             });
-            console.log('[BookingFlow] Facebook SDK initialized successfully');
             setSdkReady(true);
             setSdkFailed(false);
         };
@@ -109,7 +107,6 @@ export default function WhatsAppSetupPage() {
         script.defer = true;
         script.crossOrigin = 'anonymous';
         script.onerror = () => {
-            console.error('[BookingFlow] Facebook SDK script blocked or failed to load');
             setSdkFailed(true);
             setMessage({ type: 'error', text: 'Facebook SDK blocked. Please disable ad-blockers for this page and try again.' });
         };
@@ -126,11 +123,6 @@ export default function WhatsAppSetupPage() {
     const launchWhatsAppSignup = () => {
         const appId = process.env.NEXT_PUBLIC_WHATSAPP_APP_ID;
         const configId = process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID;
-
-        console.log('[BookingFlow] === WhatsApp Connect Debug ===');
-        console.log('[BookingFlow] window.FB exists:', !!window.FB);
-        console.log('[BookingFlow] NEXT_PUBLIC_WHATSAPP_APP_ID:', appId || '❌ NOT SET');
-        console.log('[BookingFlow] NEXT_PUBLIC_WHATSAPP_CONFIG_ID:', configId || '❌ NOT SET');
 
         if (!window.FB) {
             setMessage({ type: 'error', text: 'Facebook SDK not loaded. Please disable ad-blockers and refresh the page.' });
@@ -149,18 +141,13 @@ export default function WhatsAppSetupPage() {
         setMessage(null);
 
         try {
-            console.log('[BookingFlow] Calling FB.login with config_id:', configId);
             window.FB.login(
                 function (response: any) {
-                    console.log('[BookingFlow] FB.login response:', JSON.stringify(response));
                     if (response.authResponse) {
-                        const code = response.authResponse.code;
-                        console.log('[BookingFlow] Got auth code, exchanging...');
-                        exchangeCodeForToken(code);
+                        exchangeCodeForToken(response.authResponse.code);
                     } else {
                         setConnecting(false);
-                        console.warn('[BookingFlow] FB.login cancelled or failed. Response:', response);
-                        setMessage({ type: 'error', text: 'WhatsApp signup was cancelled or failed. Check the browser console for details.' });
+                        setMessage({ type: 'error', text: 'WhatsApp signup was cancelled or failed.' });
                     }
                 },
                 {
@@ -174,28 +161,63 @@ export default function WhatsAppSetupPage() {
                     }
                 }
             );
-            console.log('[BookingFlow] FB.login() called — popup should appear. If it doesn\'t, check your browser popup blocker.');
         } catch (err: any) {
-            console.error('[BookingFlow] FB.login threw an error:', err);
             setConnecting(false);
-            setMessage({ type: 'error', text: `FB.login error: ${err.message}. Check browser console for details.` });
+            setMessage({ type: 'error', text: `FB.login error: ${err.message}` });
         }
     };
 
     const exchangeCodeForToken = async (code: string) => {
         try {
-            await api.post('/whatsapp/connect', {
-                phoneNumberId: 'pending',
-                accountId: 'pending',
-                accessToken: code,
-                displayNumber: 'Connecting...',
-            });
+            const res = await api.post('/whatsapp/embedded-signup', { code });
             await fetchStatus();
-            setMessage({ type: 'success', text: 'WhatsApp connected successfully!' });
+            const verified = res.data.verifiedName ? ` (${res.data.verifiedName})` : '';
+            setMessage({
+                type: 'success',
+                text: `WhatsApp connected: ${res.data.displayNumber}${verified}`,
+            });
         } catch (err: any) {
-            setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to connect WhatsApp' });
+            setMessage({
+                type: 'error',
+                text: err.response?.data?.message || 'Failed to complete WhatsApp signup',
+            });
         } finally {
             setConnecting(false);
+        }
+    };
+
+    // Manual connect fallback — for tenants whose FB Embedded Signup cannot
+    // run (ad-blocker, region restrictions, third-party-cookies disabled).
+    // Takes the same three values the manual /connect endpoint already accepts.
+    const [manualForm, setManualForm] = useState({
+        phoneNumberId: '',
+        accountId: '',
+        accessToken: '',
+        displayNumber: '',
+    });
+    const [manualSubmitting, setManualSubmitting] = useState(false);
+
+    const submitManualConnect = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setManualSubmitting(true);
+        setMessage(null);
+        try {
+            await api.post('/whatsapp/connect', {
+                phoneNumberId: manualForm.phoneNumberId.trim(),
+                accountId: manualForm.accountId.trim(),
+                accessToken: manualForm.accessToken.trim(),
+                displayNumber: manualForm.displayNumber.trim() || undefined,
+            });
+            await fetchStatus();
+            setMessage({ type: 'success', text: 'WhatsApp connected via manual values.' });
+            setManualForm({ phoneNumberId: '', accountId: '', accessToken: '', displayNumber: '' });
+        } catch (err: any) {
+            setMessage({
+                type: 'error',
+                text: err.response?.data?.message || 'Manual WhatsApp connect failed',
+            });
+        } finally {
+            setManualSubmitting(false);
         }
     };
 
@@ -430,6 +452,62 @@ export default function WhatsAppSetupPage() {
                                 )}
                                 Connect WhatsApp Business
                             </Button>
+
+                            {/* Manual fallback — collapsed by default. For tenants
+                                where Embedded Signup can't run (ad-blocker, region,
+                                third-party-cookie disabled). */}
+                            <details className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 p-4 group">
+                                <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300 group-open:mb-4">
+                                    Connect manually instead
+                                </summary>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                                    Paste values from Meta Business Manager. The phone number ID and
+                                    WABA ID are visible under WhatsApp → API Setup. Create a permanent
+                                    System User access token under Business Settings → Users → System Users.
+                                </p>
+                                <form onSubmit={submitManualConnect} className="space-y-3">
+                                    <DashboardInput
+                                        label="Phone Number ID"
+                                        value={manualForm.phoneNumberId}
+                                        onChange={(e) =>
+                                            setManualForm({ ...manualForm, phoneNumberId: e.target.value })
+                                        }
+                                        required
+                                    />
+                                    <DashboardInput
+                                        label="WhatsApp Business Account ID"
+                                        value={manualForm.accountId}
+                                        onChange={(e) =>
+                                            setManualForm({ ...manualForm, accountId: e.target.value })
+                                        }
+                                        required
+                                    />
+                                    <DashboardInput
+                                        label="System User Access Token"
+                                        type="password"
+                                        value={manualForm.accessToken}
+                                        onChange={(e) =>
+                                            setManualForm({ ...manualForm, accessToken: e.target.value })
+                                        }
+                                        required
+                                    />
+                                    <DashboardInput
+                                        label="Display Phone Number (optional, e.g. +1 555 0100)"
+                                        value={manualForm.displayNumber}
+                                        onChange={(e) =>
+                                            setManualForm({ ...manualForm, displayNumber: e.target.value })
+                                        }
+                                    />
+                                    <Button
+                                        type="submit"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={manualSubmitting}
+                                    >
+                                        {manualSubmitting ? 'Connecting…' : 'Connect with these values'}
+                                    </Button>
+                                </form>
+                            </details>
                         </div>
                     )}
                 </CardContent>

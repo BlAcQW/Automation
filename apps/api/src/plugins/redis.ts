@@ -106,20 +106,27 @@ export default fp(redisPlugin, {
     name: 'redis',
 });
 
-// Job type definitions
+// Job type definitions — template-driven (Phase 2).
+//
+// All notification + reminder sends go through approved WhatsApp templates.
+// The producer captures the template `purpose` + positional `variables`;
+// the worker resolves the tenant's MessageTemplate row and sends a
+// `type: 'template'` Meta payload.
+import type { TemplatePurpose } from '@prisma/client';
+
 export interface NotificationJob {
-    type: 'booking_confirmation' | 'booking_reminder' | 'booking_cancellation';
+    purpose: TemplatePurpose;
     tenantId: string;
-    bookingId: string;
     customerPhone: string;
+    variables: string[];
 }
 
 export interface ReminderJob {
+    purpose: TemplatePurpose; // typically BOOKING_REMINDER
     tenantId: string;
-    bookingId: string;
+    bookingId: string;        // for re-checking that the booking is still CONFIRMED
     customerPhone: string;
-    serviceName: string;
-    startTime: string;
+    variables: string[];
 }
 
 export interface CalendarSyncJob {

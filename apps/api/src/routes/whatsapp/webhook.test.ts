@@ -124,7 +124,14 @@ describe('WhatsApp Webhook', () => {
         });
 
         it('should extract list reply id', () => {
-            const message = {
+            const message: {
+                type: string;
+                interactive: {
+                    type: string;
+                    button_reply?: { id: string; title: string };
+                    list_reply?: { id: string; title: string };
+                };
+            } = {
                 type: 'interactive',
                 interactive: {
                     type: 'list_reply',
@@ -218,7 +225,20 @@ describe('WhatsApp Webhook', () => {
 
     describe('Error Handling', () => {
         it('should handle missing messages array', () => {
-            const payload = {
+            const payload: {
+                object: string;
+                entry: Array<{
+                    id: string;
+                    changes: Array<{
+                        value: {
+                            messaging_product: string;
+                            metadata: { display_phone_number: string; phone_number_id: string };
+                            messages?: unknown[];
+                        };
+                        field: string;
+                    }>;
+                }>;
+            } = {
                 object: 'whatsapp_business_account',
                 entry: [{
                     id: 'business-123',

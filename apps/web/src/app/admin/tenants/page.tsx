@@ -69,6 +69,8 @@ export default function AdminTenantsPage() {
                                 <thead>
                                     <tr className="text-left text-sm text-slate-400 border-b border-white/5">
                                         <th className="px-6 py-4 font-medium">Tenant</th>
+                                        <th className="px-6 py-4 font-medium">Plan</th>
+                                        <th className="px-6 py-4 font-medium">Msgs (mo)</th>
                                         <th className="px-6 py-4 font-medium">Timezone</th>
                                         <th className="px-6 py-4 font-medium">Users</th>
                                         <th className="px-6 py-4 font-medium">Services</th>
@@ -81,7 +83,7 @@ export default function AdminTenantsPage() {
                                 <tbody>
                                     {data?.data?.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="px-6 py-12 text-center">
+                                            <td colSpan={10} className="px-6 py-12 text-center">
                                                 <Building2 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
                                                 <p className="text-slate-400">No tenants found</p>
                                             </td>
@@ -99,6 +101,14 @@ export default function AdminTenantsPage() {
                                                     {tenant.whatsappDisplayNumber && (
                                                         <p className="text-sm text-slate-500">{tenant.whatsappDisplayNumber}</p>
                                                     )}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <Badge variant={tenant.planId === 'pro' ? 'default' : tenant.planId === 'starter' ? 'blue' : 'slate'}>
+                                                        {(tenant.planId ?? 'free').toUpperCase()}
+                                                    </Badge>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-300 font-mono text-sm">
+                                                    {(tenant.messagesThisMonth ?? 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-6 py-4 text-slate-300">{tenant.timezone}</td>
                                                 <td className="px-6 py-4 text-slate-300">{tenant.usersCount}</td>

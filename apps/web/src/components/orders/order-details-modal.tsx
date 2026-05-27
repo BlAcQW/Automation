@@ -25,12 +25,16 @@ interface OrderItem {
 
 interface Order {
     id: string;
-    orderNumber: string; // The orderRef: ORD-XXXXXX
+    orderRef: string; // Schema field — ORD-XXXXXX
+    orderNumber?: string; // Legacy alias (older API responses)
     customerName: string;
     customerPhone: string;
     deliveryAddress?: string;
     status: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
     paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
+    paymentReference?: string | null;
+    paymentAuthorizationUrl?: string | null;
+    paidAt?: string | null;
     totalAmount: number;
     notes?: string;
     items: OrderItem[];
@@ -108,7 +112,7 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={`Order ${order.orderNumber}`} // Using orderNumber which maps to orderRef usually or we need to check schema
+            title={`Order ${order.orderRef ?? order.orderNumber ?? ''}`}
             maxWidth="max-w-2xl"
         >
             <div className="space-y-6">

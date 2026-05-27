@@ -3,6 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { generateTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
+import { audit } from '../../services/audit.js';
 
 // Validation schemas
 const registerSchema = z.object({
@@ -24,26 +25,28 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/register', async (request, reply) => {
         const body = registerSchema.parse(request.body);
 
-        // Check if email already exists
-        const existingUser = await fastify.prisma.user.findUnique({
-            where: { email: body.email },
-        });
-
-        if (existingUser) {
-            throw fastify.httpErrors.conflict('Email already registered');
-        }
+        // Email uniqueness is enforced per-tenant by the @@unique constraint.
+        // A fresh registration creates its own tenant, so there is no conflict
+        // to pre-check here.
 
         // Hash password
         const passwordHash = await bcrypt.hash(body.password, 12);
 
         // Create tenant and user in a transaction
+        const TRIAL_DAYS = 14;
         const result = await fastify.prisma.$transaction(async (tx) => {
-            // Create tenant
+            // Create tenant. Phase 4b — every new tenant gets a 14-day Pro
+            // trial. The lazy `evaluateSubscription` helper downgrades them
+            // to Free + CANCELLED once `trialEndsAt` lapses unless they've
+            // started a paid subscription.
             const tenant = await tx.tenant.create({
                 data: {
                     name: body.businessName,
                     businessType: body.businessType,
                     timezone: body.timezone,
+                    planId: 'pro',
+                    subscriptionStatus: 'TRIALING',
+                    trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
                 },
             });
 
@@ -89,7 +92,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             httpOnly: true,
             secure: config.nodeEnv === 'production',
             sameSite: 'lax',
-            path: '/auth',
+            path: '/',
             maxAge: 7 * 24 * 60 * 60, // 7 days
         });
 
@@ -114,26 +117,62 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/login', async (request, reply) => {
         const body = loginSchema.parse(request.body);
 
-        // Find user by email
-        const user = await fastify.prisma.user.findUnique({
-            where: { email: body.email },
+        // Find user by email. Email is unique per tenant; if multiple tenants
+        // share an email, the first active match wins. Phase 2 will add a
+        // tenant-selector or workspace slug to disambiguate cleanly.
+        const user = await fastify.prisma.user.findFirst({
+            where: { email: body.email, isActive: true },
             include: { tenant: true },
         });
 
         if (!user || !user.isActive) {
+            await audit({
+                prisma: fastify.prisma,
+                action: 'auth.login.failure',
+                actorType: 'USER',
+                metadata: { email: body.email, reason: 'user_not_found_or_inactive' },
+                ipAddress: request.ip,
+            });
             throw fastify.httpErrors.unauthorized('Invalid email or password');
         }
 
         // Verify password
         const validPassword = await bcrypt.compare(body.password, user.passwordHash);
         if (!validPassword) {
+            await audit({
+                prisma: fastify.prisma,
+                action: 'auth.login.failure',
+                actorType: 'USER',
+                tenantId: user.tenantId,
+                actorId: user.id,
+                metadata: { email: body.email, reason: 'bad_password' },
+                ipAddress: request.ip,
+            });
             throw fastify.httpErrors.unauthorized('Invalid email or password');
         }
 
         // Check tenant is active
         if (!user.tenant.isActive) {
+            await audit({
+                prisma: fastify.prisma,
+                action: 'auth.login.failure',
+                actorType: 'USER',
+                tenantId: user.tenantId,
+                actorId: user.id,
+                metadata: { reason: 'tenant_inactive' },
+                ipAddress: request.ip,
+            });
             throw fastify.httpErrors.forbidden('Account has been disabled');
         }
+
+        await audit({
+            prisma: fastify.prisma,
+            action: 'auth.login.success',
+            actorType: 'USER',
+            tenantId: user.tenantId,
+            actorId: user.id,
+            ipAddress: request.ip,
+        });
 
         // Generate tokens
         const accessToken = fastify.jwt.sign(
@@ -151,7 +190,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             httpOnly: true,
             secure: config.nodeEnv === 'production',
             sameSite: 'lax',
-            path: '/auth',
+            path: '/',
             maxAge: 7 * 24 * 60 * 60,
         });
 
@@ -240,14 +279,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
             return { accessToken };
         } catch (err) {
-            reply.clearCookie('refreshToken', { path: '/auth' });
+            reply.clearCookie('refreshToken', { path: '/' });
             throw fastify.httpErrors.unauthorized('Invalid refresh token');
         }
     });
 
     // POST /auth/logout - Clear refresh token
     fastify.post('/logout', async (request, reply) => {
-        reply.clearCookie('refreshToken', { path: '/auth' });
+        reply.clearCookie('refreshToken', { path: '/' });
         return { success: true };
     });
 

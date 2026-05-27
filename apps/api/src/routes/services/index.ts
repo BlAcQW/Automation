@@ -8,6 +8,9 @@ const createServiceSchema = z.object({
     price: z.number().min(0),
     durationMinutes: z.number().min(5).max(480),
     category: z.string().optional(),
+    // Optional deposit — null/0 means no deposit is required, in which case
+    // the booking flow stays the same as before Phase 3d.
+    depositAmount: z.number().min(0).nullable().optional(),
 });
 
 const updateServiceSchema = createServiceSchema.partial().extend({

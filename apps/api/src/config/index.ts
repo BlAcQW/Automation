@@ -1,74 +1,213 @@
 import dotenv from 'dotenv';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
 
-// Load environment variables from root .env
-// Load environment variables - try local .env first, then root .env
-import fs from 'fs';
-dotenv.config({ path: path.join(__dirname, '../../.env') }); // Try local apps/api/.env
-if (!process.env.DATABASE_URL) {
-    dotenv.config({ path: path.join(__dirname, '../../../.env') }); // Fallback to root .env
+// Resolve the .env path defensively. Under `tsx watch`, __dirname is the
+// source file's directory (.../apps/api/src/config). Under compiled output
+// it's the dist directory. Under monorepo cwd it might be the repo root.
+// Try every reasonable spot, take the first that exists, log the result.
+function loadEnvFile(): void {
+    if (process.env.NODE_ENV === 'test') return; // tests inject their own defaults
+
+    const explicit = process.env.DOTENV_CONFIG_PATH;
+    const candidates = [
+        explicit,
+        path.resolve(__dirname, '../../.env'),         // apps/api/.env
+        path.resolve(__dirname, '../../../.env'),      // repo root .env (from src/config)
+        path.resolve(__dirname, '../../../../.env'),   // repo root .env (from dist/src/config)
+        path.resolve(process.cwd(), '.env'),           // wherever the process was started
+        path.resolve(process.cwd(), '../../.env'),     // repo root when cwd = apps/api
+    ].filter((p): p is string => !!p);
+
+    for (const candidate of candidates) {
+        if (!fs.existsSync(candidate)) continue;
+        const result = dotenv.config({ path: candidate });
+        if (!result.error) {
+            // eslint-disable-next-line no-console
+            console.log(`[config] loaded env from ${candidate}`);
+            return;
+        }
+    }
+
+    // eslint-disable-next-line no-console
+    console.warn(
+        '[config] could NOT find a readable .env file. Looked at:\n' +
+        candidates.map((c) => `  - ${c}`).join('\n'),
+    );
 }
 
-export const config = {
+loadEnvFile();
+
+const envSchema = z.object({
     // Server
-    port: parseInt(process.env.API_PORT || '3001', 10),
-    host: process.env.API_HOST || '0.0.0.0',
-    nodeEnv: process.env.NODE_ENV || 'development',
+    API_PORT: z.string().default('3001'),
+    API_HOST: z.string().default('0.0.0.0'),
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
     // Database
-    databaseUrl: process.env.DATABASE_URL!,
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 
-    // Redis (optional - for job queues)
-    redisUrl: process.env.REDIS_URL || undefined,
+    // Redis (optional)
+    REDIS_URL: z.string().optional(),
 
     // JWT
-    jwtSecret: process.env.JWT_SECRET!,
-    jwtRefreshSecret: process.env.JWT_REFRESH_SECRET!,
+    JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+    JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+    ADMIN_JWT_SECRET: z.string().min(32, 'ADMIN_JWT_SECRET must be at least 32 characters'),
+
+    // Encryption (used by services/crypto.ts + OAuth state signing)
+    ENCRYPTION_KEY: z.string().min(32, 'ENCRYPTION_KEY must be at least 32 characters'),
+
+    // WhatsApp Cloud API
+    WHATSAPP_APP_ID: z.string().optional(),
+    WHATSAPP_APP_SECRET: z.string().min(1, 'WHATSAPP_APP_SECRET is required for webhook signature verification'),
+    WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().min(1, 'WHATSAPP_WEBHOOK_VERIFY_TOKEN is required'),
+    WHATSAPP_REDIRECT_URI: z.string().optional(),
+
+    // Paystack (per-tenant keys; the platform-level only optionally overrides
+    // where Paystack redirects the customer after payment).
+    PAYSTACK_CALLBACK_URL: z.string().optional(),
+
+    // Phase 4b — BookingFlow platform Paystack (separate from per-tenant keys).
+    // Used by /billing routes to charge tenants for the SaaS subscription.
+    BOOKINGFLOW_PAYSTACK_SECRET_KEY: z.string().optional(),
+    BOOKINGFLOW_PAYSTACK_PUBLIC_KEY: z.string().optional(),
+    PAYSTACK_PLAN_STARTER_CODE: z.string().optional(),
+    PAYSTACK_PLAN_PRO_CODE: z.string().optional(),
+
+    // Phase 5a — Platform SMTP fallback. Either naming convention works:
+    //   SMTP_USER / SMTP_PASS / SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_FROM_NAME
+    //   BOOKINGFLOW_GMAIL_USER / BOOKINGFLOW_GMAIL_APP_PASSWORD / BOOKINGFLOW_GMAIL_FROM_NAME
+    // The SMTP_* names take precedence when both are set.
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.string().optional(),
+    SMTP_SECURE: z.string().optional(),
+    SMTP_FROM_NAME: z.string().optional(),
+    BOOKINGFLOW_GMAIL_USER: z.string().optional(),
+    BOOKINGFLOW_GMAIL_APP_PASSWORD: z.string().optional(),
+    BOOKINGFLOW_GMAIL_FROM_NAME: z.string().optional(),
+
+    // Google Calendar
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_REDIRECT_URI: z.string().optional(),
+
+    // Outlook (scaffolded)
+    OUTLOOK_CLIENT_ID: z.string().optional(),
+    OUTLOOK_CLIENT_SECRET: z.string().optional(),
+    OUTLOOK_REDIRECT_URI: z.string().optional(),
+
+    // Frontend
+    FRONTEND_URL: z.string().optional(),
+    NEXT_PUBLIC_API_URL: z.string().optional(),
+
+    // Observability (optional)
+    SENTRY_DSN: z.string().optional(),
+    SENTRY_TRACES_SAMPLE_RATE: z.string().optional(),
+});
+
+// In test mode, fall back to deterministic dummy values so unit tests that
+// merely import this module (transitively, via crypto / config) don't have
+// to set up every secret. Real env vars still take precedence if provided.
+if (process.env.NODE_ENV === 'test') {
+    const testDefaults: Record<string, string> = {
+        DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
+        JWT_SECRET: 'test-jwt-secret-test-jwt-secret-test',
+        JWT_REFRESH_SECRET: 'test-refresh-secret-test-refresh-secret',
+        ADMIN_JWT_SECRET: 'test-admin-secret-test-admin-secret',
+        ENCRYPTION_KEY: 'test-encryption-key-test-encryption-key',
+        WHATSAPP_APP_ID: 'test-app-id',
+        WHATSAPP_APP_SECRET: 'test-app-secret',
+        WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'test-verify-token',
+        WHATSAPP_REDIRECT_URI: 'http://localhost:3000/whatsapp',
+    };
+    for (const [k, v] of Object.entries(testDefaults)) {
+        if (!process.env[k]) process.env[k] = v;
+    }
+}
+
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+    const issues = parsed.error.issues
+        .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
+        .join('\n');
+    // Fail fast at boot — never let the app start with broken secrets
+    throw new Error(`Invalid environment configuration:\n${issues}`);
+}
+
+const env = parsed.data;
+
+export const config = {
+    port: parseInt(env.API_PORT, 10),
+    host: env.API_HOST,
+    nodeEnv: env.NODE_ENV,
+
+    databaseUrl: env.DATABASE_URL,
+    redisUrl: env.REDIS_URL,
+
+    jwtSecret: env.JWT_SECRET,
+    jwtRefreshSecret: env.JWT_REFRESH_SECRET,
+    adminJwtSecret: env.ADMIN_JWT_SECRET,
     jwtExpiresIn: '15m',
     jwtRefreshExpiresIn: '7d',
 
-    // Encryption
-    encryptionKey: process.env.ENCRYPTION_KEY!,
+    encryptionKey: env.ENCRYPTION_KEY,
 
-    // WhatsApp
     whatsapp: {
-        appId: process.env.WHATSAPP_APP_ID,
-        appSecret: process.env.WHATSAPP_APP_SECRET,
-        webhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+        appId: env.WHATSAPP_APP_ID,
+        appSecret: env.WHATSAPP_APP_SECRET,
+        webhookVerifyToken: env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+        redirectUri: env.WHATSAPP_REDIRECT_URI,
     },
 
-    // Google Calendar
+    paystack: {
+        callbackUrl: env.PAYSTACK_CALLBACK_URL,
+    },
+
+    // Phase 4b — BookingFlow's own Paystack for SaaS billing.
+    platformPaystack: {
+        secretKey: env.BOOKINGFLOW_PAYSTACK_SECRET_KEY,
+        publicKey: env.BOOKINGFLOW_PAYSTACK_PUBLIC_KEY,
+        planCodes: {
+            starter: env.PAYSTACK_PLAN_STARTER_CODE,
+            pro: env.PAYSTACK_PLAN_PRO_CODE,
+        },
+    },
+
+    // Phase 5a — Platform SMTP for fallback email sends. SMTP_* env vars
+    // are read first (standard nodemailer naming); BOOKINGFLOW_GMAIL_* are
+    // accepted as aliases for backward compatibility.
+    platformGmail: {
+        user: env.SMTP_USER || env.BOOKINGFLOW_GMAIL_USER,
+        appPassword: env.SMTP_PASS || env.BOOKINGFLOW_GMAIL_APP_PASSWORD,
+        fromName: env.SMTP_FROM_NAME || env.BOOKINGFLOW_GMAIL_FROM_NAME || 'BookingFlow',
+        host: env.SMTP_HOST || 'smtp.gmail.com',
+        port: env.SMTP_PORT ? parseInt(env.SMTP_PORT, 10) : 465,
+        secure: env.SMTP_SECURE ? env.SMTP_SECURE === 'true' : true,
+    },
+
     google: {
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        redirectUri: process.env.GOOGLE_REDIRECT_URI,
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+        redirectUri: env.GOOGLE_REDIRECT_URI,
     },
 
-    // Outlook Calendar
     outlook: {
-        clientId: process.env.OUTLOOK_CLIENT_ID,
-        clientSecret: process.env.OUTLOOK_CLIENT_SECRET,
-        redirectUri: process.env.OUTLOOK_REDIRECT_URI,
+        clientId: env.OUTLOOK_CLIENT_ID,
+        clientSecret: env.OUTLOOK_CLIENT_SECRET,
+        redirectUri: env.OUTLOOK_REDIRECT_URI,
     },
 
-    // Frontend
-    frontendUrl: process.env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') || 'http://localhost:3000',
+    frontendUrl: env.FRONTEND_URL || env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') || 'http://localhost:3000',
 
-    // CORS
     corsOrigins: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        process.env.FRONTEND_URL,
-    ].filter(Boolean) as string[],
+        env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,
+        env.NODE_ENV === 'development' ? 'http://localhost:3001' : null,
+        env.FRONTEND_URL,
+    ].filter((origin): origin is string => Boolean(origin)),
 };
-
-// Validate required environment variables
-const requiredEnvVars = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
-
-for (const envVar of requiredEnvVars) {
-    if (!process.env[envVar]) {
-        console.warn(`Warning: ${envVar} is not set`);
-    }
-}
 
 export type Config = typeof config;

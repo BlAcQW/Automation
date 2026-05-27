@@ -19,7 +19,12 @@ interface Booking {
     customerPhone: string;
     startTime: string;
     endTime: string;
-    status: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+    status: 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
+    paymentStatus?: 'UNPAID' | 'PAID' | 'REFUNDED';
+    paymentReference?: string | null;
+    paymentAuthorizationUrl?: string | null;
+    paidAt?: string | null;
+    depositAmount?: number | string | null;
     notes?: string;
     service: {
         name: string;

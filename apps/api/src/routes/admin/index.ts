@@ -3,6 +3,9 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { generateAdminTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
+import { audit } from '../../services/audit.js';
+import { PLAN_IDS } from '../../services/plans.js';
+import { currentMonthKey } from '../../services/usage.js';
 
 // Validation schemas
 const loginSchema = z.object({
@@ -21,6 +24,7 @@ const updateTenantSchema = z.object({
     name: z.string().min(2).optional(),
     isActive: z.boolean().optional(),
     timezone: z.string().optional(),
+    planId: z.enum(PLAN_IDS).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -63,14 +67,14 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             data: { lastLoginAt: new Date() },
         });
 
-        // Generate tokens
-        const accessToken = fastify.jwt.sign(
-            generateAdminTokenPayload(admin.id, admin.isSuperAdmin, 'admin_access'),
+        // Generate tokens using the ADMIN JWT namespace (separate secret).
+        const accessToken = (fastify as any).admin.jwt.sign(
+            generateAdminTokenPayload(admin.id, 'admin_access'),
             { expiresIn: config.jwtExpiresIn }
         );
 
-        const refreshToken = fastify.jwt.sign(
-            generateAdminTokenPayload(admin.id, admin.isSuperAdmin, 'admin_refresh'),
+        const refreshToken = (fastify as any).admin.jwt.sign(
+            generateAdminTokenPayload(admin.id, 'admin_refresh'),
             { expiresIn: config.jwtRefreshExpiresIn }
         );
 
@@ -97,7 +101,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/auth/me', {
         preHandler: [fastify.authenticateAdmin],
     }, async (request) => {
-        const { adminId } = (request as any).admin;
+        const adminId = request.admin!.adminId;
 
         const admin = await fastify.prisma.admin.findUnique({
             where: { id: adminId },
@@ -141,6 +145,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             }
             : {};
 
+        const month = currentMonthKey();
         const [tenants, total] = await Promise.all([
             fastify.prisma.tenant.findMany({
                 where,
@@ -155,6 +160,12 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                             services: true,
                         },
                     },
+                    // Only the current month's usage row; bounded fetch.
+                    tenantUsages: {
+                        where: { month },
+                        select: { messageCount: true },
+                        take: 1,
+                    },
                 },
             }),
             fastify.prisma.tenant.count({ where }),
@@ -166,6 +177,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 name: t.name,
                 timezone: t.timezone,
                 isActive: t.isActive,
+                planId: t.planId,
+                messagesThisMonth: t.tenantUsages[0]?.messageCount ?? 0,
                 whatsappConnected: !!t.whatsappPhoneNumberId,
                 whatsappDisplayNumber: t.whatsappDisplayNumber,
                 usersCount: t._count.users,
@@ -243,6 +256,18 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         const tenant = await fastify.prisma.tenant.update({
             where: { id },
             data: body,
+        });
+
+        await audit({
+            prisma: fastify.prisma,
+            action: 'tenant.updated',
+            actorType: 'ADMIN',
+            actorId: request.admin!.adminId,
+            tenantId: tenant.id,
+            targetType: 'Tenant',
+            targetId: tenant.id,
+            metadata: body as Record<string, unknown>,
+            ipAddress: request.ip,
         });
 
         return {
@@ -505,7 +530,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/admins', {
         preHandler: [fastify.authenticateAdmin],
     }, async (request) => {
-        const { isSuperAdmin } = (request as any).admin;
+        const { isSuperAdmin } = request.admin!;
 
         if (!isSuperAdmin) {
             throw fastify.httpErrors.forbidden('Super admin access required');
@@ -531,7 +556,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/admins', {
         preHandler: [fastify.authenticateAdmin],
     }, async (request) => {
-        const { isSuperAdmin } = (request as any).admin;
+        const { isSuperAdmin } = request.admin!;
 
         if (!isSuperAdmin) {
             throw fastify.httpErrors.forbidden('Super admin access required');

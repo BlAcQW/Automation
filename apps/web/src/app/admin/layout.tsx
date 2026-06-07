@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { adminApi } from '@/lib/api';
 import { Shield } from 'lucide-react';
@@ -16,29 +16,7 @@ import {
     BarChart3,
     LogOut,
 } from 'lucide-react';
-
-interface Admin {
-    id: string;
-    email: string;
-    name: string;
-    isSuperAdmin: boolean;
-}
-
-interface AdminContextType {
-    admin: Admin | null;
-    isLoading: boolean;
-    logout: () => void;
-}
-
-const AdminContext = createContext<AdminContextType | undefined>(undefined);
-
-function useAdmin() {
-    const context = useContext(AdminContext);
-    if (!context) {
-        throw new Error('useAdmin must be used within AdminLayout');
-    }
-    return context;
-}
+import { AdminContext, type Admin } from './admin-context';
 
 const navigation = [
     { name: 'Overview', href: '/admin', icon: LayoutDashboard },
@@ -191,5 +169,3 @@ export default function AdminLayout({
         </AdminContext.Provider>
     );
 }
-
-export { useAdmin };

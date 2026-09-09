@@ -5,6 +5,7 @@ import { TemplatePurpose } from '@prisma/client';
 import { syncBookingToCalendar, deleteCalendarEvent } from '../../services/calendar.js';
 import { scheduleNotification, scheduleReminder, cancelReminder } from '../../services/notification.js';
 import { cancelBooking } from '../../services/booking-cancel.js';
+import { createNotification } from '../../services/notifications.js';
 import { generatePublicToken } from '../../lib/public-token.js';
 
 // Validation schemas
@@ -205,16 +206,14 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             prisma: fastify.prisma,
         });
 
-        // Create in-app notification
-        await fastify.prisma.notification.create({
-            data: {
-                tenantId,
-                type: 'NEW_BOOKING',
-                title: 'New Booking',
-                message: `${body.customerName} booked ${service.name} for ${body.startTime.toLocaleDateString()}`,
-                metadata: { bookingId: booking.id, bookingReference: booking.bookingReference },
-            },
-        });
+        // Create in-app notification + mobile push (best-effort push).
+        await createNotification(fastify.prisma, {
+            tenantId,
+            type: 'NEW_BOOKING',
+            title: 'New Booking',
+            message: `${body.customerName} booked ${service.name} for ${body.startTime.toLocaleDateString()}`,
+            metadata: { bookingId: booking.id, bookingReference: booking.bookingReference },
+        }, fastify.log);
 
         return booking;
     });

@@ -35,6 +35,7 @@ import billingRoutes from './routes/billing/index.js';
 import publicRoutes from './routes/public/index.js';
 import smsRoutes from './routes/sms/index.js';
 import emailRoutes from './routes/email/index.js';
+import devicesRoutes from './routes/devices/index.js';
 
 const app = Fastify({
     logger: {
@@ -153,6 +154,7 @@ async function buildApp() {
     await app.register(publicRoutes, { prefix: '/public' });
     await app.register(smsRoutes, { prefix: '/sms' });
     await app.register(emailRoutes, { prefix: '/email' });
+    await app.register(devicesRoutes, { prefix: '/devices' });
 
     return app;
 }

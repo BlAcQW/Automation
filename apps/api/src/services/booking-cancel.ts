@@ -14,6 +14,7 @@
 import { Queue } from 'bullmq';
 import { TemplatePurpose } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
+import { createNotification } from './notifications.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
 import { deleteCalendarEvent } from './calendar.js';
 
@@ -82,15 +83,13 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
         jobId: `booking_cancelled_${booking.id}`,
     }).catch(() => undefined);
 
-    // In-app dashboard notification for the tenant.
-    await prisma.notification.create({
-        data: {
-            tenantId: booking.tenantId,
-            type: 'BOOKING_CANCELLED',
-            title: 'Booking Cancelled',
-            message: `Booking ${booking.bookingReference} has been cancelled`,
-            metadata: { bookingId: booking.id, reason },
-        },
+    // In-app dashboard notification for the tenant + mobile push.
+    await createNotification(prisma, {
+        tenantId: booking.tenantId,
+        type: 'BOOKING_CANCELLED',
+        title: 'Booking Cancelled',
+        message: `Booking ${booking.bookingReference} has been cancelled`,
+        metadata: { bookingId: booking.id, reason },
     }).catch(() => undefined);
 
     return {

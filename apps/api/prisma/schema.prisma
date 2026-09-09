@@ -88,10 +88,30 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deviceTokens DeviceToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
+}
+
+// DeviceToken — a mobile device's push token (Expo push token, or FCM/APNs).
+// Registered by the mobile app after the user grants notification permission,
+// and used to fan out push notifications to a tenant's owners/staff when an
+// in-app Notification is created (new booking, cancellation, new conversation).
+model DeviceToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tenantId   String // denormalised for cheap tenant-wide fan-out
+  token      String   @unique // Expo push token (ExponentPushToken[...]) or native token
+  platform   String // 'ios' | 'android'
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
 }
 
 enum Role {

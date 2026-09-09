@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Bookly",
+    "slug": "bookly-mobile",
+    "scheme": "bookly",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "online.ikieguy.bookly"
+    },
+    "android": {
+      "package": "online.ikieguy.bookly"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {}
+    }
+  }
+}

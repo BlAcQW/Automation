@@ -1,4 +1,4 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { generateTokenPayload } from '../../plugins/auth.js';
@@ -21,6 +21,33 @@ const loginSchema = z.object({
     email: z.string().email(),
     password: z.string(),
 });
+
+// Refresh-token transport differs by client:
+//  - Web clients receive the refresh token as an HTTP-only cookie and the
+//    browser replays it automatically (secure against XSS token theft).
+//  - Native/mobile clients cannot persist cookies, so when they identify
+//    themselves via `X-Client: mobile` we ALSO return the refresh token in the
+//    JSON body and accept it back on /refresh from the body. Web behaviour is
+//    unchanged because the web client never sends that header.
+function isMobileClient(request: FastifyRequest): boolean {
+    const header = request.headers['x-client'];
+    const value = Array.isArray(header) ? header[0] : header;
+    return typeof value === 'string' && value.toLowerCase() === 'mobile';
+}
+
+// Read the refresh token from (1) the HTTP-only cookie (web) or (2) the JSON
+// body `refreshToken` (mobile). Returns undefined when neither is present.
+function extractRefreshToken(request: FastifyRequest): string | undefined {
+    const cookieToken = request.cookies?.refreshToken;
+    if (cookieToken) return cookieToken;
+
+    const body = request.body as { refreshToken?: unknown } | undefined;
+    if (body && typeof body.refreshToken === 'string' && body.refreshToken.length > 0) {
+        return body.refreshToken;
+    }
+
+    return undefined;
+}
 
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /auth/register - Create new tenant + owner user
@@ -121,6 +148,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 timezone: result.tenant.timezone,
             },
             accessToken,
+            // Mobile clients can't use the cookie — hand them the refresh token.
+            ...(isMobileClient(request) && { refreshToken }),
         };
     });
 
@@ -219,6 +248,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 timezone: user.tenant.timezone,
             },
             accessToken,
+            // Mobile clients can't use the cookie — hand them the refresh token.
+            ...(isMobileClient(request) && { refreshToken }),
         };
     });
 
@@ -253,9 +284,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         };
     });
 
-    // POST /auth/refresh - Refresh access token
+    // POST /auth/refresh - Refresh access token.
+    // Accepts the refresh token from the HTTP-only cookie (web) or the JSON
+    // body `{ refreshToken }` (mobile). Mobile clients also get a rotated
+    // refresh token back in the body so long-lived sessions keep working.
     fastify.post('/refresh', async (request, reply) => {
-        const refreshToken = request.cookies.refreshToken;
+        const refreshToken = extractRefreshToken(request);
 
         if (!refreshToken) {
             throw fastify.httpErrors.unauthorized('No refresh token provided');
@@ -288,6 +322,17 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 generateTokenPayload(user.id, user.tenantId, user.role, 'access'),
                 { expiresIn: config.jwtExpiresIn }
             );
+
+            // For mobile clients, rotate the refresh token and return it in the
+            // body (there is no cookie to update). Web clients keep their
+            // existing cookie and just receive the new access token.
+            if (isMobileClient(request)) {
+                const rotatedRefreshToken = fastify.jwt.sign(
+                    generateTokenPayload(user.id, user.tenantId, user.role, 'refresh'),
+                    { expiresIn: config.jwtRefreshExpiresIn }
+                );
+                return { accessToken, refreshToken: rotatedRefreshToken };
+            }
 
             return { accessToken };
         } catch (err) {

@@ -1,19 +1,13 @@
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
 import { AxiosError } from 'axios';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/context';
+import { useTheme } from '@/theme';
+import { Screen, Text, Button } from '@/components/ui';
 
 export default function LoginScreen() {
+  const t = useTheme();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +20,6 @@ export default function LoginScreen() {
     setError(null);
     try {
       await login(email.trim(), password);
-      // AuthGate redirects to (tabs) on success.
     } catch (err) {
       const axiosErr = err as AxiosError<{ message?: string }>;
       setError(axiosErr.response?.data?.message ?? 'Login failed. Check your details and try again.');
@@ -35,77 +28,82 @@ export default function LoginScreen() {
     }
   }
 
+  const inputStyle = {
+    backgroundColor: t.colors.surfaceSunken,
+    borderColor: t.colors.border,
+    borderWidth: 1,
+    borderRadius: t.radius.md,
+    paddingHorizontal: t.space.lg,
+    paddingVertical: 14,
+    color: t.colors.text,
+    fontFamily: t.fonts.bodyMedium,
+    fontSize: 16,
+  } as const;
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <Screen padded edges={['top', 'bottom']}>
       <KeyboardAvoidingView
-        style={styles.container}
+        style={{ flex: 1, justifyContent: 'center', gap: t.space.md }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.brand}>
-          <Text style={styles.logo}>Bookly</Text>
-          <Text style={styles.subtitle}>Manage your bookings on the go</Text>
+        <View style={{ alignItems: 'center', marginBottom: t.space.xl, gap: t.space.sm }}>
+          <View
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: 20,
+              backgroundColor: t.colors.primary,
+              alignItems: 'center',
+              justifyContent: 'center',
+              ...t.elevation(2),
+            }}
+          >
+            <Ionicons name="calendar-clear" size={30} color={t.colors.onPrimary} />
+          </View>
+          <Text variant="display" weight="extra">
+            Bookly
+          </Text>
+          <Text variant="bodySm" tone="muted">
+            Run your bookings from anywhere
+          </Text>
         </View>
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {error ? (
+          <View
+            style={{
+              backgroundColor: t.colors.dangerSoft,
+              borderRadius: t.radius.md,
+              padding: t.space.md,
+            }}
+          >
+            <Text variant="bodySm" tone="danger" center>
+              {error}
+            </Text>
+          </View>
+        ) : null}
 
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           placeholder="Email"
-          placeholderTextColor="#6b7280"
+          placeholderTextColor={t.colors.textSubtle}
           autoCapitalize="none"
+          autoComplete="email"
           keyboardType="email-address"
           value={email}
           onChangeText={setEmail}
         />
         <TextInput
-          style={styles.input}
+          style={inputStyle}
           placeholder="Password"
-          placeholderTextColor="#6b7280"
+          placeholderTextColor={t.colors.textSubtle}
           secureTextEntry
+          autoComplete="password"
           value={password}
           onChangeText={setPassword}
         />
 
-        <TouchableOpacity
-          style={[styles.button, submitting && styles.buttonDisabled]}
-          onPress={onSubmit}
-          disabled={submitting}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#04150c" />
-          ) : (
-            <Text style={styles.buttonText}>Log in</Text>
-          )}
-        </TouchableOpacity>
+        <Button label="Log in" onPress={onSubmit} loading={submitting} fullWidth size="lg" style={{ marginTop: t.space.xs }} />
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0b0f14' },
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, gap: 14 },
-  brand: { alignItems: 'center', marginBottom: 24 },
-  logo: { color: '#25D366', fontSize: 40, fontWeight: '800', letterSpacing: -1 },
-  subtitle: { color: '#9ca3af', fontSize: 15, marginTop: 6 },
-  input: {
-    backgroundColor: '#151b23',
-    borderColor: '#232b36',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: '#f9fafb',
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: '#25D366',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#04150c', fontSize: 16, fontWeight: '700' },
-  error: { color: '#f87171', textAlign: 'center' },
-});

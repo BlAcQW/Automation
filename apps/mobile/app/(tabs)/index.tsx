@@ -1,96 +1,128 @@
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/api/client';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/context';
+import { useTheme } from '@/theme';
+import { useDashboardStats, useWhatsappStatus } from '@/api/hooks';
+import { Text, Card, Badge } from '@/components/ui';
 
-interface DashboardStats {
-  totalBookings?: number;
-  todayBookings?: number;
-  activeConversations?: number;
-  totalCustomers?: number;
-  totalSales?: number;
-  totalOrders?: number;
-}
+type IoniconName = keyof typeof Ionicons.glyphMap;
 
-function useDashboardStats() {
-  return useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: async (): Promise<DashboardStats> => {
-      const res = await api.get('/dashboard/stats');
-      return res.data;
-    },
-    refetchInterval: 60_000,
-  });
-}
-
-function StatCard({ label, value }: { label: string; value: number | string }) {
+function StatCard({ icon, label, value }: { icon: IoniconName; label: string; value: number | string }) {
+  const t = useTheme();
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardValue}>{value}</Text>
-      <Text style={styles.cardLabel}>{label}</Text>
-    </View>
+    <Card style={{ flexGrow: 1, flexBasis: '46%', gap: t.space.sm }}>
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          backgroundColor: t.colors.primarySoft,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name={icon} size={19} color={t.colors.primaryText} />
+      </View>
+      <Text variant="h1" weight="extra">
+        {value}
+      </Text>
+      <Text variant="caption" tone="muted">
+        {label}
+      </Text>
+    </Card>
   );
 }
 
 export default function DashboardScreen() {
-  const { tenant } = useAuth();
+  const t = useTheme();
+  const router = useRouter();
+  const { tenant, user } = useAuth();
   const isProduct = tenant?.businessType === 'PRODUCT';
   const { data, isLoading, isRefetching, refetch, isError } = useDashboardStats();
+  const { data: wa } = useWhatsappStatus();
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#25D366" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: t.colors.background }}>
+        <ActivityIndicator size="large" color={t.colors.primary} />
       </View>
     );
   }
 
-  const cards = isProduct
+  const cards: { icon: IoniconName; label: string; value: number }[] = isProduct
     ? [
-        { label: 'Total Sales', value: data?.totalSales ?? 0 },
-        { label: 'Orders', value: data?.totalOrders ?? 0 },
-        { label: 'Active Chats', value: data?.activeConversations ?? 0 },
-        { label: 'Customers', value: data?.totalCustomers ?? 0 },
+        { icon: 'cash-outline', label: 'Total Sales', value: data?.totalSales ?? 0 },
+        { icon: 'cart-outline', label: 'Orders', value: data?.totalOrders ?? 0 },
+        { icon: 'chatbubbles-outline', label: 'Active Chats', value: data?.activeConversations ?? 0 },
+        { icon: 'people-outline', label: 'Customers', value: data?.totalCustomers ?? 0 },
       ]
     : [
-        { label: 'Total Bookings', value: data?.totalBookings ?? 0 },
-        { label: "Today's Bookings", value: data?.todayBookings ?? 0 },
-        { label: 'Active Chats', value: data?.activeConversations ?? 0 },
-        { label: 'Customers', value: data?.totalCustomers ?? 0 },
+        { icon: 'calendar-outline', label: 'Total Bookings', value: data?.totalBookings ?? 0 },
+        { icon: 'today-outline', label: "Today's Bookings", value: data?.todayBookings ?? 0 },
+        { icon: 'chatbubbles-outline', label: 'Active Chats', value: data?.activeConversations ?? 0 },
+        { icon: 'people-outline', label: 'Customers', value: data?.totalCustomers ?? 0 },
       ];
+
+  const firstName = (user?.name ?? '').split(' ')[0];
 
   return (
     <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#25D366" />}
+      style={{ flex: 1, backgroundColor: t.colors.background }}
+      contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}
+      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
     >
-      <Text style={styles.greeting}>{tenant?.name ?? 'Your business'}</Text>
-      {isError && <Text style={styles.error}>Couldn&apos;t load stats. Pull to refresh.</Text>}
-      <View style={styles.grid}>
+      <View style={{ gap: 2 }}>
+        <Text variant="bodySm" tone="muted">
+          {firstName ? `Hi ${firstName},` : 'Welcome back,'}
+        </Text>
+        <Text variant="h1" weight="extra">
+          {tenant?.name ?? 'Your business'}
+        </Text>
+      </View>
+
+      {/* WhatsApp connection strip */}
+      <Pressable onPress={() => router.push('/whatsapp')}>
+        <Card padded style={{ flexDirection: 'row', alignItems: 'center', gap: t.space.md }}>
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: wa?.connected ? t.colors.successSoft : t.colors.warningSoft,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons
+              name={wa?.connected ? 'logo-whatsapp' : 'alert-circle-outline'}
+              size={22}
+              color={wa?.connected ? t.colors.success : t.colors.warning}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text variant="bodySm" weight="semi">
+              WhatsApp {wa?.connected ? 'connected' : 'not connected'}
+            </Text>
+            <Text variant="caption" tone="muted">
+              {wa?.connected ? wa.displayNumber ?? 'Bot is live' : 'Tap to connect your number'}
+            </Text>
+          </View>
+          <Badge label={wa?.connected ? 'Live' : 'Setup'} tone={wa?.connected ? 'success' : 'warning'} />
+        </Card>
+      </Pressable>
+
+      {isError ? (
+        <Text variant="bodySm" tone="danger">
+          Couldn&apos;t load stats. Pull to refresh.
+        </Text>
+      ) : null}
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: t.space.md }}>
         {cards.map((c) => (
-          <StatCard key={c.label} label={c.label} value={c.value} />
+          <StatCard key={c.label} icon={c.icon} label={c.label} value={c.value} />
         ))}
       </View>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0b0f14' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b0f14' },
-  content: { padding: 16 },
-  greeting: { color: '#f9fafb', fontSize: 22, fontWeight: '700', marginBottom: 16 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  card: {
-    backgroundColor: '#151b23',
-    borderColor: '#232b36',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 18,
-    width: '47%',
-  },
-  cardValue: { color: '#25D366', fontSize: 28, fontWeight: '800' },
-  cardLabel: { color: '#9ca3af', fontSize: 13, marginTop: 6 },
-  error: { color: '#f87171', marginBottom: 12 },
-});

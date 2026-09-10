@@ -36,6 +36,9 @@ import publicRoutes from './routes/public/index.js';
 import smsRoutes from './routes/sms/index.js';
 import emailRoutes from './routes/email/index.js';
 import devicesRoutes from './routes/devices/index.js';
+import usersRoutes from './routes/users/index.js';
+import websocket from '@fastify/websocket';
+import realtimeRoutes from './routes/realtime/index.js';
 
 const app = Fastify({
     logger: {
@@ -155,6 +158,11 @@ async function buildApp() {
     await app.register(smsRoutes, { prefix: '/sms' });
     await app.register(emailRoutes, { prefix: '/email' });
     await app.register(devicesRoutes, { prefix: '/devices' });
+    await app.register(usersRoutes, { prefix: '/users' });
+    // Live updates over WebSocket (GET /ws). Registered after the plugin so the
+    // route can opt in with { websocket: true }.
+    await app.register(websocket);
+    await app.register(realtimeRoutes);
 
     return app;
 }

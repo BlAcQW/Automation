@@ -19,6 +19,30 @@ export interface PushPayload {
     data?: Record<string, unknown>;
 }
 
+export interface ExpoMessage {
+    to: string;
+    title: string;
+    body: string;
+    data: Record<string, unknown>;
+    sound: 'default';
+}
+
+/**
+ * Pure: filter a list of raw device tokens down to valid Expo push tokens and
+ * shape them into Expo message objects. Exported for unit testing.
+ */
+export function buildExpoMessages(tokens: string[], payload: PushPayload): ExpoMessage[] {
+    return tokens
+        .filter((token) => EXPO_TOKEN_RE.test(token))
+        .map((to) => ({
+            to,
+            title: payload.title,
+            body: payload.body,
+            data: payload.data ?? {},
+            sound: 'default' as const,
+        }));
+}
+
 interface PushLogger {
     warn: (obj: unknown, msg?: string) => void;
 }
@@ -39,16 +63,7 @@ export async function sendPushToTenant(
             select: { token: true },
         });
 
-        const messages = devices
-            .map((d) => d.token)
-            .filter((token) => EXPO_TOKEN_RE.test(token))
-            .map((to) => ({
-                to,
-                title: payload.title,
-                body: payload.body,
-                data: payload.data ?? {},
-                sound: 'default' as const,
-            }));
+        const messages = buildExpoMessages(devices.map((d) => d.token), payload);
 
         if (messages.length === 0) return;
 

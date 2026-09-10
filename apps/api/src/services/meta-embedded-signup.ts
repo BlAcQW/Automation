@@ -93,7 +93,10 @@ async function fetchJson<T>(url: string, init?: RequestInit, step: EmbeddedSignu
  * For now we take the first WABA and the first phone number — documented in
  * the plan.
  */
-export async function completeEmbeddedSignup(code: string): Promise<EmbeddedSignupResult> {
+export async function completeEmbeddedSignup(
+    code: string,
+    redirectUri?: string,
+): Promise<EmbeddedSignupResult> {
     if (!config.whatsapp.appId || !config.whatsapp.appSecret) {
         throw new EmbeddedSignupError(
             'config',
@@ -101,15 +104,17 @@ export async function completeEmbeddedSignup(code: string): Promise<EmbeddedSign
         );
     }
 
-    // Step 1 — token exchange
-    // redirect_uri intentionally omitted: the FB JS SDK manages its own
-    // internal redirect URL for the popup flow. Passing an app-specific URL
-    // forces Meta into OAuth-redirect validation, which rejects domains
-    // not yet propagated in the App's whitelist.
+    // Step 1 — token exchange.
+    // Web (FB JS SDK): redirect_uri omitted — the SDK manages its own popup
+    // redirect. Native (WebView OAuth): the code IS bound to the https
+    // redirect_uri the dialog used, so it MUST be replayed here to match.
     const tokenUrl = new URL(`${GRAPH_BASE}/oauth/access_token`);
     tokenUrl.searchParams.set('client_id', config.whatsapp.appId);
     tokenUrl.searchParams.set('client_secret', config.whatsapp.appSecret);
     tokenUrl.searchParams.set('code', code);
+    if (redirectUri) {
+        tokenUrl.searchParams.set('redirect_uri', redirectUri);
+    }
 
     const token = await fetchJson<TokenExchangeResponse>(tokenUrl.toString(), undefined, 'token_exchange');
     if (!token.access_token) {

@@ -21,6 +21,14 @@ npm start        # then press i (iOS) / a (Android), or scan the QR in Expo Go
 ```
 Default API base URL: `https://bookly.ikieguy.online/api` (override with `EXPO_PUBLIC_API_URL`).
 
+### Optional env (native WhatsApp Embedded Signup)
+```
+EXPO_PUBLIC_WHATSAPP_APP_ID=<meta app id>
+EXPO_PUBLIC_WHATSAPP_CONFIG_ID=<embedded signup config id>
+```
+Also whitelist `https://bookly.ikieguy.online/api/whatsapp/native-callback` in the Meta app's
+**Valid OAuth Redirect URIs**. Without these, the WhatsApp screen falls back to manual connect.
+
 > **Push note:** Expo push tokens are only issued on a **physical device** (not simulators). Test push
 > on a real phone via Expo Go / a dev build.
 
@@ -42,6 +50,22 @@ src/
   lib/config.ts          # API base URL + client header
   components/Placeholder.tsx
 ```
+
+## Building & shipping (EAS)
+Config lives in `eas.json`. First time:
+```bash
+npm i -g eas-cli
+eas login
+eas init            # creates the EAS project + writes extra.eas.projectId into app.json
+```
+Then:
+```bash
+eas build --profile preview --platform android     # internal test build
+eas build --profile production --platform all       # store builds
+eas submit --profile production --platform ios       # / --platform android
+```
+> Push notifications need the EAS `projectId` (added by `eas init`) — `getExpoPushTokenAsync`
+> reads it. Until then, device registration on login is a no-op on real builds.
 
 ## Next build-out (per PRD)
 Conversations inbox (24h-window + quota aware), Bookings list/detail + payment links, Services &

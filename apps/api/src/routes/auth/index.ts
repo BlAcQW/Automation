@@ -1,9 +1,10 @@
-import { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { generateTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
+import { extractRefreshToken, isMobileClient } from '../../lib/auth-transport.js';
 
 // Validation schemas. `businessType` is optional and defaults to SERVICE so
 // older / SERVICE-only clients can omit it. The handler decides whether to
@@ -22,33 +23,10 @@ const loginSchema = z.object({
     password: z.string(),
 });
 
-// Refresh-token transport differs by client:
-//  - Web clients receive the refresh token as an HTTP-only cookie and the
-//    browser replays it automatically (secure against XSS token theft).
-//  - Native/mobile clients cannot persist cookies, so when they identify
-//    themselves via `X-Client: mobile` we ALSO return the refresh token in the
-//    JSON body and accept it back on /refresh from the body. Web behaviour is
-//    unchanged because the web client never sends that header.
-function isMobileClient(request: FastifyRequest): boolean {
-    const header = request.headers['x-client'];
-    const value = Array.isArray(header) ? header[0] : header;
-    return typeof value === 'string' && value.toLowerCase() === 'mobile';
-}
-
-// Read the refresh token from (1) the HTTP-only cookie (web) or (2) the JSON
-// body `refreshToken` (mobile). Returns undefined when neither is present.
-function extractRefreshToken(request: FastifyRequest): string | undefined {
-    const cookieToken = request.cookies?.refreshToken;
-    if (cookieToken) return cookieToken;
-
-    const body = request.body as { refreshToken?: unknown } | undefined;
-    if (body && typeof body.refreshToken === 'string' && body.refreshToken.length > 0) {
-        return body.refreshToken;
-    }
-
-    return undefined;
-}
-
+// Refresh-token transport differs by client (see lib/auth-transport.ts):
+//  - Web: refresh token as an HTTP-only cookie, replayed automatically.
+//  - Mobile (`X-Client: mobile`): refresh token returned in and read from the
+//    JSON body, since native clients have no cookie jar.
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /auth/register - Create new tenant + owner user
     fastify.post('/register', async (request, reply) => {
@@ -149,7 +127,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             },
             accessToken,
             // Mobile clients can't use the cookie — hand them the refresh token.
-            ...(isMobileClient(request) && { refreshToken }),
+            ...(isMobileClient(request.headers) && { refreshToken }),
         };
     });
 
@@ -249,7 +227,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             },
             accessToken,
             // Mobile clients can't use the cookie — hand them the refresh token.
-            ...(isMobileClient(request) && { refreshToken }),
+            ...(isMobileClient(request.headers) && { refreshToken }),
         };
     });
 
@@ -326,7 +304,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             // For mobile clients, rotate the refresh token and return it in the
             // body (there is no cookie to update). Web clients keep their
             // existing cookie and just receive the new access token.
-            if (isMobileClient(request)) {
+            if (isMobileClient(request.headers)) {
                 const rotatedRefreshToken = fastify.jwt.sign(
                     generateTokenPayload(user.id, user.tenantId, user.role, 'refresh'),
                     { expiresIn: config.jwtRefreshExpiresIn }

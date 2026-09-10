@@ -1,6 +1,7 @@
 import type { NotificationType, Prisma } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { sendPushToTenant } from './push.js';
+import { publish } from './realtime.js';
 
 /**
  * Central helper for creating an owner/staff-facing in-app Notification AND
@@ -35,6 +36,9 @@ export async function createNotification(
             ...(args.metadata !== undefined && { metadata: args.metadata }),
         },
     });
+
+    // Live nudge to any open app (WebSocket) so it refetches immediately.
+    publish(args.tenantId, { type: 'notification' });
 
     const data: Record<string, unknown> = { type: args.type };
     if (args.metadata && typeof args.metadata === 'object' && !Array.isArray(args.metadata)) {

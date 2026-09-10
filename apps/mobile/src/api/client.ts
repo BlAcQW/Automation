@@ -1,4 +1,5 @@
-import axios, { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import axios from 'axios';
+import type { AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { API_BASE_URL, CLIENT_HEADER } from '@/lib/config';
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '@/auth/store';
 

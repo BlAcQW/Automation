@@ -8,6 +8,7 @@ import {
     completeEmbeddedSignup,
     EmbeddedSignupError,
 } from '../../services/meta-embedded-signup.js';
+import { publish } from '../../services/realtime.js';
 
 /**
  * Verify Meta's `X-Hub-Signature-256` header against the raw request body
@@ -219,11 +220,16 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.forbidden('Only owner can connect WhatsApp');
         }
 
-        const { code } = z.object({ code: z.string().min(1) }).parse(request.body);
+        // `redirectUri` is sent by the native app's WebView OAuth flow so the
+        // token exchange can match the https redirect the code was issued for.
+        // Web (FB JS SDK) omits it.
+        const { code, redirectUri } = z
+            .object({ code: z.string().min(1), redirectUri: z.string().url().optional() })
+            .parse(request.body);
 
         let result;
         try {
-            result = await completeEmbeddedSignup(code);
+            result = await completeEmbeddedSignup(code, redirectUri);
         } catch (err) {
             if (err instanceof EmbeddedSignupError) {
                 request.log.warn({ step: err.step, details: err.details }, 'Embedded signup failed');
@@ -337,6 +343,23 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         return { success: true };
+    });
+
+    // GET /whatsapp/native-callback - https bridge for the mobile app's WebView
+    // Embedded Signup. Facebook requires an https redirect_uri (not a custom app
+    // scheme), so the dialog returns here; we bounce the `code` back into the
+    // app via its deep-link scheme, where it is POSTed to /embedded-signup with
+    // this same URL as `redirectUri`. Public + no rate limit (OAuth redirect).
+    fastify.get('/native-callback', { config: { rateLimit: false } }, async (request, reply) => {
+        const query = z
+            .object({ code: z.string().optional(), error: z.string().optional(), state: z.string().optional() })
+            .parse(request.query);
+
+        const appScheme = 'bookly://whatsapp';
+        const params = new URLSearchParams();
+        if (query.code) params.set('code', query.code);
+        if (query.error) params.set('error', query.error);
+        return reply.redirect(`${appScheme}?${params.toString()}`);
     });
 
     // POST /whatsapp/send-test - Send a test message. Tight per-tenant
@@ -521,6 +544,9 @@ async function processMessage(
         where: { id: conversation.id },
         data: { updatedAt: now, lastInboundAt: now },
     });
+
+    // Live nudge to any open app so the chat thread + inbox refetch instantly.
+    publish(tenant.id, { type: 'message', conversationId: conversation.id });
 
     // Human takeover handling. While HUMAN_ACTIVE, the bot is silent — except
     // if the customer types one of the escape keywords, in which case we

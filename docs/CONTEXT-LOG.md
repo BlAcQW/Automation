@@ -61,6 +61,63 @@
 
 ## Session Log (newest first)
 
+### 2026-09-10 (later still) — G3 (WebSocket live chat) + G6 (native Embedded Signup)
+- **G3 — DONE & LIVE (backend verified).**
+  - Backend: `@fastify/websocket@8` installed; `apps/api/src/services/realtime.ts` (in-memory per-tenant pub/sub) + `routes/realtime/index.ts` (`GET /ws`, JWT via `?token=`, access-type only). Registered plugin+route in index.ts. `publish()` wired into `createNotification` (type:'notification') and the WhatsApp webhook inbound message (type:'message', conversationId).
+  - nginx: added WS `Upgrade`/`Connection $connection_upgrade` (map already in conf.d) + `proxy_read_timeout 3600s` to bookly `/api/`. Verified: `wss://…/api/ws` upgrades (101) over **HTTP/1.1** (curl over HTTP/2 shows 404 — expected; RN uses HTTP/1.1).
+  - Mobile: `src/realtime/useRealtime.ts` connects with the access token, invalidates React Query caches per event, exponential-backoff reconnect; mounted in `app/_layout.tsx` AuthGate. Polling stays as backstop.
+  - Tests: `realtime.test.ts` (3) — tenant isolation, cleanup, error-safe. **Full API suite now 175 pass (17 files).**
+- **G6 — DONE (WebView flow; needs Meta config + build to run live).**
+  - Backend: `completeEmbeddedSignup(code, redirectUri?)` now replays redirect_uri for the native flow; `/whatsapp/embedded-signup` accepts optional `redirectUri`; new public `GET /whatsapp/native-callback` bounces `?code` to `bookly://whatsapp` (verified 302). FB requires an **https** redirect (not a custom scheme), hence the bridge.
+  - Mobile: `src/features/whatsapp/useEmbeddedSignup.ts` (expo-web-browser `openAuthSessionAsync` → capture code → POST embedded-signup); "Connect with Facebook" button on `app/whatsapp.tsx` shown when configured, else manual connect. New deps: expo-web-browser. Env: `EXPO_PUBLIC_WHATSAPP_APP_ID`/`_CONFIG_ID`; whitelist the native-callback URL in Meta.
+- **Remaining before launch:** `npm install` + run on device (shake out shapes), set the Meta env + redirect whitelist, `eas init`, then `eas build`/`submit`. This effectively closes Phases 0–4.
+
+### 2026-09-10 (later) — Phase 4 (tests, pickers, EAS; G3/G6 assessed)
+- **Backend tests — DONE & GREEN (verified here).** Extracted pure helpers and unit-tested them:
+  - `apps/api/src/lib/auth-transport.ts` (isMobileClient, extractRefreshToken) + `auth-transport.test.ts` — auth/index.ts now imports these (removed the inline dupes).
+  - `apps/api/src/services/push.ts` now exports pure `buildExpoMessages()` + `push.test.ts`.
+  - **Full suite: 172 tests pass (16 files)**, incl. 10 new. tsc clean, API rebuilt + `pm2 restart` + health OK. No regressions.
+- **Date/time pickers (mobile):** `src/components/ui/DateTimeField.tsx` (@react-native-community/datetimepicker, iOS spinner / Android dialog, HH:MM & YYYY-MM-DD). Availability now uses it for working-hours open/close and blackout date. Added dep to package.json.
+- **EAS build/submit:** `apps/mobile/eas.json` (development/preview/production + submit) + README build/ship steps. NOTE: run `eas init` to get `extra.eas.projectId` (also unblocks real push tokens).
+- **G3 (WebSocket live chat) — DEFERRED (documented, not built).** Backend has no WS/SSE server; adding one + a native client is large and un-testable in this env. Current behaviour = push (G2) + smart polling (chat 5s / inbox 15s), which is acceptable for v1. Do WS with a live device.
+- **G6 (native Embedded Signup) — PARTIAL.** Native **manual-connect** (paste creds → POST /whatsapp/connect) already works in `app/whatsapp.tsx`. Full one-tap FB Embedded Signup on native needs react-native-fbsdk-next or a WebView code-capture + native config; deferred to a real build.
+- **Roadmap:** Phases 0–4 essentially complete except the two deferred native items (G3 WS, full G6) which require a device/native build. Remaining before store launch: `eas init`, run the app, fix any real shape mismatches, then `eas build`/`submit`.
+
+### 2026-09-10 — Phase 3 (PRODUCT mode + Staff/G5)
+- **Backend G5 — DONE & LIVE.** New `apps/api/src/routes/users/index.ts` (mounted `/users`): `GET /users` (list tenant users), `POST /users` (OWNER-only create STAFF, bcrypt, email-unique), `PATCH /users/:id` (rename / (de)activate, owner-protected, tenant-scoped, audited). tsc clean, built, `pm2 restart bookly-api`, verified 401.
+- **PRODUCT mode (mobile):**
+  - Products — `src/features/products/ProductsList.tsx` (FAB + toggle) + `ProductForm.tsx`; routes `app/products/new.tsx`, `app/products/[id].tsx`. CRUD via /products.
+  - Orders — `src/features/orders/OrdersList.tsx` + `app/orders/[id].tsx` (items, status badges, **advance-status** flow via nextOrderStatus, cancel, wa.me).
+  - The **Bookings** and **Services** tabs now branch on `tenant.businessType === 'PRODUCT'` → render Orders / Products (tabs already relabel in `_layout`). Early returns placed AFTER all hooks (rules-of-hooks safe).
+- **Team/Staff (mobile):** `app/team.tsx` — list members, owner can add staff + (de)activate. Hooks: useTeam/useAddTeamMember/useUpdateTeamMember. Linked from More.
+- **New hooks:** products CRUD/toggle, orders list + status update, team. **New types:** Product, Order/OrderItem/OrderStatus, TeamMember. **New format helpers:** orderStatusLabel/Tone, nextOrderStatus.
+- **NOT compile-verified** on mobile (no Expo install here). Verify shapes: `/products`, `/orders` (items[], product.name, totalAmount), `/users` (`{users:[...]}`).
+- **Roadmap:** Phase 0/1/2/3 core done. **Phase 4 remaining:** full native Embedded Signup (G6), WebSocket live chat (G3), date/time pickers, tests, EAS build + store submission. PRODUCT screens are gated by businessType but remember the web also gates products behind a feature flag — confirm the tenant is truly PRODUCT before relying on them.
+
+### 2026-09-09 (later still) — Phase 2 UI (parity screens)
+- **Services** — tab list with FAB + active toggle (`app/(tabs)/services.tsx`); shared `src/features/services/ServiceForm.tsx` used by `app/services/new.tsx` and `app/services/[id].tsx` (create/edit/delete, validation).
+- **Availability** — `app/availability.tsx`: per-day working hours (toggle + open/close time fields, PUT /availability/hours) and blackout dates (list/add/delete). Times/dates are text fields for now (native date/time picker = polish follow-up).
+- **Settings + Plan/Usage** — `app/settings.tsx`: profile/business name, automated-reminders toggle (PATCH /auth/profile + refreshUser), plan name + subscription badge + usage bar (GET /billing/status).
+- **Templates** — `app/templates.tsx`: read-only list (approved/pending). Registration stays on web.
+- **WhatsApp native connect (partial G6)** — `app/whatsapp.tsx` now has a **manual-connect form** (POST /whatsapp/connect) that works on native without the FB SDK. Full one-tap Embedded Signup on native still deferred (needs FB Login SDK / WebView code capture).
+- **New primitives:** `Field` (labeled input) + `SwitchRow`. **New hooks:** services CRUD/toggle, working-hours get/save, blackouts, templates, billing status, profile update, whatsapp connect. **New types** in `src/api/types.ts`.
+- **More screen** now links to Availability, Templates, WhatsApp, Settings, Notifications.
+- **Still NOT compile-verified** (no Expo install here). Verify assumed shapes: `/services`, `/availability/hours` (PUT body `{hours}`), `/billing/status` (usage/limit fields), `/templates`.
+- **Phase 2 remaining:** native Embedded Signup (full G6), date/time pickers for availability, PRODUCT-mode screens (Phase 3), tests.
+
+### 2026-09-09 (later) — Phase 1 UI + design system
+- **Design system** (grounded via ui-ux-pro-max skill): direction = "Soft UI Evolution"; universal **emerald + warm-slate** palette (rejected the beauty-only pink), **Plus Jakarta Sans + Inter** type, light+dark tokens, 4/8 spacing, 150–300ms motion, **vector icons only** (Ionicons — replaced scaffold emoji). Tokens in `apps/mobile/src/theme/tokens.ts` + `theme/index.tsx` (useTheme, useColorScheme-driven).
+- **UI kit** `src/components/ui/`: Text, Button, Card, Badge, Avatar, Screen (safe-area), EmptyState + `AppHeader`. All theme-driven, 44pt targets, pressed feedback.
+- **Screens built (Phase 1):**
+  - Conversations **inbox** `app/(tabs)/chats.tsx` (needs-reply dot, bot/human badge, poll 15s) + **thread** `app/conversations/[id].tsx` (bubbles, resume-bot, **24h-window composer lock + 402 quota handling**, poll 5s).
+  - **Bookings** `app/(tabs)/bookings.tsx` (filter chips, status/payment badges) + **detail** `app/bookings/[id].tsx` (payment link open/create, wa.me deep link).
+  - **Notifications** `app/notifications.tsx` (feed, mark-all-read, deep-link to booking/chat) + unread badge on Chats tab.
+  - **WhatsApp status** `app/whatsapp.tsx`.
+  - Refactored **login**, **dashboard** (WhatsApp strip + stat grid), **tabs** (Ionicons), **more** (profile + nav rows + logout) onto the system. Services = themed Phase-2 placeholder.
+- **Data layer:** `src/api/hooks.ts` (TanStack Query) + `src/api/types.ts` (defensive shapes) + `src/lib/format.ts`. Added deps: @expo/vector-icons, expo-font, expo-splash-screen, @expo-google-fonts/{inter,plus-jakarta-sans}.
+- **NOT compile-verified** (Expo deps not installed here). Run `cd apps/mobile && npm install && npx expo start`; `npx expo install --fix` will pin versions. Verify assumed response shapes: `/dashboard/stats`, `/conversations` list (lastMessage/lastMessageDirection/lastInboundAt), `/notifications/unread-count`.
+- **Next:** Phase 2 (Services/Availability CRUD, Settings/Billing, native Embedded Signup G6) OR verify-run the app and fix install/shape issues first.
+
 ### 2026-09-09 — Expo app scaffolded (login → dashboard slice)
 - Created **`apps/mobile/`** (Expo SDK 52 + Expo Router + TypeScript). Runnable login→dashboard vertical slice against the live API.
   - Config/build: `package.json`, `app.json`, `tsconfig.json` (`@/*`→`src/*`), `babel.config.js`, `metro.config.js`, `.gitignore`, `README.md`.

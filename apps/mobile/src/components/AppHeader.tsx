@@ -1,4 +1,4 @@
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -24,9 +24,11 @@ export function AppHeader({ title, subtitle, right, onBack }: AppHeaderProps) {
         paddingTop: insets.top + t.space.xs,
         paddingBottom: t.space.md,
         paddingHorizontal: t.space.sm,
-        backgroundColor: t.colors.surfaceElevated,
-        borderBottomWidth: 0.5,
-        borderBottomColor: t.colors.border,
+        backgroundColor: t.colors.background,
+        // Hairline only, in the near-invisible divider tone. Full large-title
+        // treatment comes with the header pass.
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: t.colors.divider,
         flexDirection: 'row',
         alignItems: 'center',
         gap: t.space.xs,

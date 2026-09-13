@@ -1,11 +1,13 @@
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/theme';
 import { useConversations } from '@/api/hooks';
 import { Conversation } from '@/api/types';
-import { Text, Avatar, EmptyState, Badge } from '@/components/ui';
+import { Text, Avatar, EmptyState, Badge, LargeHeader } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
+import { TAB_BAR_INSET } from '@/lib/layout';
 
 function ConversationRow({ item }: { item: Conversation }) {
   const t = useTheme();
@@ -22,11 +24,11 @@ function ConversationRow({ item }: { item: Conversation }) {
         alignItems: 'center',
         gap: t.space.md,
         paddingHorizontal: t.space.lg,
-        paddingVertical: t.space.md,
+        paddingVertical: t.space.sm + 2,
         backgroundColor: pressed ? t.colors.surfaceSunken : 'transparent',
       })}
     >
-      <Avatar name={title} />
+      <Avatar name={title} size={56} />
       <View style={{ flex: 1, gap: 3 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.space.sm }}>
           <Text variant="body" weight="semi" numberOfLines={1} style={{ flex: 1 }}>
@@ -41,7 +43,7 @@ function ConversationRow({ item }: { item: Conversation }) {
             variant="bodySm"
             tone={needsReply ? 'default' : 'muted'}
             weight={needsReply ? 'medium' : 'regular'}
-            numberOfLines={1}
+            numberOfLines={2}
             style={{ flex: 1 }}
           >
             {item.lastMessageDirection === 'OUTBOUND' ? 'You: ' : ''}
@@ -57,9 +59,41 @@ function ConversationRow({ item }: { item: Conversation }) {
   );
 }
 
+type ChatFilter = 'all' | 'unread' | 'bot' | 'you';
+
+const FILTERS: { key: ChatFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'unread', label: 'Unread' },
+  { key: 'bot', label: 'Bot' },
+  { key: 'you', label: 'You' },
+];
+
 export default function ChatsScreen() {
   const t = useTheme();
   const { data, isLoading, isRefetching, refetch } = useConversations();
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<ChatFilter>('all');
+
+  // Filtering is client-side: the list is already in memory and this keeps
+  // typing instant instead of round-tripping per keystroke.
+  const visible = useMemo(() => {
+    const all = data ?? [];
+    const q = query.trim().toLowerCase();
+
+    return all.filter((c) => {
+      if (filter === 'unread' && c.lastMessageDirection !== 'INBOUND') return false;
+      if (filter === 'you' && c.state !== 'HUMAN_ACTIVE') return false;
+      if (filter === 'bot' && c.state === 'HUMAN_ACTIVE') return false;
+      if (!q) return true;
+      return (
+        (c.customerName ?? '').toLowerCase().includes(q) ||
+        c.customerPhone.toLowerCase().includes(q) ||
+        (c.lastMessage ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [data, query, filter]);
+
+  const unreadCount = (data ?? []).filter((c) => c.lastMessageDirection === 'INBOUND').length;
 
   if (isLoading) {
     return (
@@ -71,21 +105,105 @@ export default function ChatsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
+      <LargeHeader title="Chats">
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: t.space.sm,
+            backgroundColor: t.colors.surfaceSunken,
+            borderRadius: t.radius.pill,
+            paddingHorizontal: t.space.md,
+            height: 40,
+          }}
+        >
+          <Ionicons name="search" size={17} color={t.colors.textMuted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search"
+            placeholderTextColor={t.colors.textSubtle}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            accessibilityLabel="Search chats"
+            style={{
+              flex: 1,
+              color: t.colors.text,
+              fontFamily: t.fonts.bodyRegular,
+              fontSize: 15,
+              padding: 0,
+            }}
+          />
+        </View>
+
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={FILTERS}
+          keyExtractor={(f) => f.key}
+          contentContainerStyle={{ gap: t.space.sm, paddingVertical: 2 }}
+          renderItem={({ item }) => {
+            const active = filter === item.key;
+            const count = item.key === 'unread' ? unreadCount : 0;
+            return (
+              <Pressable
+                onPress={() => setFilter(item.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingHorizontal: t.space.md,
+                  paddingVertical: 7,
+                  borderRadius: t.radius.pill,
+                  backgroundColor: active ? t.colors.primarySoft : t.colors.surfaceSunken,
+                }}
+              >
+                <Text variant="caption" weight="semi" tone={active ? 'primary' : 'muted'}>
+                  {item.label}
+                </Text>
+                {count > 0 ? (
+                  <Text variant="caption" weight="semi" tone={active ? 'primary' : 'muted'}>
+                    {count}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          }}
+        />
+      </LargeHeader>
+
       <FlatList
-        data={data ?? []}
+        data={visible}
         keyExtractor={(c) => c.id}
         renderItem={({ item }) => <ConversationRow item={item} />}
         ItemSeparatorComponent={() => (
-          <View style={{ height: 0.5, backgroundColor: t.colors.divider, marginLeft: 72 }} />
+          <View style={{ height: 0.5, backgroundColor: t.colors.divider, marginLeft: 88 }} />
         )}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
-        contentContainerStyle={(data ?? []).length === 0 ? { flex: 1 } : undefined}
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={
+          visible.length === 0
+            ? { flex: 1, paddingBottom: TAB_BAR_INSET }
+            : { paddingBottom: TAB_BAR_INSET }
+        }
         ListEmptyComponent={
-          <EmptyState
-            icon="chatbubbles-outline"
-            title="No conversations yet"
-            subtitle="When customers message your WhatsApp number, their chats appear here."
-          />
+          query || filter !== 'all' ? (
+            <EmptyState
+              icon="search-outline"
+              title="No matches"
+              subtitle="Try a different search, or switch back to All."
+            />
+          ) : (
+            <EmptyState
+              icon="chatbubbles-outline"
+              title="No conversations yet"
+              subtitle="When customers message your WhatsApp number, their chats appear here."
+            />
+          )
         }
       />
     </View>

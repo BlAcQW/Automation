@@ -62,6 +62,73 @@ export function useSendMessage(conversationId: string) {
   });
 }
 
+export interface OutgoingMedia {
+  uri: string;
+  name: string;
+  mimeType: string;
+  caption?: string;
+}
+
+/**
+ * Send an attachment. Multipart, so the file streams straight through the API
+ * to WhatsApp rather than being base64'd into JSON.
+ */
+export type RichMessage =
+  | { type: 'reaction'; messageId: string; emoji: string }
+  | { type: 'location'; latitude: number; longitude: number; name?: string; address?: string }
+  | { type: 'contact'; name: string; phone: string };
+
+/** Send a reaction, a location pin or a contact card. */
+export function useSendRich(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: RichMessage) =>
+      (await api.post(`/conversations/${conversationId}/rich`, payload)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['messages', conversationId] });
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
+
+export function useSendMedia(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (media: OutgoingMedia) => {
+      const form = new FormData();
+      if (media.caption) form.append('caption', media.caption);
+      // React Native's FormData takes this {uri,name,type} shape for files.
+      form.append('file', {
+        uri: media.uri,
+        name: media.name,
+        type: media.mimeType,
+      } as unknown as Blob);
+
+      const res = await api.post(`/conversations/${conversationId}/media`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        // Uploads are far slower than the 15s default used for JSON calls.
+        timeout: 60_000,
+      });
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['messages', conversationId] });
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
+
+export function useTakeOver(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post(`/conversations/${conversationId}/activate-human`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['messages', conversationId] });
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+    },
+  });
+}
+
 export function useResumeBot(conversationId: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -5,6 +5,7 @@ import { useTheme } from '@/theme';
 import { useProducts, useToggleProduct } from '@/api/hooks';
 import { Product } from '@/api/types';
 import { Text, Card, Badge, EmptyState } from '@/components/ui';
+import { LargeHeader, HeaderAction } from '@/components/ui';
 
 function ProductRow({ item }: { item: Product }) {
   const t = useTheme();
@@ -39,6 +40,16 @@ export function ProductsList() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
+      <LargeHeader
+        title="Products"
+        actions={
+          <HeaderAction
+            icon="add"
+            label="Add product"
+            onPress={() => router.push('/products/new')}
+          />
+        }
+      />
       {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color={t.colors.primary} />
@@ -55,26 +66,6 @@ export function ProductsList() {
           ListEmptyComponent={<EmptyState icon="cube-outline" title="No products yet" subtitle="Add products your customers can order over WhatsApp." />}
         />
       )}
-      <Pressable
-        onPress={() => router.push('/products/new')}
-        accessibilityRole="button"
-        accessibilityLabel="Add product"
-        style={({ pressed }) => ({
-          position: 'absolute',
-          right: t.space.lg,
-          bottom: t.space.xl,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: t.colors.primary,
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: pressed ? 0.9 : 1,
-          ...t.elevation(3),
-        })}
-      >
-        <Ionicons name="add" size={30} color={t.colors.onPrimary} />
-      </Pressable>
     </View>
   );
 }

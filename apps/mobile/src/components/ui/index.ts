@@ -8,3 +8,6 @@ export { EmptyState } from './EmptyState';
 export { Field } from './Field';
 export { SwitchRow } from './SwitchRow';
 export { DateTimeField } from './DateTimeField';
+export { HeaderAction } from './HeaderAction';
+export { Segmented } from './Segmented';
+export { LargeHeader } from './LargeHeader';

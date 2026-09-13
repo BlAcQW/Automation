@@ -5,6 +5,7 @@ import { useOrders } from '@/api/hooks';
 import { Order } from '@/api/types';
 import { Text, Card, Badge, Avatar, EmptyState } from '@/components/ui';
 import { formatDateTime, orderStatusLabel, orderStatusTone, paymentTone } from '@/lib/format';
+import { LargeHeader } from '@/components/ui';
 
 function OrderRow({ item }: { item: Order }) {
   const t = useTheme();
@@ -54,6 +55,7 @@ export function OrdersList() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
+      <LargeHeader title="Orders" />
       <FlatList
         data={data ?? []}
         keyExtractor={(o) => o.id}

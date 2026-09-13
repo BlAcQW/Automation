@@ -1,20 +1,29 @@
-// Monorepo-aware Metro config. This app lives in an npm-workspaces repo
-// (apps/api, apps/web, apps/mobile), so dependencies hoist to the repo root.
-// Metro must watch the workspace root and resolve modules from BOTH the app's
-// and the root's node_modules, or it can't find hoisted packages like
-// babel-preset-expo. In SDK 51+ this also enables tsconfig `paths` (@/*).
+// Default Expo Metro config. In SDK 51+ this enables tsconfig `paths`
+// (the `@/*` alias) out of the box.
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '../..');
-
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [workspaceRoot];
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(workspaceRoot, 'node_modules'),
-];
+// apps/web pins React 18, so the workspace-root node_modules holds React 18
+// while this app uses React 19. Packages that npm hoists to the root and this
+// app depends on (@react-navigation/*, @tanstack/react-query) resolve `react`
+// from there, which puts two copies of React in one bundle and fails at
+// runtime with "Invalid hook call" / "Cannot read property 'useRef' of null".
+//
+// Resolve every `react` request as if it came from this app, so the hoisted
+// packages share the app's single React 19 copy.
+const appOrigin = path.join(projectRoot, 'index.js');
+
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const resolve = context.resolveRequest;
+
+  if (moduleName === 'react' || moduleName.startsWith('react/')) {
+    return resolve({ ...context, originModulePath: appOrigin }, moduleName, platform);
+  }
+
+  return resolve(context, moduleName, platform);
+};
 
 module.exports = config;

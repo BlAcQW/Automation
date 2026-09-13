@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { AxiosError } from 'axios';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/auth/context';
@@ -11,6 +11,7 @@ export default function LoginScreen() {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -92,15 +93,31 @@ export default function LoginScreen() {
           value={email}
           onChangeText={setEmail}
         />
-        <TextInput
-          style={inputStyle}
-          placeholder="Password"
-          placeholderTextColor={t.colors.textSubtle}
-          secureTextEntry
-          autoComplete="password"
-          value={password}
-          onChangeText={setPassword}
-        />
+        <View style={{ justifyContent: 'center' }}>
+          <TextInput
+            style={{ ...inputStyle, paddingRight: 52 }}
+            placeholder="Password"
+            placeholderTextColor={t.colors.textSubtle}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoComplete="password"
+            value={password}
+            onChangeText={setPassword}
+          />
+          <Pressable
+            onPress={() => setShowPassword((v) => !v)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            style={{ position: 'absolute', right: t.space.lg, padding: 4 }}
+          >
+            <Ionicons
+              name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color={t.colors.textSubtle}
+            />
+          </Pressable>
+        </View>
 
         <Button label="Log in" onPress={onSubmit} loading={submitting} fullWidth size="lg" style={{ marginTop: t.space.xs }} />
       </KeyboardAvoidingView>

@@ -185,7 +185,7 @@ export class WhatsAppBotEngine {
         let sentAny = false;
         try {
             for (const msg of response.messages) {
-                await this.sendMessage(customerPhone, msg);
+                const whatsappMsgId = await this.sendMessage(customerPhone, msg);
                 sentAny = true;
 
                 // Store outbound message. Bot-authored messages are identified by
@@ -196,6 +196,7 @@ export class WhatsAppBotEngine {
                         direction: 'OUTBOUND',
                         content: typeof msg.text?.body === 'string' ? msg.text.body : '[Interactive Message]',
                         messageType: msg.type.toUpperCase(),
+                        whatsappMsgId,
                     },
                 });
             }
@@ -1473,7 +1474,14 @@ export class WhatsAppBotEngine {
             ).join('\n\n');
     }
 
-    private async sendMessage(to: string, payload: SendMessagePayload): Promise<void> {
+    /**
+     * Send one message and return Meta's message id.
+     *
+     * The id is what the delivery-status webhook matches against, so without it
+     * a message can never be marked delivered/read and — more importantly —
+     * never picks up the billing category Meta charged it at.
+     */
+    private async sendMessage(to: string, payload: SendMessagePayload): Promise<string | null> {
         // Atomically reserve a quota slot. If the tenant is over their plan
         // cap we throw — the caller decides whether to surface a takeover or
         // increment botFailureCount. Either way the customer doesn't get a
@@ -1524,6 +1532,10 @@ export class WhatsAppBotEngine {
                 throw new BotSendError('meta_error', `${response.status}: ${body.slice(0, 300)}`);
             }
             // Successful send — keep the reservation as the canonical counter.
+            const sent = (await response.json().catch(() => ({}))) as {
+                messages?: Array<{ id?: string }>;
+            };
+            return sent.messages?.[0]?.id ?? null;
         } catch (err) {
             if (err instanceof BotSendError) throw err;
             // Network error / fetch threw — rollback and re-wrap.

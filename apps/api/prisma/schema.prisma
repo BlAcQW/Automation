@@ -275,6 +275,14 @@ model Message {
   messageType    MessageType @default(TEXT)
   whatsappMsgId  String?
   metadata       Json?
+  /// Delivery state for OUTBOUND messages (null until the first status webhook).
+  status         MessageStatus?
+  /// What Meta actually billed this message as — "service", "utility",
+  /// "marketing", "authentication". Taken from the status webhook's pricing
+  /// object rather than guessed, so billing mirrors Meta's own ledger.
+  billingCategory String?
+  /// False for messages inside a free allowance or free entry-point window.
+  billable       Boolean?
   createdAt      DateTime    @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -294,6 +302,20 @@ enum MessageType {
   TEMPLATE
   IMAGE
   DOCUMENT
+  VIDEO
+  AUDIO
+  STICKER
+  LOCATION
+  CONTACT
+  REACTION
+}
+
+/// Delivery state reported by Meta's message-status webhook.
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
 
 // ============================================

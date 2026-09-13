@@ -19,6 +19,7 @@ import { FastifyInstance, FastifyBaseLogger } from 'fastify';
 import { TemplatePurpose } from '@prisma/client';
 import { audit } from './audit.js';
 import { scheduleNotification, scheduleReminder } from './notification.js';
+import { createNotification } from './notifications.js';
 import { syncBookingToCalendar } from './calendar.js';
 import type { VerifyResult } from './paystack.js';
 
@@ -144,6 +145,25 @@ export async function fulfillBookingCharge(opts: {
         },
     });
 
+    // Tell the operator money landed. Best-effort: a failed notification must
+    // never fail an already-captured payment. createNotification also publishes
+    // the realtime event (in-app banner) and sends the mobile push.
+    await createNotification(
+        fastify.prisma,
+        {
+            tenantId,
+            // NotificationType has no payment member; `kind` in metadata is what
+            // the clients branch on. A dedicated enum value needs a migration.
+            type: 'SYSTEM',
+            title: 'Payment received',
+            message: `${verified.currency} ${(verified.amountKobo / 100).toFixed(2)} paid for booking ${booking.bookingReference}.`,
+            metadata: { kind: 'payment', bookingId: booking.id, reference },
+        },
+        logger,
+    ).catch((err) => {
+        logger.warn({ err, bookingId: booking.id }, 'Payment notification failed');
+    });
+
     return { applied: true };
 }
 
@@ -196,6 +216,21 @@ export async function fulfillOrderCharge(opts: {
             currency: verified.currency,
             channel: verified.channel,
         },
+    });
+
+    // See the booking branch: best-effort, never fails the payment.
+    await createNotification(
+        fastify.prisma,
+        {
+            tenantId,
+            type: 'SYSTEM',
+            title: 'Payment received',
+            message: `${verified.currency} ${(verified.amountKobo / 100).toFixed(2)} paid for order ${order.orderRef}.`,
+            metadata: { kind: 'payment', orderId: order.id, reference },
+        },
+        fastify.log,
+    ).catch((err) => {
+        fastify.log.warn({ err, orderId: order.id }, 'Payment notification failed');
     });
 
     return { applied: true };

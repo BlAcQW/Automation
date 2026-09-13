@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import crypto from 'node:crypto';
+import { markReadAndTyping } from '../../services/whatsapp-presence.js';
 import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
@@ -48,6 +49,18 @@ interface WhatsAppMessage {
         button_reply?: { id: string; title: string };
         list_reply?: { id: string; title: string };
     };
+    // Media arrives as an id we can fetch later, plus an optional caption.
+    image?: { id?: string; mime_type?: string; caption?: string };
+    video?: { id?: string; mime_type?: string; caption?: string };
+    audio?: { id?: string; mime_type?: string; voice?: boolean };
+    sticker?: { id?: string; mime_type?: string };
+    document?: { id?: string; mime_type?: string; caption?: string; filename?: string };
+    location?: { latitude: number; longitude: number; name?: string; address?: string };
+    contacts?: Array<{
+        name?: { formatted_name?: string };
+        phones?: Array<{ phone?: string }>;
+    }>;
+    reaction?: { message_id: string; emoji?: string };
 }
 
 interface WhatsAppWebhookPayload {
@@ -63,7 +76,22 @@ interface WhatsAppWebhookPayload {
                 };
                 contacts?: Array<{ profile: { name: string }; wa_id: string }>;
                 messages?: WhatsAppMessage[];
-                statuses?: Array<{ id: string; status: string }>;
+                statuses?: Array<{
+                    id: string;
+                    status: 'sent' | 'delivered' | 'read' | 'failed';
+                    timestamp?: string;
+                    recipient_id?: string;
+                    errors?: Array<{ code: number; title: string; message?: string }>;
+                    // What Meta actually billed this message as. Authoritative —
+                    // it accounts for free allowances, free entry-point windows
+                    // and template re-categorisation, none of which we can infer.
+                    pricing?: {
+                        billable?: boolean;
+                        pricing_model?: string;
+                        category?: string;
+                        type?: string;
+                    };
+                }>;
             };
             field: string;
         }>;
@@ -453,14 +481,71 @@ async function processWebhook(
                 }
             }
 
-            // Process status updates
+            // Process status updates — delivery state for the dashboard's ticks,
+            // and the billing category we charge from.
             if (value.statuses) {
                 for (const status of value.statuses) {
-                    fastify.log.debug({ status }, 'Message status update');
+                    await recordMessageStatus(fastify, status);
                 }
             }
         }
     }
+}
+
+/**
+ * Persist a delivery status update against the message it refers to.
+ *
+ * Two things come out of this webhook and nothing else supplies either:
+ *  - `status` drives the ✓ / ✓✓ / read ticks in the dashboard.
+ *  - `pricing` is Meta's own record of what the message was billed as. We store
+ *    it rather than inferring the category from the send, because Meta applies
+ *    free allowances, free entry-point windows and template re-categorisation
+ *    that the sender cannot know about.
+ *
+ * Status can arrive out of order (a `read` may land before its `delivered`), so
+ * a status is only written when it moves the message forward.
+ */
+const STATUS_RANK: Record<string, number> = { SENT: 1, DELIVERED: 2, READ: 3, FAILED: 4 };
+
+async function recordMessageStatus(
+    fastify: any,
+    status: {
+        id: string;
+        status: string;
+        errors?: Array<{ code: number; title: string; message?: string }>;
+        pricing?: { billable?: boolean; category?: string; pricing_model?: string; type?: string };
+    },
+): Promise<void> {
+    const next = status.status.toUpperCase();
+    if (!STATUS_RANK[next]) return;
+
+    const message = await fastify.prisma.message.findFirst({
+        where: { whatsappMsgId: status.id },
+        select: { id: true, status: true, metadata: true },
+    });
+    if (!message) return; // status for something we never stored
+
+    // Never move a message backwards (read → delivered).
+    const current = message.status ? STATUS_RANK[message.status] ?? 0 : 0;
+    if (STATUS_RANK[next] <= current) return;
+
+    const data: Record<string, unknown> = { status: next };
+
+    if (status.pricing) {
+        if (typeof status.pricing.category === 'string') data.billingCategory = status.pricing.category;
+        if (typeof status.pricing.billable === 'boolean') data.billable = status.pricing.billable;
+    }
+
+    if (next === 'FAILED' && status.errors?.length) {
+        data.metadata = {
+            ...((message.metadata as Record<string, unknown>) ?? {}),
+            failure: status.errors[0],
+        };
+    }
+
+    await fastify.prisma.message.update({ where: { id: message.id }, data }).catch((err: unknown) => {
+        fastify.log.warn({ err, whatsappMsgId: status.id }, 'Could not record message status');
+    });
 }
 
 // Process individual message
@@ -472,6 +557,18 @@ async function processMessage(
 ) {
     const customerPhone = message.from;
     const customerName = contact?.profile?.name;
+
+    // Acknowledge immediately: blue ticks, plus "typing…" so the customer can
+    // see the business is on it. Fire-and-forget — a presence failure must not
+    // delay or block the actual reply.
+    if (tenant?.whatsappPhoneNumberId && tenant?.whatsappAccessToken && message.id) {
+        void markReadAndTyping({
+            phoneNumberId: tenant.whatsappPhoneNumberId,
+            accessToken: decrypt(tenant.whatsappAccessToken),
+            messageId: message.id,
+            logger: fastify.log,
+        });
+    }
 
     // Find or create conversation
     let conversation = await fastify.prisma.conversation.findUnique({
@@ -514,9 +611,12 @@ async function processMessage(
         }
     }
 
-    // Extract message content
+    // Extract message content. `content` is the human-readable form every
+    // existing surface renders (chat list preview, exports), while `meta`
+    // carries the structured payload for the ones that can show more.
     let content = '';
     let messageType = 'TEXT';
+    let meta: Record<string, unknown> | undefined;
 
     if (message.type === 'text' && message.text) {
         content = message.text.body;
@@ -524,6 +624,35 @@ async function processMessage(
         const reply = message.interactive.button_reply || message.interactive.list_reply;
         content = reply?.id || '';
         messageType = 'INTERACTIVE';
+    } else if (message.type === 'location' && message.location) {
+        const loc = message.location;
+        content = loc.name || loc.address || `${loc.latitude}, ${loc.longitude}`;
+        messageType = 'LOCATION';
+        meta = { ...loc };
+    } else if (message.type === 'contacts' && message.contacts?.length) {
+        const first = message.contacts[0];
+        content = first.name?.formatted_name || first.phones?.[0]?.phone || 'Contact';
+        messageType = 'CONTACT';
+        meta = { contacts: message.contacts };
+    } else if (message.type === 'reaction' && message.reaction) {
+        content = message.reaction.emoji || '(reaction removed)';
+        messageType = 'REACTION';
+        meta = { ...message.reaction };
+    } else if (['image', 'video', 'audio', 'sticker', 'document'].includes(message.type)) {
+        const payload = (message as unknown as Record<string, { id?: string; mime_type?: string; caption?: string; filename?: string; voice?: boolean }>)[message.type];
+        messageType = message.type.toUpperCase();
+        content = payload?.caption || payload?.filename || `[${message.type}]`;
+        // Only the media id is stored. Downloading the bytes needs the tenant's
+        // token and is a separate job — until then the dashboard shows the type
+        // and caption rather than a broken image.
+        meta = {
+            kind: message.type,
+            whatsappMediaId: payload?.id ?? null,
+            mimeType: payload?.mime_type ?? null,
+            ...(payload?.filename ? { filename: payload.filename } : {}),
+            ...(payload?.voice ? { voice: true } : {}),
+            inboundPending: true,
+        };
     }
 
     // Store message
@@ -534,6 +663,7 @@ async function processMessage(
             content,
             messageType,
             whatsappMsgId: message.id,
+            ...(meta ? { metadata: meta as object } : {}),
         },
     });
 
@@ -607,6 +737,22 @@ async function processMessage(
         return;
     }
 
+    // Conversational layer. When OPENAI_API_KEY is set the LLM agent answers,
+    // calling the same availability/booking services the menu bot uses; without
+    // it we fall through to the state machine unchanged. That env var is the
+    // entire rollout switch — and the fallback below means an OpenAI outage
+    // degrades to the old bot rather than dropping the customer.
+    const { isLlmEnabled } = await import('../../services/llm-agent.js');
+
+    if (isLlmEnabled()) {
+        try {
+            await handleWithAgent(fastify, tenant, conversation, customerPhone, content);
+            return;
+        } catch (err) {
+            fastify.log.error({ err, conversationId: conversation.id }, 'LLM agent failed — falling back to menu bot');
+        }
+    }
+
     // Process with bot engine. Pass the BullMQ queues so cancel/reschedule
     // flows can enqueue customer-facing notifications.
     const { WhatsAppBotEngine } = await import('../../services/whatsapp-bot.js');
@@ -615,6 +761,89 @@ async function processMessage(
         reminders: fastify.queues.reminders,
     });
     await bot.processMessage(conversation.id, customerPhone, content);
+}
+
+/**
+ * Run one customer turn through the LLM agent and send its reply.
+ *
+ * Quota is reserved the same way the menu bot reserves it, so an LLM
+ * conversation can't bypass a tenant's monthly message limit.
+ */
+async function handleWithAgent(
+    fastify: any,
+    tenant: any,
+    conversation: { id: string },
+    customerPhone: string,
+    content: string,
+): Promise<void> {
+    const { runAgent } = await import('../../services/llm-agent.js');
+    const { checkOutboundQuota, incrementMessageUsage } = await import('../../services/usage.js');
+
+    const quota = await checkOutboundQuota(fastify.prisma, tenant.id);
+    if (!quota.ok) {
+        fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
+        return;
+    }
+
+    const result = await runAgent(
+        {
+            prisma: fastify.prisma,
+            tenantId: tenant.id,
+            tenantName: tenant.name,
+            businessType: tenant.businessType ?? 'SERVICE',
+            conversationId: conversation.id,
+            customerPhone,
+        },
+        content,
+    );
+
+    if (result.wantsHuman) {
+        const { triggerTakeover } = await import('../../services/human-takeover.js');
+        await triggerTakeover(
+            fastify.prisma,
+            conversation.id,
+            'Assistant asked for a human',
+        ).catch((err: unknown) => fastify.log.warn({ err }, 'Takeover from agent failed'));
+    }
+
+    const reply = result.reply.trim();
+    if (!reply) return;
+
+    const accessToken = decrypt(tenant.whatsappAccessToken);
+    const response = await fetch(
+        `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+        {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                messaging_product: 'whatsapp',
+                to: customerPhone,
+                type: 'text',
+                text: { body: reply },
+            }),
+        },
+    );
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        fastify.log.error({ status: response.status, error }, 'Failed to send agent reply');
+        return;
+    }
+
+    const sent = (await response.json().catch(() => ({}))) as { messages?: Array<{ id?: string }> };
+
+    await fastify.prisma.message.create({
+        data: {
+            conversationId: conversation.id,
+            direction: 'OUTBOUND',
+            content: reply,
+            messageType: 'TEXT',
+            whatsappMsgId: sent.messages?.[0]?.id ?? null,
+            metadata: { source: 'llm', model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', tools: result.toolsUsed },
+        },
+    });
+
+    await incrementMessageUsage(fastify.prisma, tenant.id);
 }
 
 export default whatsappRoutes;

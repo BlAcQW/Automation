@@ -5,6 +5,8 @@ import { useAuth } from '@/auth/context';
 import { useTheme } from '@/theme';
 import { useUnreadCount } from '@/api/hooks';
 import { Text, Card, Avatar, Badge, Button } from '@/components/ui';
+import { TAB_BAR_INSET } from '@/lib/layout';
+import { LargeHeader } from '@/components/ui';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -62,7 +64,9 @@ export default function MoreScreen() {
   const { data: unread } = useUnreadCount();
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: t.colors.background }} contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}>
+    <View style={{ flex: 1, backgroundColor: t.colors.background }}>
+      <LargeHeader title="More" />
+      <ScrollView style={{ flex: 1, backgroundColor: t.colors.background }} contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: TAB_BAR_INSET }}>
       <Card padded style={{ flexDirection: 'row', alignItems: 'center', gap: t.space.md }}>
         <Avatar name={user?.name ?? tenant?.name ?? '?'} size={52} />
         <View style={{ flex: 1 }}>
@@ -105,5 +109,6 @@ export default function MoreScreen() {
         Bookly · v0.0.1
       </Text>
     </ScrollView>
+    </View>
   );
 }

@@ -17,11 +17,42 @@ export interface Conversation {
   assignedUserId?: string | null;
 }
 
+export type MediaKind = 'image' | 'video' | 'audio' | 'sticker' | 'document';
+
+export interface MessageMedia {
+  kind?: MediaKind;
+  mimeType?: string;
+  size?: number;
+  caption?: string;
+  filename?: string | null;
+  /** Inbound media we hold only a Meta id for — bytes not downloaded yet. */
+  inboundPending?: boolean;
+  voice?: boolean;
+  // location
+  latitude?: number;
+  longitude?: number;
+  name?: string;
+  address?: string;
+  // contact
+  contacts?: Array<{ name?: { formatted_name?: string }; phones?: Array<{ phone?: string }> }>;
+  phone?: string;
+  // reaction
+  emoji?: string;
+  messageId?: string;
+}
+
+/** Delivery state from Meta's status webhook. Null until the first update. */
+export type MessageStatus = 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+
 export interface Message {
   id: string;
   direction: MessageDirection;
   content: string;
   messageType?: string;
+  /** Present on media, location, contact and reaction messages. */
+  metadata?: MessageMedia | null;
+  /** Delivery state for OUTBOUND messages. */
+  status?: MessageStatus | null;
   createdAt: string;
 }
 

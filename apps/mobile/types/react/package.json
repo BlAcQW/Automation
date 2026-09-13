@@ -1,0 +1,7 @@
+{
+  "name": "react-resolution-shim",
+  "private": true,
+  "description": "See tsconfig.json `paths`. Points TypeScript at this app's React 19 types while leaving Metro pointed at the real react package.",
+  "main": "../../node_modules/react/index.js",
+  "types": "../../node_modules/@types/react/index.d.ts"
+}

@@ -8,6 +8,8 @@ import { OrdersList } from '@/features/orders/OrdersList';
 import { Booking, BookingStatus } from '@/api/types';
 import { Text, Card, Badge, Avatar, EmptyState } from '@/components/ui';
 import { bookingStatusLabel, bookingStatusTone, formatDateTime, paymentTone } from '@/lib/format';
+import { TAB_BAR_INSET } from '@/lib/layout';
+import { LargeHeader } from '@/components/ui';
 
 type Filter = 'all' | 'upcoming' | BookingStatus;
 const FILTERS: { key: Filter; label: string }[] = [
@@ -84,7 +86,8 @@ export default function BookingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
-      <View style={{ paddingVertical: t.space.sm, borderBottomWidth: 0.5, borderBottomColor: t.colors.divider }}>
+      <LargeHeader title="Bookings" />
+      <View style={{ paddingVertical: t.space.sm }}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -117,7 +120,9 @@ export default function BookingsScreen() {
         keyExtractor={(b) => b.id}
         renderItem={({ item }) => <BookingCard item={item} />}
         contentContainerStyle={
-          filtered.length === 0 ? { flex: 1 } : { padding: t.space.lg, gap: t.space.md }
+          filtered.length === 0
+            ? { flex: 1, paddingBottom: TAB_BAR_INSET }
+            : { padding: t.space.lg, gap: t.space.md, paddingBottom: TAB_BAR_INSET }
         }
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
         ListEmptyComponent={

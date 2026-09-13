@@ -1,7 +1,12 @@
 /**
- * Bookly design tokens — "Soft UI Evolution" direction.
- * Universal emerald + warm-slate palette (works for salons, clinics, and
- * consultants alike — deliberately NOT a beauty-only pink or a WhatsApp clone).
+ * Bookly design tokens.
+ *
+ * Direction: the operator lives in WhatsApp all day, so the app deliberately
+ * borrows its visual language — neutral (hue-free) greys on true black in dark
+ * mode, WhatsApp's saturated green, and its chat-bubble colours. This replaces
+ * the earlier blue-tinted "warm slate" palette, which read as a fintech
+ * dashboard next to the messenger it sits beside.
+ *
  * All colours are theme-mapped; components must read from useTheme(), never
  * hardcode hex.
  */
@@ -33,59 +38,79 @@ export interface ThemeColors {
   dangerSoft: string;
   info: string;
   infoSoft: string;
+  // chat — bubbles read differently from brand surfaces, so they get their own
+  // tokens rather than reusing `primary` (WhatsApp's outgoing bubble is a deep
+  // green, not the bright brand green used for buttons).
+  bubbleIn: string;
+  bubbleOut: string;
+  bubbleInText: string;
+  bubbleOutText: string;
+  chatBackground: string;
   // misc
   scrim: string;
   shadow: string;
 }
 
 const light: ThemeColors = {
-  background: '#F5F7FA',
+  background: '#FFFFFF',
   surface: '#FFFFFF',
   surfaceElevated: '#FFFFFF',
-  surfaceSunken: '#EEF1F5',
-  text: '#0F172A',
-  textMuted: '#5B6472',
-  textSubtle: '#8A94A6',
+  surfaceSunken: '#F0F2F5', // WhatsApp's chrome grey — search wells, pressed rows
+  text: '#111B21',
+  textMuted: '#667781',
+  textSubtle: '#8696A0',
   onPrimary: '#FFFFFF',
-  primary: '#047857', // emerald-700 — white text ≈ 5.2:1
-  primarySoft: '#D6F3E7',
-  primaryText: '#0F7A57',
-  border: '#E2E8F0',
-  divider: '#EDF1F6',
-  success: '#0E9F6E',
-  successSoft: '#D6F3E7',
+  primary: '#008069', // WhatsApp light-mode green — white on it ≈ 4.6:1
+  primarySoft: '#D9FDD3',
+  primaryText: '#008069',
+  border: '#E9EDEF',
+  divider: '#F0F2F5',
+  success: '#008069',
+  successSoft: '#D9FDD3',
   warning: '#B45309',
   warningSoft: '#FBEAD0',
   danger: '#DC2626',
   dangerSoft: '#FBE0E0',
   info: '#1D4ED8',
   infoSoft: '#DCE6FE',
-  scrim: 'rgba(15,23,42,0.45)',
-  shadow: '#0F172A',
+  bubbleIn: '#FFFFFF',
+  bubbleOut: '#D9FDD3',
+  bubbleInText: '#111B21',
+  bubbleOutText: '#111B21',
+  chatBackground: '#EFE7DE', // the familiar warm paper behind messages
+  scrim: 'rgba(17,27,33,0.45)',
+  shadow: '#111B21',
 };
 
 const dark: ThemeColors = {
-  background: '#0B0F14',
-  surface: '#151B23',
-  surfaceElevated: '#1C232C',
-  surfaceSunken: '#10151B',
-  text: '#F8FAFC',
-  textMuted: '#A5B0BF',
-  textSubtle: '#6B7686',
-  onPrimary: '#03150E',
-  primary: '#10B981', // emerald-500 — dark text on it ≈ 6:1
-  primarySoft: '#0E2C24',
-  primaryText: '#34D399',
-  border: '#232B36',
-  divider: '#1C232C',
-  success: '#34D399',
-  successSoft: '#0E2C24',
+  // Neutral greys, no blue cast — the previous palette's slate tint is what
+  // made this read as a dashboard rather than a messenger.
+  background: '#000000', // true black (OLED, matches WhatsApp's dark list screens)
+  surface: '#1C1C1E', // grouped cards
+  surfaceElevated: '#2C2C2E', // floating header pills, sheets
+  surfaceSunken: '#121212', // search wells, pressed rows
+  text: '#FFFFFF',
+  textMuted: '#8E8E93',
+  textSubtle: '#636366',
+  onPrimary: '#062017', // dark glyph on bright green, as on WhatsApp's + button
+  primary: '#25D366', // WhatsApp brand green — dark text on it ≈ 9:1
+  primarySoft: '#0B2E22',
+  primaryText: '#25D366',
+  border: '#2C2C2E',
+  divider: '#262628',
+  success: '#25D366',
+  successSoft: '#0B2E22',
   warning: '#FBBF24',
   warningSoft: '#33270A',
   danger: '#F87171',
   dangerSoft: '#3A1616',
   info: '#60A5FA',
   infoSoft: '#12233F',
+  bubbleIn: '#1F2C33',
+  bubbleOut: '#005C4B',
+  bubbleInText: '#FFFFFF',
+  bubbleOutText: '#FFFFFF',
+  chatBackground: '#0B141A',
   scrim: 'rgba(0,0,0,0.6)',
   shadow: '#000000',
 };

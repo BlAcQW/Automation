@@ -5,6 +5,8 @@ import { useAuth } from '@/auth/context';
 import { useTheme } from '@/theme';
 import { useDashboardStats, useWhatsappStatus } from '@/api/hooks';
 import { Text, Card, Badge } from '@/components/ui';
+import { TAB_BAR_INSET } from '@/lib/layout';
+import { LargeHeader } from '@/components/ui';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -67,9 +69,11 @@ export default function DashboardScreen() {
   const firstName = (user?.name ?? '').split(' ')[0];
 
   return (
-    <ScrollView
+    <View style={{ flex: 1, backgroundColor: t.colors.background }}>
+      <LargeHeader title="Overview" />
+      <ScrollView
       style={{ flex: 1, backgroundColor: t.colors.background }}
-      contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}
+      contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: TAB_BAR_INSET }}
       refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
     >
       <View style={{ gap: 2 }}>
@@ -124,5 +128,6 @@ export default function DashboardScreen() {
         ))}
       </View>
     </ScrollView>
+    </View>
   );
 }

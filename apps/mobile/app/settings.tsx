@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import { useTheme } from '@/theme';
+import { useTheme, useThemeMode, type ThemeMode } from '@/theme';
 import { useAuth } from '@/auth/context';
 import { useBillingStatus, useUpdateProfile } from '@/api/hooks';
 import { AppHeader } from '@/components/AppHeader';
-import { Text, Card, Field, Button, SwitchRow, Badge } from '@/components/ui';
+import { Text, Card, Field, Button, SwitchRow, Badge, Segmented } from '@/components/ui';
 
 function UsageBar({ used, limit }: { used: number; limit: number }) {
   const t = useTheme();
@@ -22,8 +22,15 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
   );
 }
 
+const APPEARANCE_OPTIONS: { value: ThemeMode; label: string; icon: 'phone-portrait-outline' | 'sunny-outline' | 'moon-outline' }[] = [
+  { value: 'system', label: 'System', icon: 'phone-portrait-outline' },
+  { value: 'light', label: 'Light', icon: 'sunny-outline' },
+  { value: 'dark', label: 'Dark', icon: 'moon-outline' },
+];
+
 export default function SettingsScreen() {
   const t = useTheme();
+  const { mode, scheme, setMode } = useThemeMode();
   const { user, tenant, refreshUser } = useAuth();
   const updateProfile = useUpdateProfile();
   const { data: billing } = useBillingStatus();
@@ -70,6 +77,23 @@ export default function SettingsScreen() {
             {note}
           </Text>
         ) : null}
+
+        <Text variant="h3" weight="bold" style={{ marginTop: t.space.sm }}>
+          Appearance
+        </Text>
+        <Card padded style={{ gap: t.space.md }}>
+          <Segmented
+            label="Appearance"
+            options={APPEARANCE_OPTIONS}
+            value={mode}
+            onChange={setMode}
+          />
+          <Text variant="caption" tone="muted">
+            {mode === 'system'
+              ? `Following your device setting — currently ${scheme}.`
+              : `Always ${mode}, whatever your device is set to.`}
+          </Text>
+        </Card>
 
         <Text variant="h3" weight="bold" style={{ marginTop: t.space.sm }}>
           Plan & usage

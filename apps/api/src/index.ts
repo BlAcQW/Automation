@@ -6,6 +6,7 @@ initSentry();
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import * as Sentry from '@sentry/node';
@@ -63,6 +64,13 @@ async function buildApp() {
 
     // Register sensible for better error handling
     await app.register(sensible);
+
+    // Attachments on human replies. The ceiling matches WhatsApp's largest
+    // accepted type (documents); services/media.ts enforces the tighter
+    // per-type limits once the MIME type is known.
+    await app.register(multipart, {
+        limits: { fileSize: 100 * 1024 * 1024, files: 1 },
+    });
 
     // Capture raw request body for HMAC signature verification (WhatsApp webhook).
     // Must be added BEFORE routes register so the parser is in place when the

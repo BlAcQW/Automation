@@ -16,6 +16,8 @@ interface ChatThreadProps {
     onBack: () => void;
     onResumeBot: () => void;
     onSend: (content: string) => Promise<void>;
+    onSendMedia?: (file: File, caption: string) => Promise<void>;
+    onReact?: (messageId: string, emoji: string) => void;
 }
 
 /** The right-hand chat panel: header, message stream, composer. */
@@ -27,6 +29,8 @@ export function ChatThread({
     onBack,
     onResumeBot,
     onSend,
+    onSendMedia,
+    onReact,
 }: ChatThreadProps) {
     const endRef = useRef<HTMLDivElement>(null);
 
@@ -92,12 +96,12 @@ export function ChatThread({
                         <p className="text-sm">No messages yet</p>
                     </div>
                 ) : (
-                    messages.map((m, i) => <MessageBubble key={m.id} message={m} index={i} />)
+                    messages.map((m, i) => <MessageBubble key={m.id} message={m} index={i} conversationId={conversation.id} onReact={onReact} />)
                 )}
                 <div ref={endRef} />
             </div>
 
-            <ChatComposer onSend={onSend} />
+            <ChatComposer onSend={onSend} onSendMedia={onSendMedia} />
         </div>
     );
 }

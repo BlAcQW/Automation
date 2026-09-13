@@ -20,6 +20,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { AuthProvider, useAuth } from '@/auth/context';
 import { ThemeProvider, useTheme } from '@/theme';
+import { InAppNoticeProvider } from '@/components/InAppNotice';
 import { useRealtime } from '@/realtime/useRealtime';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -94,7 +95,10 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
             <StatusBarThemed />
-            <AuthGate />
+            {/* Wraps AuthGate so useRealtime() there can raise foreground banners. */}
+            <InAppNoticeProvider>
+              <AuthGate />
+            </InAppNoticeProvider>
           </AuthProvider>
         </QueryClientProvider>
       </ThemeProvider>

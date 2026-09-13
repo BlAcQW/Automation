@@ -73,6 +73,77 @@ export default function ConversationsPage() {
         }
     };
 
+    const sendMedia = async (file: File, caption: string) => {
+        if (!selectedId) return;
+        const form = new FormData();
+        form.append('file', file);
+        if (caption) form.append('caption', caption);
+        try {
+            // Let the browser set Content-Type so the multipart boundary is
+            // included; overriding it here breaks the upload.
+            await api.post(`/conversations/${selectedId}/media`, form, { timeout: 60_000 });
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['conversation-messages', selectedId] }),
+                queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+            ]);
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? 'Failed to send attachment');
+            throw err;
+        }
+    };
+
+    const react = async (messageId: string, emoji: string) => {
+        if (!selectedId) return;
+        try {
+            await api.post(`/conversations/${selectedId}/rich`, { type: 'reaction', messageId, emoji });
+            await queryClient.invalidateQueries({ queryKey: ['conversation-messages', selectedId] });
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? 'Failed to send reaction');
+        }
+    };
+
+    // --- Not shipped yet. See futurefeature.md items 3, 5 and 7. ------------
+    // Location needs no extra package in the browser — navigator.geolocation
+    // is built in — so this handler works as written once the button is back.
+    // /**
+    // * Location send — works as written; browsers expose geolocation
+    // * browsers expose geolocation natively. Flipping the flag is all it needs.
+    // */
+    // const sendLocation = async () => {
+    // if (!selectedId) return;
+    // if (!navigator.geolocation) {
+    // toast.error('This browser cannot share a location');
+    // return;
+    // }
+    // navigator.geolocation.getCurrentPosition(
+    // async (pos) => {
+    // try {
+    // await api.post(`/conversations/${selectedId}/rich`, {
+    // type: 'location',
+    // latitude: pos.coords.latitude,
+    // longitude: pos.coords.longitude,
+    // });
+    // await queryClient.invalidateQueries({ queryKey: ['conversation-messages', selectedId] });
+    // } catch (err: any) {
+    // toast.error(err?.response?.data?.message ?? 'Failed to share location');
+    // }
+    // },
+    // () => toast.error('Location permission denied'),
+    // { enableHighAccuracy: true, timeout: 10_000 },
+    // );
+    // };
+    //
+    // /** Contact send — needs a proper name/phone form, not a prompt. */
+    // const sendContact = async () => {
+    // toast('Contact sharing needs a name and phone form (see futurefeature.md)');
+    // };
+    //
+    // /** Address request — not implemented server-side yet. */
+    // const requestAddress = async () => {
+    // toast('Address requests are not built yet (see futurefeature.md)');
+    // };
+    // ------------------------------------------------------------------------
+
     const resumeBot = async () => {
         if (!selectedId) return;
         setResuming(true);
@@ -164,6 +235,8 @@ export default function ConversationsPage() {
                         onBack={() => setSelectedId(null)}
                         onResumeBot={resumeBot}
                         onSend={sendMessage}
+                        onSendMedia={sendMedia}
+                        onReact={react}
                     />
                 ) : (
                     <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-slate-950">

@@ -45,3 +45,7 @@ coverage/
 # Misc
 *.tsbuildinfo
 .turbo/
+
+# Uploaded WhatsApp media (customer photos/documents) — served from disk,
+# never source. See apps/api/src/services/media.ts (MEDIA_DIR).
+apps/api/var/

@@ -791,6 +791,8 @@ async function handleWithAgent(
             tenantId: tenant.id,
             tenantName: tenant.name,
             timezone: tenant.timezone ?? 'UTC',
+            currency: tenant.paymentCurrency ?? 'NGN',
+            paystackSecretKeyEncrypted: tenant.paystackSecretKey ?? null,
             businessType: tenant.businessType ?? 'SERVICE',
             conversationId: conversation.id,
             customerPhone,

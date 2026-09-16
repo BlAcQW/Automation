@@ -3,6 +3,7 @@ import type { Queue as BullQueue } from 'bullmq';
 import { decrypt } from './crypto.js';
 import { computeAvailableSlots } from './availability.js';
 import { safeZone, zonedTimeToUtc } from './timezone.js';
+import { createPaymentLink } from './payment-link.js';
 import { updateCalendarEvent } from './calendar.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
 import { cancelBooking } from './booking-cancel.js';
@@ -1396,63 +1397,20 @@ export class WhatsAppBotEngine {
      * configured / the Paystack call fails. The entity stays UNPAID either
      * way — the webhook flips it to PAID on charge.success.
      */
+    /** Shared with the LLM agent — see services/payment-link.ts. */
     private async tryInitPaystackPayment(args: {
         entity: 'order' | 'booking';
         id: string;
         amount: number; // major unit
         customerPhone: string;
     }): Promise<string | null> {
-        if (!this.paystackSecretKeyEncrypted) return null;
-
-        try {
-            const secretKey = decrypt(this.paystackSecretKeyEncrypted);
-            const digits = args.customerPhone.replace(/[^0-9]/g, '');
-            const callbackUrl = config.paystack.callbackUrl ?? (config.frontendUrl ? `${config.frontendUrl}/orders/paid` : undefined);
-
-            const init = await initializeTransaction({
-                secretKey,
-                // Paystack rejects reserved TLDs like `.local` — use a real
-                // public TLD for this placeholder email (customer never sees it).
-                email: `${digits || 'customer'}@customer.bookingflow.app`,
-                amountKobo: Math.round(args.amount * 100),
-                currency: this.paymentCurrency,
-                reference: `bf_${args.id}_${Date.now()}`,
-                callbackUrl,
-                metadata: {
-                    tenantId: this.tenantId,
-                    ...(args.entity === 'order'
-                        ? { orderId: args.id }
-                        : { bookingId: args.id }),
-                    customerPhone: args.customerPhone,
-                },
-            });
-
-            if (args.entity === 'order') {
-                await this.prisma.order.update({
-                    where: { id: args.id },
-                    data: {
-                        paymentReference: init.reference,
-                        paymentAuthorizationUrl: init.authorizationUrl,
-                    },
-                });
-            } else {
-                await this.prisma.booking.update({
-                    where: { id: args.id },
-                    data: {
-                        paymentReference: init.reference,
-                        paymentAuthorizationUrl: init.authorizationUrl,
-                    },
-                });
-            }
-
-            return init.authorizationUrl;
-        } catch (err) {
-            // Non-fatal: log and let the caller fall back to the no-payment
-            // confirmation. Staff can re-trigger from the dashboard.
-            // eslint-disable-next-line no-console
-            log.error({ detail: err }, 'Paystack init failed during bot flow');
-            return null;
-        }
+        return createPaymentLink({
+            prisma: this.prisma,
+            tenantId: this.tenantId,
+            paystackSecretKeyEncrypted: this.paystackSecretKeyEncrypted,
+            currency: this.paymentCurrency,
+            ...args,
+        });
     }
 
     private async getCustomerOrders(phone: string): Promise<any[]> {

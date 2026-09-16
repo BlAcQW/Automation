@@ -63,24 +63,25 @@ export function BottomTabBar() {
                         <Link
                             key={tab.href}
                             href={tab.href}
-                            className="flex flex-col items-center gap-1 py-2"
+                            aria-current={active ? 'page' : undefined}
+                            className="flex min-h-[56px] flex-col items-center justify-center gap-1 py-1.5 active:scale-[0.97] transition-transform"
                         >
                             <span
                                 className={cn(
-                                    'flex items-center justify-center rounded-full transition-all duration-200',
+                                    'flex h-8 w-12 items-center justify-center rounded-full transition-colors duration-200',
                                     active
-                                        ? 'h-9 w-9 bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-ink-1000 shadow-md shadow-bookly-emerald-500/30'
-                                        : 'h-9 w-9 text-ink-300',
+                                        ? 'bg-bookly-emerald-500/15 text-bookly-emerald-400'
+                                        : 'text-ink-300',
                                 )}
                             >
-                                <Icon className="w-5 h-5" />
+                                <Icon className="w-5 h-5" strokeWidth={active ? 2.25 : 1.75} />
                             </span>
                             <span
                                 className={cn(
-                                    'text-[10px] font-medium leading-none transition-colors',
+                                    'text-[11px] leading-none transition-colors',
                                     active
-                                        ? 'text-bookly-emerald-400'
-                                        : 'text-ink-300',
+                                        ? 'font-semibold text-bookly-emerald-400'
+                                        : 'font-medium text-ink-300',
                                 )}
                             >
                                 {tab.name}

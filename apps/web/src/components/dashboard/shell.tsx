@@ -20,10 +20,10 @@ export function DashboardShell({ children }: DashboardShellProps) {
         return (
             <div className="min-h-screen bg-ink-950 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-bookly-emerald-400 to-bookly-emerald-600 rounded-xl flex items-center justify-center shadow-bookly-glow animate-pulse-soft">
-                        <Loader2 className="w-5 h-5 text-ink-1000 animate-spin" />
+                    <div className="w-10 h-10 bg-bookly-emerald-500 rounded-xl flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 text-on-accent animate-spin" />
                     </div>
-                    <p className="text-caption uppercase tracking-wider text-ink-300">Loading…</p>
+                    <p className="text-sm text-ink-300">Loading your workspace</p>
                 </div>
             </div>
         );

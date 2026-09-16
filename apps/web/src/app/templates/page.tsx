@@ -48,24 +48,25 @@ export default function TemplatesPage() {
     return (
         <div className="space-y-6">
             <PageHeader
-                title="Message Templates"
-                subtitle="Register Meta-approved WhatsApp templates so reminders and confirmations get delivered outside the 24-hour customer-service window."
-                actions={<Button onClick={openCreate}>+ Register Template</Button>}
+                title="Message templates"
+                subtitle="WhatsApp only lets a business message a customer more than a day after their last reply if the message uses a template WhatsApp has approved. Reminders and confirmations need one."
+                actions={<Button onClick={openCreate}>Add template</Button>}
             />
 
             <Card className="p-4 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/50">
                 <p className="text-sm text-amber-800 dark:text-amber-200">
-                    Templates must be created &amp; approved inside{' '}
+                    Templates are written and approved in{' '}
                     <a
                         href="https://business.facebook.com/wa/manage/message-templates/"
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 font-medium underline"
                     >
-                        Meta Business Manager <ExternalLink className="w-3 h-3" />
+                        WhatsApp Business Manager <ExternalLink className="w-3 h-3" />
                     </a>
-                    . Once approved there, register the exact template name here and pick the
-                    purpose it serves. Variable order matters — see the hint inside the register form.
+                    . Once one is approved, add its exact name here and say what it is for
+                    (a reminder, a confirmation). If you are not sure, ask whoever set up your
+                    WhatsApp account, or contact support and we will do it with you.
                 </p>
             </Card>
 
@@ -77,14 +78,14 @@ export default function TemplatesPage() {
                 ) : !data?.data?.length ? (
                     <div className="flex flex-col items-center justify-center h-64 px-6 text-center">
                         <FileText className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-3" />
-                        <p className="font-medium text-slate-900 dark:text-white">No templates registered yet</p>
+                        <p className="font-medium text-slate-900 dark:text-white">No templates yet</p>
                         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md">
-                            Until you register at least one approved template per notification purpose
-                            (booking confirmation, reminder, etc.), the worker will create dashboard
-                            alerts instead of sending messages.
+                            Until you add one, appointment reminders and confirmations that fall
+                            outside the 24-hour window show up here as alerts for you to send by
+                            hand instead of going out automatically.
                         </p>
                         <Button onClick={openCreate} className="mt-4">
-                            + Register your first template
+                            Add your first template
                         </Button>
                     </div>
                 ) : (

@@ -56,7 +56,7 @@ export default function OrdersPage() {
             await navigator.clipboard.writeText(order.paymentAuthorizationUrl);
             toast.success('Payment link copied');
         } catch {
-            toast.error('Could not copy — select the URL manually');
+            toast.error('Could not copy. Select the URL manually.');
         }
     };
 

@@ -93,10 +93,12 @@ export default function SettingsPage() {
     // The Paystack webhook URL the tenant must register in their dashboard.
     const webhookUrl = `${(process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '')}/payments/webhook`;
 
+    // Where our customers are, first. The rest of the world after.
     const timezones = [
-        'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-        'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Singapore',
-        'Australia/Sydney', 'Pacific/Auckland'
+        'Africa/Accra', 'Africa/Lagos', 'Africa/Abidjan', 'Africa/Dakar', 'Africa/Nairobi',
+        'Africa/Johannesburg', 'Africa/Cairo', 'Africa/Casablanca', 'Africa/Kinshasa',
+        'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'America/New_York', 'America/Chicago',
+        'America/Los_Angeles', 'Asia/Dubai', 'Asia/Singapore', 'Australia/Sydney', 'UTC',
     ];
 
     useEffect(() => {
@@ -363,7 +365,7 @@ export default function SettingsPage() {
                             </p>
                             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                                 When off, Bookly won&apos;t send appointment reminders or order
-                                shipping/delivery updates. This saves messaging cost — but customers
+                                shipping/delivery updates. This saves messaging cost, but customers
                                 won&apos;t be reminded of their appointments.
                             </p>
                         </div>
@@ -533,7 +535,7 @@ export default function SettingsPage() {
                                         onClick={() => {
                                             navigator.clipboard.writeText(webhookUrl)
                                                 .then(() => toast.success('Webhook URL copied'))
-                                                .catch(() => toast.error('Could not copy — select it manually'));
+                                                .catch(() => toast.error('Could not copy. Select it manually.'));
                                         }}
                                     >
                                         <Copy className="w-4 h-4 mr-1.5" />
@@ -543,7 +545,7 @@ export default function SettingsPage() {
                                 <p className="text-xs text-slate-500 dark:text-slate-400">
                                     Paste this into Paystack Dashboard → Settings → API Keys &amp; Webhooks →
                                     Webhook URL, so payments confirm automatically. Without it, payments
-                                    still confirm when the customer returns to the app — but the webhook
+                                    still confirm when the customer returns to the app, but the webhook
                                     is instant.
                                 </p>
                             </div>
@@ -661,7 +663,7 @@ function PlanAndUsageCard() {
         setCancelling(true);
         try {
             await api.post('/billing/cancel');
-            toast.success('Subscription cancelled — paid features run until the period end.');
+            toast.success('Subscription cancelled. Paid features run until the period end.');
             await queryClient.invalidateQueries({ queryKey: ['billing', 'status'] });
         } catch (err: any) {
             toast.error(err?.response?.data?.message ?? 'Cancel failed');
@@ -801,7 +803,7 @@ function PlanAndUsageCard() {
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-700">
                     <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
                         {data.paystackConfigured
-                            ? 'Plan changes complete on Paystack — your card is charged immediately.'
+                            ? 'Plan changes complete on Paystack. Your card is charged immediately.'
                             : 'Self-serve billing is not configured. Email support to change your plan.'}
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -1077,7 +1079,7 @@ function EmailFallbackCard() {
                 ) : (
                     <form onSubmit={connect} className="space-y-4">
                         <div className="rounded-xl border border-blue-200 dark:border-blue-700/50 bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
-                            Platform fallback is enabled by default — emails go out from
+                            Platform fallback is enabled by default: emails go out from
                             Bookly&apos;s shared sender when WhatsApp + SMS fail. Connect your
                             own Gmail below to send from your own brand instead.
                         </div>

@@ -91,16 +91,16 @@ export default function ServicesPage() {
                 }
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-3 gap-3 sm:gap-4">
                 <StatCard
-                    name="Total Services"
+                    name="Services"
                     value={stats.total}
                     icon={<Briefcase className="w-6 h-6 text-blue-500" />}
                     color="bg-blue-500/10"
                     index={0}
                 />
                 <StatCard
-                    name="Active Services"
+                    name="Active"
                     value={stats.active}
                     icon={<CheckCircle className="w-6 h-6 text-emerald-500" />}
                     color="bg-emerald-500/10"

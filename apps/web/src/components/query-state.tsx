@@ -38,7 +38,7 @@ export function QueryState({ isLoading, isError, isEmpty, onRetry, empty, childr
                 <CloudOff className="h-9 w-9 text-slate-400" />
                 <p className="text-sm font-medium text-slate-900 dark:text-white">Can&apos;t reach the server</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Your data is safe — check your connection and try again.
+                    Your data is safe. Check your connection and try again.
                 </p>
                 {onRetry ? (
                     <button

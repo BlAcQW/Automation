@@ -82,7 +82,7 @@ export function MessageBubble({
                     className={cn(
                         'px-3.5 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap',
                         outbound
-                            ? 'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-ink-1000 rounded-2xl rounded-br-md shadow-sm'
+                            ? 'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-on-accent rounded-2xl rounded-br-md shadow-sm'
                             : 'bg-ink-900 text-ink-50 rounded-2xl rounded-bl-md border border-ink-700/70 shadow-sm',
                     )}
                 >

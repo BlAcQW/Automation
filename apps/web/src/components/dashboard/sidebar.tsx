@@ -75,7 +75,7 @@ export function Sidebar() {
             {/* Tenant Info */}
             <div className="px-3 py-4">
                 <div className="bg-ink-900 rounded-xl px-3.5 py-2.5 border border-ink-700">
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-ink-300">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-ink-300">
                         {tenant?.businessType === 'PRODUCT' ? 'Product Store' : 'Service Business'}
                     </p>
                     <p className="font-display font-semibold text-ink-50 truncate text-sm mt-0.5">{tenant?.name}</p>

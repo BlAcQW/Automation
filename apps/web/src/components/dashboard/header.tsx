@@ -19,14 +19,14 @@ export function DashboardHeader() {
                     {tenant?.name ?? 'Bookly'}
                 </p>
                 {connected ? (
-                    <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[var(--wa-green)]/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--wa-green)]">
+                    <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-[var(--wa-green)]/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--wa-green)]">
                         <span className="h-1.5 w-1.5 rounded-full bg-[var(--wa-green)] animate-pulse" />
                         WhatsApp Connected
                     </span>
                 ) : (
                     <Link
                         href="/whatsapp"
-                        className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-300 hover:bg-amber-500/25"
+                        className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-amber-300 hover:bg-amber-500/25"
                     >
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                         Connect WhatsApp
@@ -42,7 +42,7 @@ export function DashboardHeader() {
                 >
                     <Search className="h-4 w-4 shrink-0" />
                     <span className="flex-1 text-left">Search…</span>
-                    <kbd className="font-mono text-[10px] uppercase text-ink-400 border border-ink-700 rounded px-1.5 py-0.5">⌘K</kbd>
+                    <kbd className="font-mono text-[11px] uppercase text-ink-400 border border-ink-700 rounded px-1.5 py-0.5">⌘K</kbd>
                 </button>
             </div>
 

@@ -117,7 +117,7 @@ export default function CancelBookingPage({ params }: { params: { token: string 
                                 {phase === 'cancelling' ? 'Cancelling…' : 'Cancel Appointment'}
                             </button>
                             <p className="text-xs text-slate-400 mt-3 text-center">
-                                Changed your mind? Just close this page — nothing happens.
+                                Changed your mind? Just close this page. Nothing happens.
                             </p>
                         </>
                     )}

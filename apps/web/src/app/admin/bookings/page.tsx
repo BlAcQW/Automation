@@ -108,12 +108,12 @@ export default function AdminBookingsPage() {
                                                 <td className="px-6 py-4 text-white font-medium">
                                                     {b.bookingReference}
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-300">{b.tenant?.name ?? '—'}</td>
+                                                <td className="px-6 py-4 text-slate-300">{b.tenant?.name ?? '-'}</td>
                                                 <td className="px-6 py-4">
                                                     <p className="text-white">{b.customerName}</p>
                                                     <p className="text-sm text-slate-500">{b.customerPhone}</p>
                                                 </td>
-                                                <td className="px-6 py-4 text-slate-300">{b.service?.name ?? '—'}</td>
+                                                <td className="px-6 py-4 text-slate-300">{b.service?.name ?? '-'}</td>
                                                 <td className="px-6 py-4 text-slate-300">
                                                     {new Date(b.startTime).toLocaleString()}
                                                 </td>

@@ -193,7 +193,7 @@ export function WhatsAppDemo() {
                                     <div className="h-[420px] sm:h-[460px] overflow-y-auto p-3 space-y-2 scrollbar-hide bg-[#0b141a]">
                                         {/* Date chip */}
                                         <div className="flex justify-center mb-2">
-                                            <span className="bg-[#182229] text-slate-400 text-[10px] px-3 py-1 rounded-lg">TODAY</span>
+                                            <span className="bg-[#182229] text-slate-400 text-[11px] px-3 py-1 rounded-lg">TODAY</span>
                                         </div>
 
                                         <AnimatePresence>
@@ -220,7 +220,7 @@ export function WhatsAppDemo() {
                                                                 'flex items-center justify-end gap-1 mt-1',
                                                                 msg.direction === 'in' ? 'text-slate-500' : 'text-emerald-200/60'
                                                             )}>
-                                                                <span className="text-[10px]">
+                                                                <span className="text-[11px]">
                                                                     {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                                 </span>
                                                                 {msg.direction === 'out' && (

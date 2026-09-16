@@ -2,99 +2,79 @@
 
 import {
     Inbox,
-    Bot,
-    Calendar,
-    CreditCard,
+    Sparkles,
+    CalendarClock,
+    Banknote,
     Users,
-    Megaphone,
-    LineChart,
     UsersRound,
 } from 'lucide-react';
 import { ScrollReveal, ScrollRevealItem } from '@/components/primitives/scroll-reveal';
 import { cn } from '@/lib/cn';
 
-interface BentoCard {
+interface FeatureCell {
     title: string;
     description: string;
     icon: React.ComponentType<{ className?: string }>;
-    /** Tailwind grid-span classes (default: single col). */
     span?: string;
-    /** Optional rich visual rendered inside the card (overrides the icon). */
-    visual?: 'inbox' | 'payments';
+    visual?: 'inbox' | 'reminder';
 }
 
-const CARDS: BentoCard[] = [
+/**
+ * Six things the product does today. Nothing on this list is a roadmap item:
+ * if it isn't in the dashboard, it isn't here.
+ */
+const CELLS: FeatureCell[] = [
     {
-        title: 'Smart inbox',
-        description: 'A unified WhatsApp inbox the whole team can work from. Assign, snooze, filter — without leaving chat.',
+        title: 'One inbox for every chat',
+        description: 'Every customer conversation in one place. Read what the assistant said, step in when you want to, hand back when you are done.',
         icon: Inbox,
         span: 'md:col-span-2',
         visual: 'inbox',
     },
     {
-        title: 'No-code bot',
-        description: 'Drag-to-build conversation flows. Booking, FAQ, payment reminder — configured the way you\'d talk to it.',
-        icon: Bot,
+        title: 'An assistant that knows your business',
+        description: 'It greets customers by name, knows your services, prices and hours, and books straight into your calendar.',
+        icon: Sparkles,
     },
     {
-        title: 'Bookings',
-        description: 'Calendar sync, automated reminders, no-show recovery — the whole booking funnel runs itself.',
-        icon: Calendar,
+        title: 'Reminders that cut no-shows',
+        description: 'The day before, the customer gets a WhatsApp reminder. Nobody has to remember to send it.',
+        icon: CalendarClock,
+        visual: 'reminder',
     },
     {
-        title: 'Payments',
-        description: 'Request, confirm, reconcile inside chat. Paystack and momo links sent automatically when an order closes.',
-        icon: CreditCard,
+        title: 'Deposits paid in the chat',
+        description: 'A Paystack link goes out when the customer chooses to pay now. Mobile money and cards. The seat is held until it is paid.',
+        icon: Banknote,
         span: 'md:col-span-2',
     },
     {
-        title: 'Contacts CRM',
-        description: 'Auto-tagged. Segmented by behavior. Exportable to CSV when you need it.',
+        title: 'Customers, remembered',
+        description: 'Every person who has ever messaged you, with their bookings and what they usually ask for.',
         icon: Users,
     },
     {
-        title: 'Broadcasts',
-        description: 'Compliant bulk messaging that doesn\'t get your number banned. Templates are pre-approved by Meta.',
-        icon: Megaphone,
-    },
-    {
-        title: 'Analytics',
-        description: 'Response time, conversion, revenue per chat — finally measurable.',
-        icon: LineChart,
-    },
-    {
-        title: 'Multi-agent',
-        description: 'Your whole team on one number. Conversations route to whoever is available; bot picks up the rest.',
+        title: 'Your team on one number',
+        description: 'Add staff. Everyone answers from the same WhatsApp number, and you can see who said what.',
         icon: UsersRound,
     },
 ];
 
-/**
- * FeatureBento — ui.md §7.4. Mixed-size bento grid; some cards span 2 cols.
- * Each card hover: emerald border + faint inner glow.
- */
 export function FeatureBento() {
     return (
-        <ScrollReveal id="features" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 lg:py-32" stagger>
-            {/* Section atmosphere — full-bleed divider + offset emerald glow top-right. */}
-            <div aria-hidden className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-screen h-full overflow-hidden -z-10">
-                <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-ink-700/40 to-transparent" />
-                <div className="absolute -top-24 -right-32 w-[600px] h-[600px] bookly-glow opacity-30" />
-            </div>
+        <ScrollReveal id="features" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 lg:py-28" stagger>
+            <div aria-hidden className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-screen h-px bg-ink-700/50" />
 
             <ScrollRevealItem>
-                <p className="text-caption uppercase tracking-[0.18em] text-bookly-emerald-400 mb-4 text-center">
-                    Everything you need
-                </p>
-                <h2 className="font-display text-display-lg text-ink-50 text-center max-w-3xl mx-auto">
-                    Everything your business does, in one chat.
+                <h2 className="font-display text-display-lg text-ink-50 max-w-[22ch] text-balance">
+                    Everything a booking business does, in one chat.
                 </h2>
             </ScrollRevealItem>
 
-            <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-                {CARDS.map((card) => (
-                    <ScrollRevealItem key={card.title} className={cn('group', card.span)}>
-                        <FeatureCard {...card} />
+            <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+                {CELLS.map((cell) => (
+                    <ScrollRevealItem key={cell.title} className={cn('group', cell.span)}>
+                        <FeatureCard {...cell} />
                     </ScrollRevealItem>
                 ))}
             </div>
@@ -102,62 +82,51 @@ export function FeatureBento() {
     );
 }
 
-function FeatureCard({ title, description, icon: Icon, visual }: BentoCard) {
+function FeatureCard({ title, description, icon: Icon, visual }: FeatureCell) {
     return (
-        <article className="group/card relative h-full overflow-hidden rounded-2xl border border-ink-700 bg-ink-900 p-6 sm:p-7 transition-all duration-300 hover:border-bookly-emerald-500/40 hover:bg-ink-800/60">
-            {/* Inner glow on hover */}
-            <div
-                className="absolute inset-0 opacity-0 transition-opacity duration-500 group-hover/card:opacity-100 pointer-events-none"
-                style={{
-                    background:
-                        'radial-gradient(circle at 30% 0%, rgba(16,185,129,0.10) 0%, transparent 60%)',
-                }}
-                aria-hidden
-            />
-            <div className="relative">
-                <div className="mb-4 sm:mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-bookly-emerald-500/10 border border-bookly-emerald-500/20 text-bookly-emerald-400 transition-transform duration-300 group-hover/card:scale-105">
-                    <Icon className="h-5 w-5" />
-                </div>
-                <h3 className="font-display text-h3 text-ink-50 mb-2 tracking-tight">{title}</h3>
-                <p className="text-body-sm text-ink-300 leading-relaxed">{description}</p>
-
-                {visual === 'inbox' && <InboxPreview />}
+        <article className="relative h-full overflow-hidden rounded-2xl border border-ink-700 bg-ink-900 p-6 sm:p-7 transition-colors duration-200 hover:border-ink-600">
+            <div className="mb-5 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-bookly-emerald-500/10 text-bookly-emerald-400">
+                <Icon className="h-5 w-5" />
             </div>
+            <h3 className="font-display text-h3 text-ink-50 mb-2 tracking-tight text-balance">{title}</h3>
+            <p className="text-body-sm text-ink-300 leading-relaxed max-w-[52ch]">{description}</p>
+
+            {visual === 'inbox' && <InboxPreview />}
+            {visual === 'reminder' && <ReminderPreview />}
         </article>
     );
 }
 
-/** Mini static inbox preview — 3 rows, dark slate surface, unread dot. */
+/** Three rows of the real inbox list, at inbox size. */
 function InboxPreview() {
     return (
-        <div className="mt-5 rounded-xl border border-ink-700 bg-ink-1000/60 overflow-hidden">
+        <div className="mt-6 rounded-xl border border-ink-700 bg-ink-950 overflow-hidden">
             {INBOX_ROWS.map((row, i) => (
                 <div
                     key={row.name}
                     className={cn(
                         'flex items-center gap-3 px-3.5 py-2.5',
                         i !== INBOX_ROWS.length - 1 && 'border-b border-ink-700/60',
-                        row.active && 'bg-ink-800/40',
                     )}
                 >
-                    <div
-                        className={cn(
-                            'h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-[10px] font-display font-bold text-ink-1000',
-                            row.color,
-                        )}
-                    >
-                        {row.name.charAt(0)}
+                    <div className="h-8 w-8 shrink-0 rounded-full bg-ink-700 flex items-center justify-center text-[11px] font-display font-semibold text-ink-100">
+                        {row.initials}
                     </div>
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                            <span className={cn('text-[12px] font-medium truncate', row.unread ? 'text-ink-50' : 'text-ink-100')}>
+                            <span className={cn('text-[13px] truncate', row.unread ? 'font-semibold text-ink-50' : 'font-medium text-ink-100')}>
                                 {row.name}
                             </span>
-                            <span className="text-[10px] text-ink-300 shrink-0 tabular-nums">{row.time}</span>
+                            <span className="text-[11px] text-ink-300 shrink-0 tabular-nums">{row.time}</span>
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
-                            <span className="text-[11px] text-ink-300 truncate">{row.preview}</span>
-                            {row.unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-bookly-emerald-500" />}
+                            <span className="text-[12px] text-ink-300 truncate">{row.preview}</span>
+                            <span className={cn(
+                                'shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium',
+                                row.who === 'Assistant' ? 'bg-bookly-emerald-500/10 text-bookly-emerald-300' : 'bg-ink-700 text-ink-100',
+                            )}>
+                                {row.who}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -167,7 +136,15 @@ function InboxPreview() {
 }
 
 const INBOX_ROWS = [
-    { name: 'Akosua A.', preview: 'Booked Saturday — confirmed ✓', time: '2:14', unread: true, color: 'bg-gradient-to-br from-bookly-emerald-400 to-bookly-emerald-600', active: false },
-    { name: 'Kwame O.', preview: 'Can I reschedule to Friday?', time: '1:08', unread: true, color: 'bg-gradient-to-br from-amber-400 to-amber-600', active: true },
-    { name: 'Adaeze N.', preview: 'Thanks! See you then.', time: 'Mon', unread: false, color: 'bg-gradient-to-br from-mint to-bookly-emerald-500', active: false },
+    { initials: 'AA', name: 'Akosua Asante', preview: 'Booked Saturday 1:30 PM, deposit paid', time: '9:43', unread: true, who: 'Assistant' },
+    { initials: 'KO', name: 'Kwame Osei', preview: 'Can I move it to Friday?', time: '9:12', unread: true, who: 'You' },
+    { initials: 'EN', name: 'Efua Nyarko', preview: 'Thank you, see you then', time: 'Mon', unread: false, who: 'Assistant' },
 ];
+
+function ReminderPreview() {
+    return (
+        <div className="mt-6 rounded-xl rounded-tr-sm bg-[#005C4B] px-3 py-2 text-[12.5px] leading-snug text-white">
+            Reminder: knotless braids tomorrow at 1:30 PM at Adwoa&apos;s Hair Studio. Reply 1 to confirm or 2 to reschedule.
+        </div>
+    );
+}

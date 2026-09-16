@@ -41,15 +41,15 @@ export class AppErrorBoundary extends React.Component<{ children: React.ReactNod
           justifyContent: 'center',
           padding: 32,
           gap: 10,
-          backgroundColor: '#000000',
+          backgroundColor: '#0A0F0D',
         }}
       >
         <Ionicons name="warning-outline" size={40} color="#8E8E93" />
-        <Text variant="body" weight="semi" center style={{ color: '#FFFFFF' }}>
+        <Text variant="body" weight="semi" center style={{ color: '#F2F6F4' }}>
           Something went wrong
         </Text>
         <Text variant="bodySm" center style={{ color: '#8E8E93' }}>
-          The screen failed to load. Your data is safe — nothing was lost.
+          The screen failed to load. Your data is safe. Nothing was lost.
         </Text>
         <Pressable
           onPress={() => this.setState({ error: null })}

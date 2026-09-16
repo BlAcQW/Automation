@@ -238,7 +238,7 @@ export default function AvailabilityPage() {
                                         </span>
                                         {blackout.reason && (
                                             <span className="ml-2 text-sm text-slate-500 dark:text-slate-400">
-                                                — {blackout.reason}
+                                                ({blackout.reason})
                                             </span>
                                         )}
                                     </div>

@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
+import { useTenantCurrency } from '@/lib/use-currency';
 import { toast } from 'react-hot-toast';
 
 // Schema matches API validation
@@ -42,6 +43,7 @@ interface ProductModalProps {
 
 export function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
     const queryClient = useQueryClient();
+    const currency = useTenantCurrency();
     const isEditing = !!product;
 
     const {
@@ -108,15 +110,15 @@ export function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
         >
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <DashboardInput
-                    label="Product Name"
-                    placeholder="e.g. Premium Service"
+                    label="Product name"
+                    placeholder="e.g. Kente stole, 2 yards"
                     error={errors.name?.message}
                     {...register('name')}
                 />
 
                 <div className="grid grid-cols-2 gap-4">
                     <DashboardInput
-                        label="Price ($)"
+                        label={`Price (${currency})`}
                         type="number"
                         step="0.01"
                         placeholder="0.00"

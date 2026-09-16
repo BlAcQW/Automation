@@ -244,7 +244,7 @@ export default function ConversationThread() {
     } catch (err) {
       const e = err as AxiosError<{ message?: string }>;
       if (e.response?.status === 402) setNotice('Message quota reached for this cycle. Upgrade your plan to send more.');
-      else if (e.response?.status === 400) setNotice('Outside the 24-hour window — you can only send an approved template now.');
+      else if (e.response?.status === 400) setNotice('Outside the 24-hour window. You can only send an approved template now.');
       else setNotice(e.response?.data?.message ?? 'Could not send. Try again.');
     }
   }
@@ -455,7 +455,7 @@ export default function ConversationThread() {
               fontFamily: t.fonts.bodyRegular,
               fontSize: 16,
             }}
-            placeholder={withinWindow ? 'Message…' : 'Outside 24h window — template only'}
+            placeholder={withinWindow ? 'Message…' : 'Outside 24h window: template only'}
             placeholderTextColor={t.colors.textSubtle}
             value={draft}
             onChangeText={setDraft}

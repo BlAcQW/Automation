@@ -193,7 +193,7 @@ export default function RegisterPage() {
                                         name="name"
                                         value={formData.name}
                                         onChange={handleChange}
-                                        placeholder="John Doe"
+                                        placeholder="Ama Mensah"
                                         required
                                     />
 
@@ -204,7 +204,7 @@ export default function RegisterPage() {
                                         name="businessName"
                                         value={formData.businessName}
                                         onChange={handleChange}
-                                        placeholder={formData.businessType === 'PRODUCT' ? 'My Store' : 'Acme Salon'}
+                                        placeholder={formData.businessType === 'PRODUCT' ? "Ama's Fabrics" : "Ama's Hair Studio"}
                                         required
                                     />
 
@@ -231,7 +231,7 @@ export default function RegisterPage() {
                                             minLength={8}
                                             required
                                         />
-                                        <p className="text-ink-400 text-caption uppercase tracking-wider mt-1.5">Minimum 8 characters</p>
+                                        <p className="text-ink-300 text-[13px] mt-1.5">At least 8 characters.</p>
                                     </div>
 
                                     <GlowButton

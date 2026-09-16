@@ -402,13 +402,13 @@ export default function WhatsAppSetupPage() {
                                         </p>
                                     </div>
                                 </div>
-                                {sdkReady ? (
-                                    <Badge variant="default" dot>SDK Ready</Badge>
-                                ) : sdkFailed ? (
-                                    <Badge variant="red" dot>SDK Blocked</Badge>
-                                ) : (
-                                    <Badge variant="yellow" dot pulse>Loading SDK...</Badge>
-                                )}
+                                {/* "SDK ready" means nothing to a business owner; only
+                                    surface the two states they can act on. */}
+                                {sdkFailed ? (
+                                    <Badge variant="red" dot>Blocked</Badge>
+                                ) : !sdkReady ? (
+                                    <Badge variant="yellow" dot pulse>Preparing</Badge>
+                                ) : null}
                             </div>
 
                             {/* SDK Failed Warning */}
@@ -458,12 +458,12 @@ export default function WhatsAppSetupPage() {
                                 third-party-cookie disabled). */}
                             <details className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 p-4 group">
                                 <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300 group-open:mb-4">
-                                    Connect manually instead
+                                    Advanced: connect with your own Meta credentials
                                 </summary>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-                                    Paste values from Meta Business Manager. The phone number ID and
-                                    WABA ID are visible under WhatsApp → API Setup. Create a permanent
-                                    System User access token under Business Settings → Users → System Users.
+                                    Only needed if the green button above does not work for you. Your
+                                    developer or IT person can find these values in Meta Business
+                                    Manager (WhatsApp → API Setup, and Business Settings → System Users).
                                 </p>
                                 <form onSubmit={submitManualConnect} className="space-y-3">
                                     <DashboardInput

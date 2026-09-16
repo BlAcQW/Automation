@@ -90,7 +90,7 @@ export default function SettingsScreen() {
           />
           <Text variant="caption" tone="muted">
             {mode === 'system'
-              ? `Following your device setting — currently ${scheme}.`
+              ? `Following your device setting (currently ).`
               : `Always ${mode}, whatever your device is set to.`}
           </Text>
         </Card>

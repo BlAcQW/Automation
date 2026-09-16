@@ -40,6 +40,15 @@ interface Booking {
     };
 }
 
+// What the customer sees on the filter chips. Never the raw enum.
+const STATUS_FILTER_LABELS: Record<string, string> = {
+    ALL: 'All',
+    PENDING_PAYMENT: 'Awaiting payment',
+    CONFIRMED: 'Confirmed',
+    COMPLETED: 'Completed',
+    CANCELLED: 'Cancelled',
+};
+
 export default function BookingsPage() {
     const queryClient = useQueryClient();
     const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -58,7 +67,7 @@ export default function BookingsPage() {
             await navigator.clipboard.writeText(booking.paymentAuthorizationUrl);
             toast.success('Payment link copied');
         } catch {
-            toast.error('Could not copy — select the URL manually');
+            toast.error('Could not copy. Select the URL manually.');
         }
     };
 
@@ -138,9 +147,9 @@ export default function BookingsPage() {
                 subtitle="Manage appointments and schedules"
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 <StatCard
-                    name="All Bookings"
+                    name="All bookings"
                     value={stats.total}
                     icon={<Calendar className="w-6 h-6 text-slate-500" />}
                     color="bg-slate-500/10"
@@ -169,18 +178,19 @@ export default function BookingsPage() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
-                <div className="flex p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between bg-white dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+                {/* Scrolls sideways on phones instead of spilling past the card edge. */}
+                <div className="flex w-full sm:w-auto p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {['ALL', 'PENDING_PAYMENT', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((status) => (
                         <button
                             key={status}
                             onClick={() => setSelectedStatus(status)}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedStatus === status
+                            className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedStatus === status
                                     ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
                                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                                 }`}
                         >
-                            {status.charAt(0) + status.slice(1).toLowerCase()}
+                            {STATUS_FILTER_LABELS[status]}
                         </button>
                     ))}
                 </div>
@@ -283,7 +293,7 @@ export default function BookingsPage() {
                                                     )}
                                                 </>
                                             ) : (
-                                                <span className="text-xs text-slate-400">—</span>
+                                                <span className="text-xs text-slate-400">-</span>
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-right">

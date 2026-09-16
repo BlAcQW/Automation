@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: 'Terms of Service — Bookly',
+    title: 'Terms of Service | Bookly',
     description: 'Terms that govern your use of the Bookly platform.',
 };
 

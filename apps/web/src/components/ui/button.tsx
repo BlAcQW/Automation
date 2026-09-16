@@ -12,7 +12,7 @@ const buttonVariants = cva(
         variants: {
             variant: {
                 default:
-                    'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-ink-1000 shadow-lg shadow-bookly-emerald-500/25 hover:shadow-bookly-emerald-500/40 hover:brightness-105 focus-visible:ring-bookly-emerald-500',
+                    'bg-bookly-emerald-500 text-on-accent shadow-[0_6px_20px_-8px_rgba(16,185,129,0.55)] hover:bg-bookly-emerald-400 focus-visible:ring-bookly-emerald-500',
                 secondary:
                     'bg-ink-800 text-ink-100 hover:bg-ink-700 focus-visible:ring-ink-500',
                 outline:
@@ -21,8 +21,10 @@ const buttonVariants = cva(
                     'text-ink-200 hover:bg-ink-800/60 hover:text-ink-50',
                 destructive:
                     'bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20',
+                // Kept as an alias of `default` so existing call sites compile;
+                // the neon halo it used to draw is retired.
                 glow:
-                    'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-ink-1000 shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-[0_0_50px_rgba(16,185,129,0.6)] hover:brightness-105',
+                    'bg-bookly-emerald-500 text-on-accent shadow-[0_6px_20px_-8px_rgba(16,185,129,0.55)] hover:bg-bookly-emerald-400 focus-visible:ring-bookly-emerald-500',
             },
             size: {
                 sm: 'h-9 px-3 text-sm rounded-lg',

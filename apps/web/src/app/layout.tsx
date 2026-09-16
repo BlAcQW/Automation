@@ -22,7 +22,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-    title: 'Bookly — WhatsApp-first SaaS for small businesses',
+    title: 'Bookly: WhatsApp bookings for small businesses',
     description: 'Your customers chat. A bot handles bookings, payments, reminders, and FAQs. You run everything from one cinematic dashboard.',
     keywords: ['whatsapp', 'automation', 'bookings', 'crm', 'small business', 'saas', 'bot'],
     manifest: '/manifest.json',

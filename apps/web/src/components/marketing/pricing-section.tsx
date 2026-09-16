@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Sparkles } from 'lucide-react';
+import { Check } from 'lucide-react';
 import Link from 'next/link';
 import { ScrollReveal, ScrollRevealItem } from '@/components/primitives/scroll-reveal';
 import { GlowButton } from '@/components/primitives/glow-button';
@@ -15,21 +15,14 @@ import { cn } from '@/lib/cn';
 export function PricingSection() {
     return (
         <ScrollReveal id="pricing" className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 lg:py-32" stagger>
-            {/* Section atmosphere — full-bleed divider + emerald glow centered behind the Pro card. */}
-            <div aria-hidden className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-screen h-full overflow-hidden -z-10">
-                <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-ink-700/40 to-transparent" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[680px] h-[680px] bookly-glow opacity-25" />
-            </div>
+            <div aria-hidden className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-screen h-px bg-ink-700/50" />
 
             <ScrollRevealItem>
-                <p className="text-caption uppercase tracking-[0.18em] text-bookly-emerald-400 mb-4 text-center">
-                    Pricing
-                </p>
-                <h2 className="font-display text-display-lg text-ink-50 text-center max-w-3xl mx-auto">
-                    Simple, message-based pricing.
+                <h2 className="font-display text-display-lg text-ink-50 text-center max-w-3xl mx-auto text-balance">
+                    Pay for messages, not for seats.
                 </h2>
-                <p className="text-body-lg text-ink-300 text-center max-w-2xl mx-auto mt-5">
-                    Start free. Upgrade when your customers do. 14-day Pro trial included on every signup — no credit card.
+                <p className="text-body-lg text-ink-300 text-center max-w-[48ch] mx-auto mt-5 text-pretty">
+                    Start free. Every new account gets 14 days of Pro, no card needed.
                 </p>
             </ScrollRevealItem>
 
@@ -53,8 +46,8 @@ export function PricingSection() {
             </div>
 
             <ScrollRevealItem>
-                <p className="mt-10 text-center text-body-sm text-ink-300">
-                    All plans include the WhatsApp inbox, bot builder, and basic analytics. WhatsApp Cloud API fees (paid to Meta) are separate and free for the first 1,000 service conversations per month.
+                <p className="mt-10 text-center text-body-sm text-ink-300 max-w-[60ch] mx-auto">
+                    Every plan includes the inbox, the assistant and reminders. WhatsApp&apos;s own per-message fees are billed separately by Meta.
                 </p>
             </ScrollRevealItem>
         </ScrollReveal>
@@ -67,14 +60,13 @@ function PlanCard({ plan }: { plan: DisplayPlan }) {
             className={cn(
                 'relative h-full flex flex-col rounded-2xl border p-6 sm:p-7 transition-all',
                 plan.featured
-                    ? 'bg-ink-900 border-bookly-emerald-500/40 shadow-bookly-glow lg:scale-[1.03]'
-                    : 'bg-ink-900 border-ink-700 hover:border-bookly-emerald-500/30',
+                    ? 'bg-ink-900 border-bookly-emerald-500/50'
+                    : 'bg-ink-900 border-ink-700 hover:border-ink-600',
             )}
         >
             {plan.featured && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 inline-flex items-center gap-1 rounded-full bg-bookly-emerald-500 text-ink-1000 px-3 py-1 text-[10px] font-display font-bold uppercase tracking-wider">
-                    <Sparkles className="h-3 w-3" />
-                    Most popular
+                <span className="absolute -top-3 left-6 inline-flex items-center rounded-md bg-bookly-emerald-500 text-on-accent px-2.5 py-1 text-[12px] font-display font-semibold">
+                    Recommended
                 </span>
             )}
 

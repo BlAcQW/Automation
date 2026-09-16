@@ -69,7 +69,7 @@ function StatusPill({ tone, children }: { tone: 'emerald' | 'amber' | 'slate' | 
     return (
         <span
             className={cn(
-                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide',
                 tone === 'emerald' && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
                 tone === 'amber' && 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
                 tone === 'slate' && 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',

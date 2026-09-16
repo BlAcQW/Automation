@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: 'Privacy Policy — Bookly',
+    title: 'Privacy Policy | Bookly',
     description: 'How Bookly collects, uses, and protects your data.',
 };
 
@@ -31,35 +31,35 @@ export default function PrivacyPolicyPage() {
                 <p>We collect only the data needed to operate the service. Specifically:</p>
                 <ul className="list-disc pl-6 space-y-2 mt-3">
                     <li>
-                        <strong>Account data</strong> — the business owner&apos;s name, email address, hashed
+                        <strong>Account data</strong>: the business owner&apos;s name, email address, hashed
                         password, and business name when they register.
                     </li>
                     <li>
-                        <strong>WhatsApp Business credentials</strong> — when a business connects their WhatsApp
+                        <strong>WhatsApp Business credentials</strong>: when a business connects their WhatsApp
                         Cloud API account via Meta&apos;s Embedded Signup flow, we receive and store
                         (encrypted at rest) their WhatsApp Business Account ID, phone number ID, display phone
                         number, and an access token. These credentials are used solely to send and receive
                         messages on the business&apos;s behalf.
                     </li>
                     <li>
-                        <strong>Customer conversations</strong> — when an end-customer messages a business
+                        <strong>Customer conversations</strong>: when an end-customer messages a business
                         through our platform, we store the customer&apos;s phone number, the contents of the
                         messages exchanged, and timestamps. This data is the property of the business that
                         owns the WhatsApp number.
                     </li>
                     <li>
-                        <strong>Bookings &amp; orders</strong> — customer name, phone number, selected service
+                        <strong>Bookings &amp; orders</strong>: customer name, phone number, selected service
                         or product, scheduled time, and (where applicable) delivery address and payment
                         reference.
                     </li>
                     <li>
-                        <strong>Payment information</strong> — payment processing is handled by Paystack
+                        <strong>Payment information</strong>: payment processing is handled by Paystack
                         (https://paystack.com). We do not store card numbers, CVVs, or full bank details. We
                         store only the Paystack transaction reference and the high-level result (status,
                         amount, currency).
                     </li>
                     <li>
-                        <strong>Operational metadata</strong> — IP addresses, request timestamps, and audit
+                        <strong>Operational metadata</strong>: IP addresses, request timestamps, and audit
                         log entries needed for security monitoring and dispute resolution.
                     </li>
                 </ul>
@@ -82,12 +82,12 @@ export default function PrivacyPolicyPage() {
             <Section title="4. Third parties">
                 <p>We share data with the following processors strictly for the purposes listed:</p>
                 <ul className="list-disc pl-6 space-y-2 mt-3">
-                    <li><strong>Meta Platforms (WhatsApp Cloud API)</strong> — to deliver and receive WhatsApp messages on behalf of connected businesses.</li>
-                    <li><strong>Paystack</strong> — to process customer payments and platform subscription billing.</li>
-                    <li><strong>Supabase</strong> — hosts our PostgreSQL database; data is encrypted in transit and at rest.</li>
-                    <li><strong>Google Calendar &amp; Microsoft Outlook</strong> (optional, per-business) — to sync bookings into the business&apos;s own calendar when they connect those integrations.</li>
-                    <li><strong>Arkesel</strong> (optional) — used as an SMS fallback when WhatsApp delivery fails.</li>
-                    <li><strong>Gmail SMTP</strong> (optional) — used as an email fallback when WhatsApp and SMS delivery both fail.</li>
+                    <li><strong>Meta Platforms (WhatsApp Cloud API)</strong>: to deliver and receive WhatsApp messages on behalf of connected businesses.</li>
+                    <li><strong>Paystack</strong>: to process customer payments and platform subscription billing.</li>
+                    <li><strong>Supabase</strong>: hosts our PostgreSQL database; data is encrypted in transit and at rest.</li>
+                    <li><strong>Google Calendar &amp; Microsoft Outlook</strong> (optional, per-business): to sync bookings into the business&apos;s own calendar when they connect those integrations.</li>
+                    <li><strong>Arkesel</strong> (optional): used as an SMS fallback when WhatsApp delivery fails.</li>
+                    <li><strong>Gmail SMTP</strong> (optional): used as an email fallback when WhatsApp and SMS delivery both fail.</li>
                 </ul>
             </Section>
 

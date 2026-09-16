@@ -47,7 +47,7 @@ export function ChatMedia({ message, conversationId }: { message: Message; conve
         return (
             <div className="flex items-center gap-2 py-1 text-xs opacity-70">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                {kind} from customer — not downloaded
+                {kind} from customer (not downloaded)
             </div>
         );
     }

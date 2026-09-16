@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useScroll } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { BooklyWordmark } from './bookly-wordmark';
@@ -26,12 +26,10 @@ export function MarketingNav() {
     const [open, setOpen] = useState(false);
     const reduce = useReducedMotion();
 
-    useEffect(() => {
-        const onScroll = () => setScrolled(window.scrollY > 60);
-        onScroll();
-        window.addEventListener('scroll', onScroll, { passive: true });
-        return () => window.removeEventListener('scroll', onScroll);
-    }, []);
+    // Motion's scroll value runs off the main React render loop; a raw
+    // scroll listener writing to state re-renders the nav on every frame.
+    const { scrollY } = useScroll();
+    useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 60));
 
     // Lock body scroll + close on Esc while the mobile sheet is open.
     useEffect(() => {

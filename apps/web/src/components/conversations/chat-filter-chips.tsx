@@ -38,7 +38,7 @@ export function ChatFilterChips({ active, counts, onChange }: ChatFilterChipsPro
                         {count > 0 && (
                             <span
                                 className={cn(
-                                    'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold',
+                                    'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-semibold',
                                     isActive
                                         ? 'bg-emerald-500 text-white'
                                         : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',

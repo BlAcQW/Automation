@@ -109,6 +109,42 @@
     --input: var(--ink-700);
     --surface: var(--ink-950);
     --surface-2: var(--ink-900);
+    color-scheme: light;
+}
+
+/* RGB triplets of the ink scale. tailwind.config.ts builds every `ink-*`
+   utility from these (`rgb(var(--ink-900-rgb) / <alpha-value>)`), which is
+   what lets `bg-ink-900/80` follow the theme toggle instead of being baked
+   to the dark hex at build time. Keep in sync with the hex values above. */
+:root,
+.dark {
+    --ink-50-rgb: 242 246 244;
+    --ink-100-rgb: 220 229 225;
+    --ink-200-rgb: 182 194 189;
+    --ink-300-rgb: 138 153 148;
+    --ink-400-rgb: 92 107 101;
+    --ink-500-rgb: 61 75 70;
+    --ink-600-rgb: 42 54 50;
+    --ink-700-rgb: 30 40 37;
+    --ink-800-rgb: 22 30 27;
+    --ink-900-rgb: 15 22 20;
+    --ink-950-rgb: 10 15 13;
+    --ink-1000-rgb: 5 8 7;
+}
+
+.light {
+    --ink-50-rgb: 10 15 13;
+    --ink-100-rgb: 30 40 37;
+    --ink-200-rgb: 61 75 70;
+    --ink-300-rgb: 92 107 101;
+    --ink-400-rgb: 92 107 101;
+    --ink-500-rgb: 138 153 148;
+    --ink-600-rgb: 182 194 189;
+    --ink-700-rgb: 212 222 218;
+    --ink-800-rgb: 231 237 234;
+    --ink-900-rgb: 242 246 244;
+    --ink-950-rgb: 250 251 250;
+    --ink-1000-rgb: 255 255 255;
 }
 
 /* Legacy `.dark` class (next-themes attribute='class' compatibility) — maps
@@ -170,10 +206,12 @@ body {
 @layer utilities {
 
     /* The signature Bookly glow — atmospheric radial */
+    /* Ambient only. Kept well below "neon": it should read as light in the
+       room, never as a halo around an element. */
     .bookly-glow {
         background: radial-gradient(ellipse at center,
-                rgba(16, 185, 129, 0.45) 0%,
-                rgba(16, 185, 129, 0.15) 30%,
+                rgba(16, 185, 129, 0.16) 0%,
+                rgba(16, 185, 129, 0.05) 30%,
                 transparent 70%);
         filter: blur(60px);
     }
@@ -240,7 +278,7 @@ body {
         position: absolute;
         border-radius: 50%;
         filter: blur(100px);
-        opacity: 0.25;
+        opacity: 0.1;
         animation: orbFloat 12s ease-in-out infinite;
         pointer-events: none;
     }

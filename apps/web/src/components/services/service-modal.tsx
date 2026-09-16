@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { DashboardInput } from '@/components/ui/input';
+import { useTenantCurrency } from '@/lib/use-currency';
 import { toast } from 'react-hot-toast';
 
 const serviceSchema = z.object({
@@ -44,6 +45,7 @@ interface ServiceModalProps {
 
 export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
     const queryClient = useQueryClient();
+    const currency = useTenantCurrency();
     const isEditing = !!service;
 
     const {
@@ -119,15 +121,15 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
         >
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <DashboardInput
-                    label="Service Name"
-                    placeholder="e.g. Standard Consultation"
+                    label="Service name"
+                    placeholder="e.g. Braids, Haircut, Consultation"
                     error={errors.name?.message}
                     {...register('name')}
                 />
 
                 <div className="grid grid-cols-2 gap-4">
                     <DashboardInput
-                        label="Price ($)"
+                        label={`Price (${currency})`}
                         type="number"
                         step="0.01"
                         placeholder="0.00"
@@ -135,7 +137,7 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
                         {...register('price')}
                     />
                     <DashboardInput
-                        label="Duration (Minutes)"
+                        label="How long it takes (minutes)"
                         type="number"
                         placeholder="60"
                         error={errors.durationMinutes?.message}
@@ -145,7 +147,7 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
 
                 <DashboardInput
                     label="Category"
-                    placeholder="e.g. Consulting"
+                    placeholder="e.g. Hair, Nails, Massage"
                     error={errors.category?.message}
                     {...register('category')}
                 />

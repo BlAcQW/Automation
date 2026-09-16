@@ -89,7 +89,7 @@ export default function TrackOrderPage({ params }: { params: { token: string } }
                                             <div className="flex flex-col items-center">
                                                 <span
                                                     className={
-                                                        'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ' +
+                                                        'w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ' +
                                                         (reached
                                                             ? 'bg-emerald-500 text-white'
                                                             : 'bg-slate-200 text-slate-400')

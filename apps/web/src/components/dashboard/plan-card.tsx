@@ -47,11 +47,11 @@ export function PlanCard() {
             className="block rounded-xl bg-ink-900 border border-ink-700 p-3 hover:border-bookly-emerald-500/40 transition-colors"
         >
             <div className="flex items-center justify-between">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-ink-300">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-ink-300">
                     Plan details
                 </p>
                 {trialing && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-400">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
                         <Sparkles className="h-2.5 w-2.5" />
                         Trial
                     </span>

@@ -60,7 +60,7 @@ export function ChatThread({
                         <span className="truncate">{conversation.customerPhone}</span>
                         <span
                             className={cn(
-                                'ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                                'ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium',
                                 isHuman
                                     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                                     : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',

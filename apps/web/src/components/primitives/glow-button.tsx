@@ -6,17 +6,18 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/cn';
 
 /**
- * GlowButton — ui.md §9.1. The signature Bookly CTA.
+ * The primary Bookly CTA. (The file keeps its historical name; the "glow"
+ * is gone.)
  *
- * Primary: emerald gradient with ink-1000 text (NOT white — spec is explicit
- * about contrast). On hover the shadow blooms to the emerald glow + a soft
- * inner light sweep travels across the surface. Press scales 0.98.
+ * Primary is a flat emerald with dark text: emerald-500 on ink text is
+ * ~9:1, white text on it would be ~2.4:1. The shadow is a short, tinted
+ * elevation, not a halo. Press scales 0.98 so the button feels physical.
  */
 const glowButtonStyles = cva(
     [
-        'group relative inline-flex items-center justify-center gap-2 overflow-hidden',
+        'relative inline-flex items-center justify-center gap-2',
         'rounded-xl font-display font-medium tracking-tight',
-        'transition-all duration-200 ease-out',
+        'transition-[background-color,box-shadow,transform,border-color] duration-200 ease-out',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bookly-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950',
         'disabled:pointer-events-none disabled:opacity-50',
         'active:scale-[0.98]',
@@ -25,16 +26,16 @@ const glowButtonStyles = cva(
         variants: {
             variant: {
                 primary: [
-                    'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600',
-                    'text-ink-1000 shadow-[0_0_30px_rgba(16,185,129,0.35)]',
-                    'hover:shadow-[0_0_50px_rgba(16,185,129,0.5)] hover:brightness-105',
+                    'bg-bookly-emerald-500 text-on-accent',
+                    'shadow-[0_6px_20px_-8px_rgba(16,185,129,0.55)]',
+                    'hover:bg-bookly-emerald-400',
                 ],
                 ghost: [
                     'bg-transparent text-ink-50 border border-ink-700',
                     'hover:border-ink-600 hover:bg-ink-900/60',
                 ],
                 wa: [
-                    'bg-[var(--wa-green)] text-ink-1000',
+                    'bg-[var(--wa-green)] text-on-accent',
                     'hover:brightness-110',
                 ],
             },
@@ -67,15 +68,6 @@ interface GlowButtonAsLink extends BaseGlowButtonProps,
 
 export type GlowButtonProps = GlowButtonAsButton | GlowButtonAsLink;
 
-function LightSweep() {
-    return (
-        <span
-            aria-hidden
-            className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-[1200ms] ease-out group-hover:translate-x-full"
-        />
-    );
-}
-
 export const GlowButton = forwardRef<HTMLButtonElement | HTMLAnchorElement, GlowButtonProps>(
     function GlowButton(props, ref) {
         const styles = cn(glowButtonStyles({ variant: props.variant, size: props.size }), props.className);
@@ -89,8 +81,7 @@ export const GlowButton = forwardRef<HTMLButtonElement | HTMLAnchorElement, Glow
                     ref={ref as React.Ref<HTMLAnchorElement>}
                     {...anchorProps}
                 >
-                    <LightSweep />
-                    <span className="relative inline-flex items-center gap-2">{children}</span>
+                    <span className="inline-flex items-center gap-2">{children}</span>
                 </Link>
             );
         }
@@ -102,8 +93,7 @@ export const GlowButton = forwardRef<HTMLButtonElement | HTMLAnchorElement, Glow
                 ref={ref as React.Ref<HTMLButtonElement>}
                 {...buttonProps}
             >
-                <LightSweep />
-                <span className="relative inline-flex items-center gap-2">{children}</span>
+                <span className="inline-flex items-center gap-2">{children}</span>
             </button>
         );
     },

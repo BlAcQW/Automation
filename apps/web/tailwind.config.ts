@@ -38,20 +38,47 @@ const config: Config = {
                     teal: '#128C7E',
                     dark: '#075E54',
                 },
-                // Cinematic neutrals (dark-mode primary)
+                // Neutrals. Read from the `--ink-*-rgb` triplets in globals.css
+                // so the same utility resolves to the dark or light value
+                // depending on the `.dark` / `.light` class on <html>. The
+                // dark hex values (for reference): 50 #F2F6F4 … 950 #0A0F0D,
+                // 1000 #050807.
                 ink: {
+                    50: 'rgb(var(--ink-50-rgb) / <alpha-value>)',
+                    100: 'rgb(var(--ink-100-rgb) / <alpha-value>)',
+                    200: 'rgb(var(--ink-200-rgb) / <alpha-value>)',
+                    300: 'rgb(var(--ink-300-rgb) / <alpha-value>)',
+                    400: 'rgb(var(--ink-400-rgb) / <alpha-value>)',
+                    500: 'rgb(var(--ink-500-rgb) / <alpha-value>)',
+                    600: 'rgb(var(--ink-600-rgb) / <alpha-value>)',
+                    700: 'rgb(var(--ink-700-rgb) / <alpha-value>)',
+                    800: 'rgb(var(--ink-800-rgb) / <alpha-value>)',
+                    900: 'rgb(var(--ink-900-rgb) / <alpha-value>)',
+                    950: 'rgb(var(--ink-950-rgb) / <alpha-value>)',
+                    1000: 'rgb(var(--ink-1000-rgb) / <alpha-value>)',
+                },
+                // Text/icon colour on top of the emerald accent. Fixed in both
+                // themes: the accent itself doesn't change, so neither should
+                // what sits on it.
+                'on-accent': '#050807',
+                // The older dashboard pages were written against Tailwind's
+                // blue-tinted `slate`. Re-pointing that name at the ink scale
+                // (fixed hex, not the theme-flipping vars: these classes are
+                // paired with explicit `dark:` variants) puts the whole app on
+                // one grey family without touching every file. Steps are
+                // shifted so light-on-dark text keeps AA contrast.
+                slate: {
                     50: '#F2F6F4',
-                    100: '#DCE5E1',
-                    200: '#B6C2BD',
-                    300: '#8A9994',
-                    400: '#5C6B65',
-                    500: '#3D4B46',
-                    600: '#2A3632',
+                    100: '#E7EDEA',
+                    200: '#DCE5E1',
+                    300: '#B6C2BD',
+                    400: '#8A9994',
+                    500: '#5C6B65',
+                    600: '#3D4B46',
                     700: '#1E2825',
                     800: '#161E1B',
                     900: '#0F1614',
                     950: '#0A0F0D',
-                    1000: '#050807',
                 },
                 // Accents — sparingly, for data viz / highlights
                 mint: '#5EEAD4',

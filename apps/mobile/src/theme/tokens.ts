@@ -52,11 +52,11 @@ export interface ThemeColors {
 }
 
 const light: ThemeColors = {
-  background: '#FFFFFF',
+  background: '#F7F9F8', // off-white ground so white cards still lift
   surface: '#FFFFFF',
   surfaceElevated: '#FFFFFF',
-  surfaceSunken: '#F0F2F5', // WhatsApp's chrome grey — search wells, pressed rows
-  text: '#111B21',
+  surfaceSunken: '#EEF2F0', // search wells, pressed rows
+  text: '#0A0F0D',
   textMuted: '#667781',
   textSubtle: '#8696A0',
   onPrimary: '#FFFFFF',
@@ -83,21 +83,25 @@ const light: ThemeColors = {
 };
 
 const dark: ThemeColors = {
-  // Neutral greys, no blue cast — the previous palette's slate tint is what
-  // made this read as a dashboard rather than a messenger.
-  background: '#000000', // true black (OLED, matches WhatsApp's dark list screens)
-  surface: '#1C1C1E', // grouped cards
-  surfaceElevated: '#2C2C2E', // floating header pills, sheets
-  surfaceSunken: '#121212', // search wells, pressed rows
-  text: '#FFFFFF',
-  textMuted: '#8E8E93',
-  textSubtle: '#636366',
+  // The same ink scale the web app uses (apps/web tailwind `ink-*`), so a
+  // customer moving between the dashboard and the app sees one brand. The
+  // greys carry a faint green cast rather than being pure neutral, and the
+  // ground is near-black, not #000: pure black flattens every shadow and
+  // makes cards look cut out with scissors. On OLED the difference in power
+  // is nil; the difference in depth is not.
+  background: '#0A0F0D', // ink-950
+  surface: '#161E1B', // ink-800: grouped cards
+  surfaceElevated: '#1E2825', // ink-700: floating header pills, sheets
+  surfaceSunken: '#0F1614', // ink-900: search wells, pressed rows
+  text: '#F2F6F4', // ink-50, off-white
+  textMuted: '#8A9994', // ink-300
+  textSubtle: '#5C6B65', // ink-400
   onPrimary: '#062017', // dark glyph on bright green, as on WhatsApp's + button
   primary: '#25D366', // WhatsApp brand green — dark text on it ≈ 9:1
   primarySoft: '#0B2E22',
   primaryText: '#25D366',
-  border: '#2C2C2E',
-  divider: '#262628',
+  border: '#2A3632', // ink-600
+  divider: '#1E2825', // ink-700
   success: '#25D366',
   successSoft: '#0B2E22',
   warning: '#FBBF24',
@@ -111,8 +115,8 @@ const dark: ThemeColors = {
   bubbleInText: '#FFFFFF',
   bubbleOutText: '#FFFFFF',
   chatBackground: '#0B141A',
-  scrim: 'rgba(0,0,0,0.6)',
-  shadow: '#000000',
+  scrim: 'rgba(5,8,7,0.6)',
+  shadow: '#050807',
 };
 
 export const palettes = { light, dark } as const;

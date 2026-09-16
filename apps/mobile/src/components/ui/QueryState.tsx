@@ -59,7 +59,7 @@ export function QueryState({ isLoading, isError, isEmpty, onRetry, empty, skelet
           Can&apos;t reach the server
         </Text>
         <Text variant="bodySm" tone="muted" center>
-          Your data is safe — check your connection and try again.
+          Your data is safe. Check your connection and try again.
         </Text>
         {onRetry ? (
           <Pressable

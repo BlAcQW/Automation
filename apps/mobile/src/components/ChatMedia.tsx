@@ -108,7 +108,7 @@ function AudioBubble({ uri, headers, voice }: { uri: string; headers?: Record<st
           />
         </View>
         <Text variant="caption" tone="muted">
-          {voice ? 'Voice note' : 'Audio'} · {total > 0 ? secs(total - done) : '—'}
+          {voice ? 'Voice note' : 'Audio'} · {total > 0 ? secs(total - done) : '0:00'}
         </Text>
       </View>
     </View>
@@ -128,7 +128,7 @@ export function ChatMedia({ message, conversationId }: { message: Message; conve
   // Inbound media is stored as a Meta id only — the bytes are never downloaded,
   // so there is nothing to render. Say so rather than showing a broken frame.
   if (message.metadata?.inboundPending) {
-    return <Unavailable label={`${kind} from customer — not downloaded`} />;
+    return <Unavailable label={`${kind} from customer (not downloaded)`} />;
   }
 
   if (failed) return <Unavailable label="Attachment unavailable" />;

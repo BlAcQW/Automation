@@ -110,11 +110,6 @@ export default function LoginPage() {
                             Start free
                         </Link>
                     </p>
-                    <p className="mt-6 text-center">
-                        <Link href="/admin/login" className="text-caption uppercase tracking-wider text-ink-400 hover:text-ink-200 transition-colors">
-                            Platform admin →
-                        </Link>
-                    </p>
                 </motion.div>
             </div>
 

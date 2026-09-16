@@ -1,6 +1,6 @@
 import { BooklyIcon } from '@/components/primitives/bookly-icon';
 
-export const metadata = { title: 'Offline — Bookly' };
+export const metadata = { title: 'Offline | Bookly' };
 
 /**
  * Branded offline fallback. The service worker serves this for navigation
@@ -16,7 +16,7 @@ export default function OfflinePage() {
                 <h1 className="font-display text-h2 text-ink-50">You&apos;re offline</h1>
                 <p className="mt-2 text-body-sm text-ink-300">
                     Bookly needs a connection to load this screen. Check your network and try
-                    again — your work is safe.
+                    again. Your work is safe.
                 </p>
             </div>
         </main>

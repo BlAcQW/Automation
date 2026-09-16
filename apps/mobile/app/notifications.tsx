@@ -7,6 +7,7 @@ import { AppNotification, NotificationType } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, EmptyState, QueryState} from '@/components/ui';
 import { relativeTime } from '@/lib/format';
+import { usePullRefresh } from '@/lib/usePullRefresh';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -75,7 +76,8 @@ function Item({ item }: { item: AppNotification }) {
 
 export default function NotificationsScreen() {
   const t = useTheme();
-  const { data, isLoading, isError, isRefetching, refetch } = useNotifications();
+  const { data, isLoading, isError, refetch } = useNotifications();
+  const { refreshing, onRefresh } = usePullRefresh(refetch);
   const markAll = useMarkAllRead();
 
   return (
@@ -101,7 +103,7 @@ export default function NotificationsScreen() {
           keyExtractor={(n) => n.id}
           renderItem={({ item }) => <Item item={item} />}
           ItemSeparatorComponent={() => <View style={{ height: 0.5, backgroundColor: t.colors.divider, marginLeft: 66 }} />}
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
           contentContainerStyle={(data ?? []).length === 0 ? { flex: 1 } : undefined}
           ListEmptyComponent={<EmptyState icon="notifications-outline" title="You're all caught up" subtitle="New bookings and messages will appear here." />}
         />

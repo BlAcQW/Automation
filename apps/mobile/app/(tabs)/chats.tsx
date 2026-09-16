@@ -8,6 +8,7 @@ import { Conversation } from '@/api/types';
 import { Text, Avatar, EmptyState, Badge, LargeHeader, QueryState, ChatRowSkeleton, SkeletonList, PressableScale } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { TAB_BAR_INSET } from '@/lib/layout';
+import { usePullRefresh } from '@/lib/usePullRefresh';
 
 function ConversationRow({ item }: { item: Conversation }) {
   const t = useTheme();
@@ -70,7 +71,8 @@ const FILTERS: { key: ChatFilter; label: string }[] = [
 
 export default function ChatsScreen() {
   const t = useTheme();
-  const { data, isLoading, isError, isRefetching, refetch } = useConversations();
+  const { data, isLoading, isError, refetch } = useConversations();
+  const { refreshing, onRefresh } = usePullRefresh(refetch);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ChatFilter>('all');
 
@@ -185,7 +187,7 @@ export default function ChatsScreen() {
         ItemSeparatorComponent={() => (
           <View style={{ height: 0.5, backgroundColor: t.colors.divider, marginLeft: 88 }} />
         )}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
         keyboardDismissMode="on-drag"
         contentContainerStyle={
           visible.length === 0

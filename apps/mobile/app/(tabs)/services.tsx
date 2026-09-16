@@ -8,6 +8,7 @@ import { Service } from '@/api/types';
 import { Text, Card, Badge, EmptyState, HeaderAction, QueryState} from '@/components/ui';
 import { ProductsList } from '@/features/products/ProductsList';
 import { TAB_BAR_INSET } from '@/lib/layout';
+import { usePullRefresh } from '@/lib/usePullRefresh';
 import { LargeHeader } from '@/components/ui';
 
 function ServiceRow({ item }: { item: Service }) {
@@ -43,7 +44,8 @@ export default function ServicesScreen() {
   const t = useTheme();
   const router = useRouter();
   const { tenant } = useAuth();
-  const { data, isLoading, isError, isRefetching, refetch } = useServices();
+  const { data, isLoading, isError, refetch } = useServices();
+  const { refreshing, onRefresh } = usePullRefresh(refetch);
   const isProduct = tenant?.businessType === 'PRODUCT';
 
   // PRODUCT tenants manage Products in this tab (relabeled in _layout).
@@ -76,7 +78,7 @@ export default function ServicesScreen() {
               ? { flex: 1, paddingBottom: TAB_BAR_INSET }
               : { padding: t.space.lg, gap: t.space.md, paddingBottom: TAB_BAR_INSET }
           }
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
           ListEmptyComponent={
             <EmptyState icon="pricetags-outline" title="No services yet" subtitle="Add the services customers can book through your bot." />
           }

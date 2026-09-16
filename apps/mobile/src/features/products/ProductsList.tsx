@@ -6,6 +6,7 @@ import { useProducts, useToggleProduct } from '@/api/hooks';
 import { Product } from '@/api/types';
 import { Text, Card, Badge, EmptyState } from '@/components/ui';
 import { LargeHeader, HeaderAction } from '@/components/ui';
+import { usePullRefresh } from '@/lib/usePullRefresh';
 
 function ProductRow({ item }: { item: Product }) {
   const t = useTheme();
@@ -36,7 +37,8 @@ function ProductRow({ item }: { item: Product }) {
 export function ProductsList() {
   const t = useTheme();
   const router = useRouter();
-  const { data, isLoading, isRefetching, refetch } = useProducts();
+  const { data, isLoading, refetch } = useProducts();
+  const { refreshing, onRefresh } = usePullRefresh(refetch);
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
@@ -62,7 +64,7 @@ export function ProductsList() {
           contentContainerStyle={
             (data ?? []).length === 0 ? { flex: 1 } : { padding: t.space.lg, gap: t.space.md, paddingBottom: 96 }
           }
-          refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
           ListEmptyComponent={<EmptyState icon="cube-outline" title="No products yet" subtitle="Add products your customers can order over WhatsApp." />}
         />
       )}

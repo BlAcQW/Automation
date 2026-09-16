@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '@/theme';
 import { useAuth } from '@/auth/context';
@@ -9,6 +9,7 @@ import { Booking, BookingStatus } from '@/api/types';
 import { Text, Card, Badge, Avatar, EmptyState, QueryState, BookingCardSkeleton, SkeletonList } from '@/components/ui';
 import { bookingStatusLabel, bookingStatusTone, formatDateTime, paymentTone } from '@/lib/format';
 import { TAB_BAR_INSET } from '@/lib/layout';
+import { usePullRefresh } from '@/lib/usePullRefresh';
 import { LargeHeader } from '@/components/ui';
 
 type Filter = 'all' | 'upcoming' | BookingStatus;
@@ -64,7 +65,8 @@ export default function BookingsScreen() {
   const t = useTheme();
   const { tenant } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
-  const { data, isLoading, isError, isRefetching, refetch } = useBookings();
+  const { data, isLoading, isError, refetch } = useBookings();
+  const { refreshing, onRefresh } = usePullRefresh(refetch);
 
   const filtered = useMemo(() => {
     const list = data ?? [];
@@ -140,7 +142,7 @@ export default function BookingsScreen() {
             ? { flex: 1, paddingBottom: TAB_BAR_INSET }
             : { padding: t.space.lg, gap: t.space.md, paddingBottom: TAB_BAR_INSET }
         }
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
         ListEmptyComponent={
           <EmptyState
             icon="calendar-outline"

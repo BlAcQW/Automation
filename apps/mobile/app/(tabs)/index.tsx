@@ -6,6 +6,7 @@ import { useTheme } from '@/theme';
 import { useDashboardStats, useWhatsappStatus } from '@/api/hooks';
 import { Text, Card, Badge } from '@/components/ui';
 import { TAB_BAR_INSET } from '@/lib/layout';
+import { usePullRefresh } from '@/lib/usePullRefresh';
 import { LargeHeader } from '@/components/ui';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -41,7 +42,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { tenant, user } = useAuth();
   const isProduct = tenant?.businessType === 'PRODUCT';
-  const { data, isLoading, isRefetching, refetch, isError } = useDashboardStats();
+  const { data, isLoading, refetch, isError } = useDashboardStats();
+  const { refreshing, onRefresh } = usePullRefresh(refetch);
   const { data: wa } = useWhatsappStatus();
 
   if (isLoading) {
@@ -74,7 +76,7 @@ export default function DashboardScreen() {
       <ScrollView
       style={{ flex: 1, backgroundColor: t.colors.background }}
       contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: TAB_BAR_INSET }}
-      refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={t.colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
     >
       <View style={{ gap: 2 }}>
         <Text variant="bodySm" tone="muted">

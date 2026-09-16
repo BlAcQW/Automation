@@ -50,13 +50,49 @@ export function useMessages(conversationId: string) {
   });
 }
 
+/**
+ * Send a text reply — optimistically.
+ *
+ * The bubble appears the instant the user taps send, with the clock tick that
+ * `DeliveryTicks` already renders for `status: null`. The real row replaces it
+ * when the server responds; on failure it is removed and the draft is handed
+ * back. On the networks this app is used on, a send that waits for the round
+ * trip before showing anything reads as lag, and a laggy chat app reads as a
+ * broken one. This is the single largest contributor to WhatsApp feeling
+ * instant, and it costs nothing on the server.
+ */
 export function useSendMessage(conversationId: string) {
   const qc = useQueryClient();
+  const key = ['messages', conversationId] as const;
+
   return useMutation({
     mutationFn: async (content: string) =>
       (await api.post(`/conversations/${conversationId}/messages`, { content })).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['messages', conversationId] });
+
+    onMutate: async (content) => {
+      // Stop a poll from overwriting the optimistic row mid-flight.
+      await qc.cancelQueries({ queryKey: key });
+      const previous = qc.getQueryData<Message[]>(key) ?? [];
+
+      const optimistic: Message = {
+        id: `optimistic-${Date.now()}`,
+        direction: 'OUTBOUND',
+        content,
+        messageType: 'TEXT',
+        status: null, // renders as "sending" (clock), never as a false tick
+        createdAt: new Date().toISOString(),
+      };
+      qc.setQueryData<Message[]>(key, [...previous, optimistic]);
+      return { previous };
+    },
+
+    onError: (_err, _content, ctx) => {
+      // Put the list back exactly as it was; the screen re-shows the draft.
+      if (ctx?.previous) qc.setQueryData(key, ctx.previous);
+    },
+
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: ['conversations'] });
     },
   });

@@ -4,12 +4,12 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Search, MessageCircle } from 'lucide-react';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { ConversationListItem } from '@/components/conversations/conversation-list-item';
 import { ChatFilterChips } from '@/components/conversations/chat-filter-chips';
 import { ChatThread } from '@/components/conversations/chat-thread';
+import { QueryState } from '@/components/query-state';
 import { isUnread, type ChatFilter, type Conversation, type Message } from '@/components/conversations/types';
 
 export default function ConversationsPage() {
@@ -20,14 +20,14 @@ export default function ConversationsPage() {
     const [resuming, setResuming] = useState(false);
 
     // Conversation list — polls every 10s so the inbox stays live.
-    const { data: conversations = [], isLoading } = useQuery<Conversation[]>({
+    const { data: conversations = [], isLoading, isError } = useQuery<Conversation[]>({
         queryKey: ['conversations'],
         queryFn: async () => (await api.get('/conversations')).data.data,
         refetchInterval: 10_000,
     });
 
     // Open thread's messages — polls faster (5s) while a chat is open.
-    const { data: messages = [], isLoading: messagesLoading } = useQuery<Message[]>({
+    const { data: messages = [], isLoading: messagesLoading, isError: messagesError } = useQuery<Message[]>({
         queryKey: ['conversation-messages', selectedId],
         queryFn: async () => (await api.get(`/conversations/${selectedId}/messages`)).data.data,
         enabled: !!selectedId,
@@ -200,9 +200,32 @@ export default function ConversationsPage() {
 
                 <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
                     {isLoading ? (
-                        <div className="flex justify-center py-10">
-                            <BooklyDots size="sm" />
-                        </div>
+                        /* Shape, not a spinner: the placeholder is the list item's own
+                           layout, so content fades in over it instead of snapping in. */
+                        <ul className="divide-y divide-slate-100 dark:divide-slate-800" aria-busy="true" aria-label="Loading conversations">
+                            {Array.from({ length: 8 }).map((_, i) => (
+                                <li key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
+                                    <div className="w-12 h-12 shrink-0 rounded-full bg-slate-200 dark:bg-slate-800" />
+                                    <div className="flex-1 space-y-2">
+                                        <div className="flex justify-between">
+                                            <div className="h-3.5 w-2/5 rounded bg-slate-200 dark:bg-slate-800" />
+                                            <div className="h-3 w-10 rounded bg-slate-200 dark:bg-slate-800" />
+                                        </div>
+                                        <div className="h-3 w-4/5 rounded bg-slate-200 dark:bg-slate-800" />
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : isError ? (
+                        /* Never let a failed request render as "No conversations yet" —
+                           a business with 200 chats would read that as data loss. */
+                        <QueryState
+                            isLoading={false}
+                            isError
+                            onRetry={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })}
+                        >
+                            <></>
+                        </QueryState>
                     ) : visibleConvos.length === 0 ? (
                         <div className="flex flex-col items-center text-center py-12 px-6">
                             <MessageCircle className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-3" />
@@ -211,10 +234,11 @@ export default function ConversationsPage() {
                             </p>
                         </div>
                     ) : (
-                        visibleConvos.map((convo) => (
+                        visibleConvos.map((convo, i) => (
                             <ConversationListItem
                                 key={convo.id}
                                 conversation={convo}
+                                index={i}
                                 active={selectedId === convo.id}
                                 unread={isUnread(convo)}
                                 onClick={() => setSelectedId(convo.id)}

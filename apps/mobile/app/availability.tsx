@@ -11,7 +11,7 @@ import {
 } from '@/api/hooks';
 import { WorkingHour } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
-import { Text, Card, Button, Field, SwitchRow, DateTimeField } from '@/components/ui';
+import { Text, Card, Button, Field, SwitchRow, DateTimeField, QueryState} from '@/components/ui';
 import { formatDay } from '@/lib/format';
 
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -32,7 +32,7 @@ function seedWeek(server: WorkingHour[] | undefined): WorkingHour[] {
 
 export default function AvailabilityScreen() {
   const t = useTheme();
-  const { data: serverHours, isLoading } = useWorkingHours();
+  const { data: serverHours, isLoading, isError } = useWorkingHours();
   const saveHours = useSaveWorkingHours();
   const { data: blackouts } = useBlackouts();
   const addBlackout = useAddBlackout();
@@ -64,13 +64,15 @@ export default function AvailabilityScreen() {
     setBoReason('');
   }
 
-  if (isLoading) {
+  // Loading, failure and emptiness are three different facts. QueryState
+  // keeps failure off the empty state, so an unreachable API never reads
+  // as "you have no data".
+  if (isLoading || isError) {
     return (
       <View style={{ flex: 1, backgroundColor: t.colors.background }}>
-        <AppHeader title="Availability" />
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={t.colors.primary} />
-        </View>
+        <QueryState isLoading={isLoading} isError={isError} >
+          <></>
+        </QueryState>
       </View>
     );
   }

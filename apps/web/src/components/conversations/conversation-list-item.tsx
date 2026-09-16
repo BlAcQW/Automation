@@ -1,11 +1,15 @@
 'use client';
 
+import { motion } from 'framer-motion';
+
 import { cn } from '@/lib/cn';
 import { Avatar } from '@/components/ui/avatar';
 import type { Conversation } from './types';
 import { formatTime, previewText } from './utils';
 
 interface ConversationListItemProps {
+    /** Position in the list, for the staggered entrance. */
+    index?: number;
     conversation: Conversation;
     active: boolean;
     unread: boolean;
@@ -13,14 +17,17 @@ interface ConversationListItemProps {
 }
 
 /** A single row in the chat list — avatar, name, preview, time, unread dot. */
-export function ConversationListItem({ conversation, active, unread, onClick }: ConversationListItemProps) {
+export function ConversationListItem({ index = 0, conversation, active, unread, onClick }: ConversationListItemProps) {
     const title = conversation.customerName || conversation.customerPhone;
     const preview = conversation.lastMessage
         ? previewText('TEXT', conversation.lastMessage)
         : conversation.customerPhone;
 
     return (
-        <button
+        <motion.button
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, delay: Math.min(index * 0.03, 0.3) }}
             onClick={onClick}
             className={cn(
                 'w-full flex items-center gap-3 px-3 py-3 text-left rounded-2xl transition-colors',
@@ -71,6 +78,6 @@ export function ConversationListItem({ conversation, active, unread, onClick }: 
                     )}
                 </div>
             </div>
-        </button>
+        </motion.button>
     );
 }

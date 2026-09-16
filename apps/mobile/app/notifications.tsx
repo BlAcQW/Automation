@@ -5,7 +5,7 @@ import { useTheme } from '@/theme';
 import { useMarkAllRead, useNotifications } from '@/api/hooks';
 import { AppNotification, NotificationType } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
-import { Text, EmptyState } from '@/components/ui';
+import { Text, EmptyState, QueryState} from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -75,7 +75,7 @@ function Item({ item }: { item: AppNotification }) {
 
 export default function NotificationsScreen() {
   const t = useTheme();
-  const { data, isLoading, isRefetching, refetch } = useNotifications();
+  const { data, isLoading, isError, isRefetching, refetch } = useNotifications();
   const markAll = useMarkAllRead();
 
   return (
@@ -90,10 +90,11 @@ export default function NotificationsScreen() {
           </Pressable>
         }
       />
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={t.colors.primary} />
-        </View>
+      {/* Failure must never render as emptiness — see ui/QueryState. */}
+      {isLoading || isError ? (
+        <QueryState isLoading={isLoading} isError={isError} onRetry={refetch} >
+          <></>
+        </QueryState>
       ) : (
         <FlatList
           data={data ?? []}

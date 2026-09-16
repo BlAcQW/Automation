@@ -3,6 +3,9 @@ import type { OAuth2Client } from 'google-auth-library';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { config } from '../config/index.js';
 import { encrypt, decrypt } from './crypto.js';
+import { scoped } from '../lib/logger.js';
+
+const log = scoped('calendar');
 
 /**
  * Build a Google OAuth2 client preloaded with the tenant's decrypted tokens
@@ -61,7 +64,7 @@ export async function buildGoogleAuthClient(prisma: ExtendedPrismaClient, tenant
                 // token until the operator reconnects. Surface a dashboard
                 // notification so the issue doesn't compound silently.
                 // eslint-disable-next-line no-console
-                console.error('Failed to persist refreshed Google tokens', err);
+                log.error({ detail: err }, 'Failed to persist refreshed Google tokens');
                 await prisma.notification.create({
                     data: {
                         tenantId,
@@ -124,7 +127,7 @@ export async function syncBookingToCalendar({
         return event.data.id ?? null;
     } catch (error) {
         // eslint-disable-next-line no-console
-        console.error('Failed to sync booking to calendar:', error);
+        log.error({ detail: error }, 'Failed to sync booking to calendar:');
         return null;
     }
 }
@@ -169,7 +172,7 @@ export async function updateCalendarEvent(
         return true;
     } catch (error) {
         // eslint-disable-next-line no-console
-        console.error('Failed to update calendar event:', error);
+        log.error({ detail: error }, 'Failed to update calendar event:');
         return false;
     }
 }
@@ -202,7 +205,7 @@ export async function deleteCalendarEvent(
         return true;
     } catch (error) {
         // eslint-disable-next-line no-console
-        console.error('Failed to delete calendar event:', error);
+        log.error({ detail: error }, 'Failed to delete calendar event:');
         return false;
     }
 }

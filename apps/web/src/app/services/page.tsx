@@ -14,6 +14,7 @@ import { ServiceModal } from '@/components/services/service-modal';
 import { PageHeader } from '@/components/ui/page-header';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { toast } from 'react-hot-toast';
+import { QueryState } from '@/components/query-state';
 
 interface Service {
     id: string;
@@ -31,7 +32,7 @@ export default function ServicesPage() {
     const [search, setSearch] = useState('');
     const queryClient = useQueryClient();
 
-    const { data: services = [], isLoading } = useQuery({
+    const { data: services = [], isLoading, isError } = useQuery({
         queryKey: ['services'],
         queryFn: async () => {
             const res = await api.get('/services');
@@ -140,7 +141,17 @@ export default function ServicesPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {isLoading ? (
+                                                        {/* A failed request must never render as an empty table — the business
+                                would read it as data loss. */}
+                            {isError ? (
+                                <tr>
+                                    <td colSpan={6} className="p-0">
+                                        <QueryState isLoading={false} isError onRetry={() => window.location.reload()}>
+                                            <></>
+                                        </QueryState>
+                                    </td>
+                                </tr>
+                            ) : isLoading ? (
                                 <tr>
                                     <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">

@@ -21,6 +21,7 @@ import {
 import { AuthProvider, useAuth } from '@/auth/context';
 import { ThemeProvider, useTheme } from '@/theme';
 import { InAppNoticeProvider } from '@/components/InAppNotice';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { useRealtime } from '@/realtime/useRealtime';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -91,6 +92,9 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider onLayout={onLayout}>
+      {/* Outside ThemeProvider on purpose: a crash in the theme itself must
+          still land on a readable screen rather than a blank one. */}
+      <AppErrorBoundary>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
@@ -102,6 +106,7 @@ export default function RootLayout() {
           </AuthProvider>
         </QueryClientProvider>
       </ThemeProvider>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }

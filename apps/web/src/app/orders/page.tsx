@@ -17,6 +17,7 @@ import { OrderDetailsModal } from '@/components/orders/order-details-modal';
 import { PageHeader } from '@/components/ui/page-header';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { useProductRouteGuard } from '@/lib/use-product-route-guard';
+import { QueryState } from '@/components/query-state';
 
 interface Order {
     id: string;
@@ -74,7 +75,7 @@ export default function OrdersPage() {
         }
     };
 
-    const { data: orders = [], isLoading } = useQuery({
+    const { data: orders = [], isLoading, isError } = useQuery({
         queryKey: ['orders', statusFilter],
         queryFn: async () => {
             const params: any = {};
@@ -203,7 +204,17 @@ export default function OrdersPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {isLoading ? (
+                                                        {/* A failed request must never render as an empty table — the business
+                                would read it as data loss. */}
+                            {isError ? (
+                                <tr>
+                                    <td colSpan={7} className="p-0">
+                                        <QueryState isLoading={false} isError onRetry={() => window.location.reload()}>
+                                            <></>
+                                        </QueryState>
+                                    </td>
+                                </tr>
+                            ) : isLoading ? (
                                 <tr>
                                     <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center gap-2">

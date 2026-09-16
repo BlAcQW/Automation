@@ -1,5 +1,8 @@
 import type { ActorType } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
+import { scoped } from '../lib/logger.js';
+
+const log = scoped('audit');
 
 export interface AuditArgs {
     prisma: ExtendedPrismaClient;
@@ -32,7 +35,6 @@ export async function audit(args: AuditArgs): Promise<void> {
             },
         });
     } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('audit log write failed', err, { action: args.action });
+        log.error({ err, action: args.action }, 'audit log write failed');
     }
 }

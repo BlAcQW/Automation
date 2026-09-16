@@ -5,11 +5,11 @@ import { useTheme } from '@/theme';
 import { useConnectWhatsapp, useWhatsappStatus } from '@/api/hooks';
 import { useEmbeddedSignup } from '@/features/whatsapp/useEmbeddedSignup';
 import { AppHeader } from '@/components/AppHeader';
-import { Text, Card, Badge, Field, Button } from '@/components/ui';
+import { Text, Card, Badge, Field, Button, QueryState} from '@/components/ui';
 
 export default function WhatsappScreen() {
   const t = useTheme();
-  const { data, isLoading } = useWhatsappStatus();
+  const { data, isLoading, isError } = useWhatsappStatus();
   const connect = useConnectWhatsapp();
   const embedded = useEmbeddedSignup();
   const connected = !!data?.connected;
@@ -42,10 +42,11 @@ export default function WhatsappScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title="WhatsApp" />
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={t.colors.primary} />
-        </View>
+      {/* Failure must never render as emptiness — see ui/QueryState. */}
+      {isLoading || isError ? (
+        <QueryState isLoading={isLoading} isError={isError} >
+          <></>
+        </QueryState>
       ) : (
         <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}>
           <Card padded style={{ flexDirection: 'row', alignItems: 'center', gap: t.space.md }}>

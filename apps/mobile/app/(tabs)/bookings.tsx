@@ -6,7 +6,7 @@ import { useAuth } from '@/auth/context';
 import { useBookings } from '@/api/hooks';
 import { OrdersList } from '@/features/orders/OrdersList';
 import { Booking, BookingStatus } from '@/api/types';
-import { Text, Card, Badge, Avatar, EmptyState } from '@/components/ui';
+import { Text, Card, Badge, Avatar, EmptyState, QueryState, BookingCardSkeleton, SkeletonList } from '@/components/ui';
 import { bookingStatusLabel, bookingStatusTone, formatDateTime, paymentTone } from '@/lib/format';
 import { TAB_BAR_INSET } from '@/lib/layout';
 import { LargeHeader } from '@/components/ui';
@@ -64,7 +64,7 @@ export default function BookingsScreen() {
   const t = useTheme();
   const { tenant } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
-  const { data, isLoading, isRefetching, refetch } = useBookings();
+  const { data, isLoading, isError, isRefetching, refetch } = useBookings();
 
   const filtered = useMemo(() => {
     const list = data ?? [];
@@ -76,10 +76,26 @@ export default function BookingsScreen() {
   // PRODUCT tenants see Orders in this tab (the tab is relabeled in _layout).
   if (tenant?.businessType === 'PRODUCT') return <OrdersList />;
 
-  if (isLoading) {
+  // Loading, failure and emptiness are three different facts. QueryState
+  // keeps failure off the empty state, so an unreachable API never reads
+  // as "you have no data".
+  if (isLoading || isError) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: t.colors.background }}>
-        <ActivityIndicator size="large" color={t.colors.primary} />
+      <View style={{ flex: 1, backgroundColor: t.colors.background }}>
+        <QueryState
+        isLoading={isLoading}
+        isError={isError}
+        onRetry={refetch}
+        skeleton={
+          <View style={{ padding: t.space.lg }}>
+            <SkeletonList count={6}>
+              <BookingCardSkeleton />
+            </SkeletonList>
+          </View>
+        }
+      >
+          <></>
+        </QueryState>
       </View>
     );
   }

@@ -6,6 +6,7 @@ initSentry();
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import errorHandler from './plugins/error-handler.js';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
@@ -64,6 +65,10 @@ async function buildApp() {
 
     // Register sensible for better error handling
     await app.register(sensible);
+
+    // Must come after sensible (it reads httpErrors' statusCode) and before the
+    // routes, so every throw below lands here instead of Fastify's default.
+    await app.register(errorHandler);
 
     // Attachments on human replies. The ceiling matches WhatsApp's largest
     // accepted type (documents); services/media.ts enforces the tighter
@@ -212,6 +217,11 @@ async function shutdown(signal: string) {
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-start();
+// Only boot when run as the entry point. Importing this module (tests do, to
+// exercise real routes through app.inject) must not bind a port or spawn the
+// notification workers.
+if (process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
+    start();
+}
 
 export { buildApp };

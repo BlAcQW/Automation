@@ -17,6 +17,9 @@ import { sendSms } from './arkesel.js';
 import { sendEmail, resolveGmailCreds } from './gmail-smtp.js';
 import { buildTextBundle, type TextBundle, type MessageLinks } from './notification-text.js';
 import { config } from '../config/index.js';
+import { scoped } from '../lib/logger.js';
+
+const log = scoped('notification-worker');
 
 /** Purposes sent outside the WhatsApp 24h window — gated by the tenant toggle. */
 const OUT_OF_WINDOW_PURPOSES: ReadonlySet<TemplatePurpose> = new Set([
@@ -125,9 +128,7 @@ async function sendByPurpose(
             select: { outOfWindowMessagesEnabled: true },
         });
         if (tenant && !tenant.outOfWindowMessagesEnabled) {
-            console.log(
-                `Out-of-window messages disabled for tenant ${tenantId} — skipping ${purpose}`,
-            );
+            log.info({ tenantId, purpose }, 'Out-of-window messages disabled for tenant — skipping');
             return 'ok';
         }
     }
@@ -223,8 +224,9 @@ async function sendByPurpose(
     // Every channel failed — release the reservation so a future retry
     // (BullMQ re-enqueues) gets a fresh chance against the same quota.
     await rollbackOutboundReservation(prisma, tenantId);
-    console.error(
-        `All channels failed (${purpose}): wa=${result.error ?? 'unknown'} sms=${smsOutcome} email=${email.outcome}`,
+    log.error(
+        { purpose, whatsapp: result.error ?? 'unknown', sms: smsOutcome, email: email.outcome },
+        'All channels failed',
     );
     await auditFallback(tenantId, 'fallback.exhausted', {
         purpose,
@@ -352,13 +354,13 @@ async function auditFallback(
             },
         });
     } catch (err) {
-        console.error('Audit log write failed', err, { action });
+        log.error({ err, action }, 'Audit log write failed');
     }
 }
 
 async function processNotification(job: Job<NotificationJob>): Promise<void> {
     const { purpose, tenantId, customerPhone, variables } = job.data;
-    console.log(`Processing notification: ${purpose} for ${customerPhone}`);
+    log.info(`Processing notification: ${purpose} for ${customerPhone}`);
     const outcome = await sendByPurpose(tenantId, purpose, customerPhone, variables);
     if (outcome === 'retry') {
         throw new Error(`Failed to send template ${purpose} — BullMQ will retry`);
@@ -367,7 +369,7 @@ async function processNotification(job: Job<NotificationJob>): Promise<void> {
 
 async function processReminder(job: Job<ReminderJob>): Promise<void> {
     const { purpose, tenantId, bookingId, customerPhone, variables } = job.data;
-    console.log(`Processing reminder for booking ${bookingId}`);
+    log.info(`Processing reminder for booking ${bookingId}`);
 
     // Re-check that the booking is still active before sending the reminder.
     const booking = await prisma.booking.findUnique({
@@ -376,7 +378,7 @@ async function processReminder(job: Job<ReminderJob>): Promise<void> {
     });
 
     if (!booking || booking.tenantId !== tenantId || booking.status !== 'CONFIRMED') {
-        console.log('Booking no longer active, skipping reminder');
+        log.info('Booking no longer active, skipping reminder');
         return;
     }
 
@@ -391,7 +393,7 @@ export function startNotificationWorkers(redisUrl: string | undefined): {
     reminders: Worker | null;
 } {
     if (!redisUrl) {
-        console.warn('Redis not configured - notification workers disabled');
+        log.warn('Redis not configured - notification workers disabled');
         return { notifications: null, reminders: null };
     }
 
@@ -404,10 +406,10 @@ export function startNotificationWorkers(redisUrl: string | undefined): {
     );
 
     notificationsWorker.on('completed', (job) => {
-        console.log(`Notification job ${job.id} completed`);
+        log.info(`Notification job ${job.id} completed`);
     });
     notificationsWorker.on('failed', (job, err) => {
-        console.error(`Notification job ${job?.id} failed:`, err.message);
+        log.error({ err: err.message }, `Notification job ${job?.id} failed:`);
     });
 
     const remindersWorker = new Worker(
@@ -417,13 +419,13 @@ export function startNotificationWorkers(redisUrl: string | undefined): {
     );
 
     remindersWorker.on('completed', (job) => {
-        console.log(`Reminder job ${job.id} completed`);
+        log.info(`Reminder job ${job.id} completed`);
     });
     remindersWorker.on('failed', (job, err) => {
-        console.error(`Reminder job ${job?.id} failed:`, err.message);
+        log.error({ err: err.message }, `Reminder job ${job?.id} failed:`);
     });
 
-    console.log('Notification workers started');
+    log.info('Notification workers started');
 
     return { notifications: notificationsWorker, reminders: remindersWorker };
 }
@@ -434,5 +436,5 @@ export async function stopNotificationWorkers(workers: {
 }): Promise<void> {
     if (workers.notifications) await workers.notifications.close();
     if (workers.reminders) await workers.reminders.close();
-    console.log('Notification workers stopped');
+    log.info('Notification workers stopped');
 }

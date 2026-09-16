@@ -257,6 +257,18 @@ From the WhatsApp comparison, none started:
 
 ---
 
+## Deferred: root-layout error boundary (web)
+
+A `global-error.tsx` was written to catch crashes in the root layout itself —
+`app/error.tsx` only covers the layout's children, so a crash in the layout
+leaves a blank page. It is **not in the tree**, because on **Next 14.1.0** the
+presence of `global-error.tsx` breaks `next build` while prerendering `/404`
+and `/500` (React error #31 — a known 14.1.0 bug, fixed in later 14.x).
+
+The file is preserved at the session scratchpad; restoring it is a one-file
+move once Next is upgraded past 14.1.0. Until then, root-layout crashes have
+no fallback. Everything below the layout is covered by `app/error.tsx`.
+
 ## Known pre-existing issues
 
 Not features, but worth recording:

@@ -2,6 +2,7 @@ import { TemplatePurpose, type Prisma } from '@prisma/client';
 import type { Queue as BullQueue } from 'bullmq';
 import { decrypt } from './crypto.js';
 import { computeAvailableSlots } from './availability.js';
+import { safeZone, zonedTimeToUtc } from './timezone.js';
 import { updateCalendarEvent } from './calendar.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
 import { cancelBooking } from './booking-cancel.js';
@@ -34,6 +35,9 @@ export class BookingConflictError extends Error {
     }
 }
 import { config } from '../config/index.js';
+import { scoped } from '../lib/logger.js';
+
+const log = scoped('whatsapp-bot');
 
 // Bot conversation states
 export enum BotState {
@@ -168,13 +172,11 @@ export class WhatsAppBotEngine {
         if (result.count === 0) {
             // Lost the race. Skip side effects so we don't double-message.
             // eslint-disable-next-line no-console
-            console.warn(
-                JSON.stringify({
+            log.warn(JSON.stringify({
                     msg: 'bot_context_version_conflict',
                     conversationId,
                     lockedVersion,
-                }),
-            );
+                }),);
             return;
         }
 
@@ -212,15 +214,13 @@ export class WhatsAppBotEngine {
                     data: { botFailureCount: { increment: 1 } },
                 }).catch(() => undefined);
                 // eslint-disable-next-line no-console
-                console.warn(
-                    JSON.stringify({
+                log.warn(JSON.stringify({
                         msg: 'bot_send_failure',
                         conversationId,
                         kind: err.kind,
                         detail: err.message,
                         partialSends: sentAny,
-                    }),
-                );
+                    }),);
                 return;
             }
             throw err;
@@ -641,7 +641,7 @@ export class WhatsAppBotEngine {
                     break;
                 }
 
-                const newStart = new Date(`${context.selectedDate}T${content}:00`);
+                const newStart = zonedTimeToUtc(context.selectedDate!, content, safeZone(this.tenantTimezone))!;
                 const newEnd = new Date(newStart.getTime() + booking.service.durationMinutes * 60_000);
 
                 await this.prisma.booking.update({
@@ -837,7 +837,7 @@ export class WhatsAppBotEngine {
                     context.cart = [];
                 } catch (err) {
                     // eslint-disable-next-line no-console
-                    console.error('Order checkout failed during bot flow', err);
+                    log.error({ detail: err }, 'Order checkout failed during bot flow');
                     messages.push(this.createTextMessage('Sorry, there was an error placing your order. Please try again.'));
                 }
                 messages.push(this.createProductMainMenu());
@@ -1260,7 +1260,7 @@ export class WhatsAppBotEngine {
             where: { id: context.serviceId, tenantId: this.tenantId, isActive: true },
         });
 
-        const startTime = new Date(`${context.selectedDate}T${context.selectedTime}:00`);
+        const startTime = zonedTimeToUtc(context.selectedDate!, context.selectedTime!, safeZone(this.tenantTimezone))!;
         const endTime = new Date(startTime.getTime() + service.durationMinutes * 60 * 1000);
         const requiresDeposit = !!service.depositAmount && Number(service.depositAmount) > 0;
 
@@ -1450,7 +1450,7 @@ export class WhatsAppBotEngine {
             // Non-fatal: log and let the caller fall back to the no-payment
             // confirmation. Staff can re-trigger from the dashboard.
             // eslint-disable-next-line no-console
-            console.error('Paystack init failed during bot flow', err);
+            log.error({ detail: err }, 'Paystack init failed during bot flow');
             return null;
         }
     }
@@ -1489,15 +1489,13 @@ export class WhatsAppBotEngine {
         const reservation = await tryReserveOutbound(this.prisma, this.tenantId);
         if (!reservation.ok) {
             // eslint-disable-next-line no-console
-            console.warn(
-                JSON.stringify({
+            log.warn(JSON.stringify({
                     msg: 'bot_send_quota_exhausted',
                     tenantId: this.tenantId,
                     planId: reservation.planId,
                     used: reservation.used,
                     limit: reservation.limit,
-                }),
-            );
+                }),);
             throw new BotSendError(
                 'quota_exhausted',
                 `${reservation.planId} plan: ${reservation.used}/${reservation.limit}`,
@@ -1528,7 +1526,7 @@ export class WhatsAppBotEngine {
                 const body = await response.text();
                 // Rollback the reservation — Meta said no, no quota was used.
                 await rollbackOutboundReservation(this.prisma, this.tenantId);
-                console.error('WhatsApp API error:', body);
+                log.error({ detail: body }, 'WhatsApp API error:');
                 throw new BotSendError('meta_error', `${response.status}: ${body.slice(0, 300)}`);
             }
             // Successful send — keep the reservation as the canonical counter.
@@ -1541,7 +1539,7 @@ export class WhatsAppBotEngine {
             // Network error / fetch threw — rollback and re-wrap.
             await rollbackOutboundReservation(this.prisma, this.tenantId).catch(() => undefined);
             const msg = err instanceof Error ? err.message : String(err);
-            console.error('Failed to send WhatsApp message:', err);
+            log.error({ detail: err }, 'Failed to send WhatsApp message:');
             throw new BotSendError('network_error', msg);
         }
     }

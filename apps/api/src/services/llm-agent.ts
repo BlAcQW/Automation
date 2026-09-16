@@ -17,6 +17,7 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/reso
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { computeAvailableSlots } from './availability.js';
 import { buildCustomerMemory } from './customer-memory.js';
+import { safeZone, startOfDayInZone, zonedTimeToUtc } from './timezone.js';
 
 /** Small and cheap: this is short-turn chat, not reasoning over documents. */
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
@@ -44,6 +45,8 @@ export interface AgentContext {
     prisma: ExtendedPrismaClient;
     tenantId: string;
     tenantName: string;
+    /** IANA zone. Times the customer says are wall-clock in THIS zone. */
+    timezone: string;
     businessType: 'SERVICE' | 'PRODUCT';
     conversationId: string;
     customerPhone: string;
@@ -162,8 +165,8 @@ async function runTool(
         case 'check_availability': {
             const serviceId = String(args.serviceId ?? '');
             const dateStr = String(args.date ?? '');
-            const date = new Date(`${dateStr}T00:00:00`);
-            if (Number.isNaN(date.getTime())) {
+            const date = startOfDayInZone(dateStr, safeZone(ctx.timezone));
+            if (!date) {
                 return { result: { error: 'Invalid date. Use YYYY-MM-DD.' } };
             }
 
@@ -230,8 +233,9 @@ async function runTool(
             });
             if (!service) return { result: { error: 'Unknown service.' } };
 
-            const start = new Date(`${dateStr}T${time}:00`);
-            if (Number.isNaN(start.getTime())) return { result: { error: 'Invalid date or time.' } };
+            // Wall-clock in the tenant's zone, not the server's.
+            const start = zonedTimeToUtc(dateStr, time, safeZone(ctx.timezone));
+            if (!start) return { result: { error: 'Invalid date or time.' } };
             if (start.getTime() < Date.now()) return { result: { error: 'That time is in the past.' } };
 
             // Re-check availability at write time. The model may have been told
@@ -239,7 +243,7 @@ async function runTool(
             const { slots } = await computeAvailableSlots({
                 prisma: ctx.prisma,
                 tenantId: ctx.tenantId,
-                date: new Date(`${dateStr}T00:00:00`),
+                date: startOfDayInZone(dateStr, safeZone(ctx.timezone))!,
                 durationMinutes: service.durationMinutes,
                 serviceId,
             });

@@ -3,7 +3,7 @@ import { useTheme } from '@/theme';
 import { useTemplates } from '@/api/hooks';
 import { MessageTemplate } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
-import { Text, Card, Badge, EmptyState } from '@/components/ui';
+import { Text, Card, Badge, EmptyState, QueryState} from '@/components/ui';
 
 function TemplateRow({ item }: { item: MessageTemplate }) {
   const t = useTheme();
@@ -25,15 +25,16 @@ function TemplateRow({ item }: { item: MessageTemplate }) {
 
 export default function TemplatesScreen() {
   const t = useTheme();
-  const { data, isLoading } = useTemplates();
+  const { data, isLoading, isError } = useTemplates();
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title="Message templates" />
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={t.colors.primary} />
-        </View>
+      {/* Failure must never render as emptiness — see ui/QueryState. */}
+      {isLoading || isError ? (
+        <QueryState isLoading={isLoading} isError={isError} >
+          <></>
+        </QueryState>
       ) : (
         <FlatList
           data={data ?? []}

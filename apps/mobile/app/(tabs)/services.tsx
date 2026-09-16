@@ -5,7 +5,7 @@ import { useTheme } from '@/theme';
 import { useAuth } from '@/auth/context';
 import { useServices, useToggleService } from '@/api/hooks';
 import { Service } from '@/api/types';
-import { Text, Card, Badge, EmptyState, HeaderAction } from '@/components/ui';
+import { Text, Card, Badge, EmptyState, HeaderAction, QueryState} from '@/components/ui';
 import { ProductsList } from '@/features/products/ProductsList';
 import { TAB_BAR_INSET } from '@/lib/layout';
 import { LargeHeader } from '@/components/ui';
@@ -43,7 +43,7 @@ export default function ServicesScreen() {
   const t = useTheme();
   const router = useRouter();
   const { tenant } = useAuth();
-  const { data, isLoading, isRefetching, refetch } = useServices();
+  const { data, isLoading, isError, isRefetching, refetch } = useServices();
   const isProduct = tenant?.businessType === 'PRODUCT';
 
   // PRODUCT tenants manage Products in this tab (relabeled in _layout).
@@ -61,10 +61,11 @@ export default function ServicesScreen() {
           />
         }
       />
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={t.colors.primary} />
-        </View>
+      {/* Failure must never render as emptiness — see ui/QueryState. */}
+      {isLoading || isError ? (
+        <QueryState isLoading={isLoading} isError={isError} onRetry={refetch} >
+          <></>
+        </QueryState>
       ) : (
         <FlatList
           data={data ?? []}

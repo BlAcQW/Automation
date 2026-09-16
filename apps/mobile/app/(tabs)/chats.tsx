@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useTheme } from '@/theme';
 import { useConversations } from '@/api/hooks';
 import { Conversation } from '@/api/types';
-import { Text, Avatar, EmptyState, Badge, LargeHeader } from '@/components/ui';
+import { Text, Avatar, EmptyState, Badge, LargeHeader, QueryState, ChatRowSkeleton, SkeletonList, PressableScale } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { TAB_BAR_INSET } from '@/lib/layout';
 
@@ -17,16 +17,16 @@ function ConversationRow({ item }: { item: Conversation }) {
   const isHuman = item.state === 'HUMAN_ACTIVE';
 
   return (
-    <Pressable
+    <PressableScale
+      to={0.985}
       onPress={() => router.push(`/conversations/${item.id}`)}
-      style={({ pressed }) => ({
+      style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: t.space.md,
         paddingHorizontal: t.space.lg,
         paddingVertical: t.space.sm + 2,
-        backgroundColor: pressed ? t.colors.surfaceSunken : 'transparent',
-      })}
+      }}
     >
       <Avatar name={title} size={56} />
       <View style={{ flex: 1, gap: 3 }}>
@@ -55,7 +55,7 @@ function ConversationRow({ item }: { item: Conversation }) {
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -70,7 +70,7 @@ const FILTERS: { key: ChatFilter; label: string }[] = [
 
 export default function ChatsScreen() {
   const t = useTheme();
-  const { data, isLoading, isRefetching, refetch } = useConversations();
+  const { data, isLoading, isError, isRefetching, refetch } = useConversations();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ChatFilter>('all');
 
@@ -94,14 +94,6 @@ export default function ChatsScreen() {
   }, [data, query, filter]);
 
   const unreadCount = (data ?? []).filter((c) => c.lastMessageDirection === 'INBOUND').length;
-
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: t.colors.background }}>
-        <ActivityIndicator size="large" color={t.colors.primary} />
-      </View>
-    );
-  }
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
@@ -176,6 +168,16 @@ export default function ChatsScreen() {
         />
       </LargeHeader>
 
+      <QueryState
+        isLoading={isLoading}
+        isError={isError}
+        onRetry={refetch}
+        skeleton={
+          <SkeletonList count={9}>
+            <ChatRowSkeleton />
+          </SkeletonList>
+        }
+      >
       <FlatList
         data={visible}
         keyExtractor={(c) => c.id}
@@ -206,6 +208,7 @@ export default function ChatsScreen() {
           )
         }
       />
+      </QueryState>
     </View>
   );
 }

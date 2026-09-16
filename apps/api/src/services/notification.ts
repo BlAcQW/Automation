@@ -8,6 +8,9 @@
 import { Queue } from 'bullmq';
 import { TemplatePurpose } from '@prisma/client';
 import { NotificationJob, ReminderJob } from '../plugins/redis.js';
+import { scoped } from '../lib/logger.js';
+
+const log = scoped('notification');
 
 export interface ScheduleNotificationOptions {
     queue: Queue | null;
@@ -25,7 +28,7 @@ export async function scheduleNotification(
     options: ScheduleNotificationOptions,
 ): Promise<string | null> {
     if (!options.queue) {
-        console.warn('Notification queue not available - notification not scheduled');
+        log.warn('Notification queue not available - notification not scheduled');
         return null;
     }
 
@@ -62,13 +65,13 @@ export async function scheduleReminder(
     options: ScheduleReminderOptions,
 ): Promise<string | null> {
     if (!options.queue) {
-        console.warn('Reminder queue not available - reminder not scheduled');
+        log.warn('Reminder queue not available - reminder not scheduled');
         return null;
     }
 
     const delay = options.sendAt.getTime() - Date.now();
     if (delay <= 0) {
-        console.warn('Reminder time already passed - not scheduling');
+        log.warn('Reminder time already passed - not scheduling');
         return null;
     }
 

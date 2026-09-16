@@ -7,6 +7,7 @@ import { useAuth } from '@/auth/context';
 import { useTheme } from '@/theme';
 import { useUnreadCount } from '@/api/hooks';
 import { TAB_BAR_HEIGHT, TAB_BAR_MARGIN, TAB_BAR_RADIUS } from '@/lib/layout';
+import * as haptics from '@/lib/haptics';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -61,6 +62,11 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      screenListeners={{
+        // A tab change is a navigation event, not a button press — selection
+        // feedback matches what iOS does natively.
+        tabPress: () => haptics.select(),
+      }}
       screenOptions={{
         // Tab screens draw their own large-title header (ui/LargeHeader) instead
         // of a navigation bar — no bar, no border, title set large.

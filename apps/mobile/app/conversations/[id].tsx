@@ -18,6 +18,8 @@ import { useConversations, useMessages, useResumeBot, useSendMedia, useSendMessa
 import { ChatMedia } from '@/components/ChatMedia';
 import { ChatContact, ChatLocation } from '@/components/ChatRich';
 import { DeliveryTicks } from '@/components/DeliveryTicks';
+import * as haptics from '@/lib/haptics';
+import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { Message } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text } from '@/components/ui';
@@ -45,9 +47,13 @@ function Bubble({
   const isReaction = type === 'REACTION';
   const structured = hasMedia || isLocation || isContact;
   return (
-    <View style={{ paddingHorizontal: t.space.lg, marginVertical: 3, alignItems: outbound ? 'flex-end' : 'flex-start' }}>
+    <Animated.View
+      entering={FadeInUp.duration(180)}
+      layout={LinearTransition.duration(160)}
+      style={{ paddingHorizontal: t.space.lg, marginVertical: 3, alignItems: outbound ? 'flex-end' : 'flex-start' }}
+    >
       <Pressable
-        onLongPress={onReact && !isReaction ? () => onReact(item) : undefined}
+        onLongPress={onReact && !isReaction ? () => { haptics.select(); onReact(item); } : undefined}
         delayLongPress={250}
         accessibilityHint={onReact && !isReaction ? 'Long press to react' : undefined}
         style={{
@@ -91,7 +97,7 @@ function Bubble({
           {outbound ? <DeliveryTicks status={item.status} color={t.colors.bubbleOutText} /> : null}
         </View>
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -178,6 +184,7 @@ export default function ConversationThread() {
       await sendRich.mutateAsync({ type: 'reaction', messageId: target.id, emoji });
     } catch (err) {
       const message = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      haptics.error();
       setNotice(message ?? 'Could not send that reaction.');
     }
   }
@@ -208,6 +215,7 @@ export default function ConversationThread() {
       setDraft('');
     } catch (err) {
       const message = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      haptics.error();
       setNotice(message ?? 'Could not send that attachment.');
     }
   }
@@ -229,6 +237,7 @@ export default function ConversationThread() {
     const text = draft.trim();
     if (!text) return;
     setNotice(null);
+    haptics.press();
     try {
       await send.mutateAsync(text);
       setDraft('');
@@ -327,7 +336,7 @@ export default function ConversationThread() {
             {QUICK_REACTIONS.map((emoji) => (
               <Pressable
                 key={emoji}
-                onPress={() => onReact(emoji)}
+                onPress={() => { haptics.tap(); onReact(emoji); }}
                 accessibilityRole="button"
                 accessibilityLabel={`React with ${emoji}`}
                 hitSlop={6}

@@ -790,6 +790,7 @@ async function handleWithAgent(
             prisma: fastify.prisma,
             tenantId: tenant.id,
             tenantName: tenant.name,
+            timezone: tenant.timezone ?? 'UTC',
             businessType: tenant.businessType ?? 'SERVICE',
             conversationId: conversation.id,
             customerPhone,

@@ -2,6 +2,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View, ViewStyle } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/theme';
 import { Text } from './Text';
+import * as haptics from '@/lib/haptics';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
@@ -52,7 +53,7 @@ export function Button({
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
-      onPress={onPress}
+      onPress={onPress ? () => { haptics.tap(); onPress(); } : undefined}
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,

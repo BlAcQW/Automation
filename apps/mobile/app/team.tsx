@@ -5,7 +5,7 @@ import { useAuth } from '@/auth/context';
 import { useAddTeamMember, useTeam, useUpdateTeamMember } from '@/api/hooks';
 import { TeamMember } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
-import { Text, Card, Badge, Avatar, Field, Button } from '@/components/ui';
+import { Text, Card, Badge, Avatar, Field, Button, QueryState} from '@/components/ui';
 
 function MemberRow({ item, canManage }: { item: TeamMember; canManage: boolean }) {
   const t = useTheme();
@@ -45,7 +45,7 @@ export default function TeamScreen() {
   const t = useTheme();
   const { user } = useAuth();
   const canManage = user?.role === 'OWNER';
-  const { data, isLoading } = useTeam();
+  const { data, isLoading, isError } = useTeam();
   const add = useAddTeamMember();
 
   const [name, setName] = useState('');
@@ -75,10 +75,11 @@ export default function TeamScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title="Team" />
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator size="large" color={t.colors.primary} />
-        </View>
+      {/* Failure must never render as emptiness — see ui/QueryState. */}
+      {isLoading || isError ? (
+        <QueryState isLoading={isLoading} isError={isError} >
+          <></>
+        </QueryState>
       ) : (
         <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.md }}>
           {(data ?? []).map((m) => (

@@ -113,6 +113,24 @@ const TOOLS: ChatCompletionTool[] = [
     {
         type: 'function',
         function: {
+            name: 'get_payment_link',
+            description:
+                'Get the deposit payment link for the customer\'s booking that still needs paying. ' +
+                'Call this ONLY when the customer has chosen to pay now, or asks how/where to pay. ' +
+                'Omit reference to use their most recent unpaid booking. Returns a link to send them as-is.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    reference: { type: 'string', description: 'optional booking reference (e.g. BK...)' },
+                },
+                required: [],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
             name: 'create_booking',
             description:
                 'Book a slot. Only call after check_availability has confirmed the exact time is free ' +
@@ -230,6 +248,73 @@ async function runTool(
             };
         }
 
+        case 'get_payment_link': {
+            const reference = args.reference ? String(args.reference) : undefined;
+            const booking = await ctx.prisma.booking.findFirst({
+                where: {
+                    tenantId: ctx.tenantId,
+                    customerPhone: ctx.customerPhone,
+                    paymentStatus: 'UNPAID',
+                    ...(reference ? { bookingReference: reference } : {}),
+                },
+                orderBy: { createdAt: 'desc' },
+                select: {
+                    id: true,
+                    bookingReference: true,
+                    depositAmount: true,
+                    paymentAuthorizationUrl: true,
+                    service: { select: { name: true } },
+                },
+            });
+
+            if (!booking) {
+                return { result: { error: 'No unpaid booking found for this customer — nothing to pay for right now.' } };
+            }
+
+            const amount = booking.depositAmount ? Number(booking.depositAmount) : 0;
+            if (amount <= 0) {
+                return {
+                    result: {
+                        reference: booking.bookingReference,
+                        note: 'This booking has no deposit due online. Let them know they can settle any balance when they arrive.',
+                    },
+                };
+            }
+
+            // Reuse an existing link if one was already generated; only hit
+            // Paystack when there is nothing to reuse.
+            let payUrl = booking.paymentAuthorizationUrl;
+            if (!payUrl) {
+                payUrl = await createPaymentLink({
+                    prisma: ctx.prisma,
+                    tenantId: ctx.tenantId,
+                    paystackSecretKeyEncrypted: ctx.paystackSecretKeyEncrypted,
+                    currency: ctx.currency,
+                    entity: 'booking',
+                    id: booking.id,
+                    amount,
+                    customerPhone: ctx.customerPhone,
+                });
+            }
+
+            if (!payUrl) {
+                return {
+                    result: {
+                        error: 'Payment link could not be generated; tell the customer the team will send it shortly.',
+                    },
+                };
+            }
+
+            return {
+                result: {
+                    reference: booking.bookingReference,
+                    service: booking.service?.name,
+                    amount: `${ctx.currency} ${amount.toFixed(2)}`,
+                    payUrl,
+                },
+            };
+        }
+
         case 'create_booking': {
             const serviceId = String(args.serviceId ?? '');
             const dateStr = String(args.date ?? '');
@@ -284,21 +369,9 @@ async function runTool(
                 select: { id: true, bookingReference: true, startTime: true, status: true },
             });
 
-            // Same Paystack path the menu bot uses. null means "couldn't make a
-            // link" — the prompt tells the model to say the team will send it.
-            const payUrl = requiresDeposit
-                ? await createPaymentLink({
-                      prisma: ctx.prisma,
-                      tenantId: ctx.tenantId,
-                      paystackSecretKeyEncrypted: ctx.paystackSecretKeyEncrypted,
-                      currency: ctx.currency,
-                      entity: 'booking',
-                      id: booking.id,
-                      amount: depositAmount,
-                      customerPhone: ctx.customerPhone,
-                  })
-                : null;
-
+            // Don't generate a payment link yet. Deposit-bearing bookings offer
+            // the customer a choice — pay the deposit now, or on arrival — so the
+            // link is created lazily by get_payment_link only if they pick "now".
             return {
                 result: {
                     reference: booking.bookingReference,
@@ -306,9 +379,11 @@ async function runTool(
                     when: booking.startTime.toISOString(),
                     status: booking.status,
                     depositRequired: requiresDeposit ? `${ctx.currency} ${depositAmount.toFixed(2)}` : null,
-                    payUrl,
-                    ...(requiresDeposit && !payUrl
-                        ? { note: 'Payment link could not be generated; tell the customer the team will send it shortly.' }
+                    ...(requiresDeposit
+                        ? {
+                              askPayNowOrOnArrival: true,
+                              note: 'Ask the customer whether they want to pay this deposit now to lock the slot in, or pay when they arrive. Only call get_payment_link if they choose to pay now.',
+                          }
                         : {}),
                 },
             };
@@ -396,10 +471,20 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
         `- NEVER state a price, service or time that is not in the list above or a tool result. Always say prices with the currency (${ctx.currency}).`,
         '- Call check_availability before offering any time. If unsure, check again.',
         '- Confirm the exact service, date and time back to the customer before create_booking.',
-        '- If create_booking returns a payUrl, the booking is only HELD until paid: say so, state the',
-        '  deposit amount, and send the payUrl exactly as given. Never invent or alter a link.',
         '- If you cannot help, call request_human rather than guessing.',
         '- Never mention tools, internal ids, or that you are an AI.',
+        '',
+        'Payment (deposits):',
+        '- Some services need a deposit. When create_booking returns askPayNowOrOnArrival, the slot is',
+        '  booked but the deposit is still due. In your NEXT message, confirm the booking and ask, in one',
+        '  friendly question, whether they would like to pay the deposit now to lock it in, or pay when',
+        '  they arrive. State the deposit amount with the currency. Do not send any link yet.',
+        '- Only when the customer chooses to pay now — or later asks how/where to pay — call',
+        '  get_payment_link and send the returned link exactly as given, with the amount.',
+        '- If they choose to pay on arrival, confirm warmly that the slot is held and the deposit can be',
+        '  settled when they come. Do not send a link.',
+        '- Never invent, guess, or alter a payment link. If get_payment_link returns an error, tell them',
+        '  the team will send the link shortly.',
     ];
 
     if (input.isFirstTurn) {

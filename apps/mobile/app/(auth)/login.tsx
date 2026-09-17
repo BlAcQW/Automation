@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { AxiosError } from 'axios';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/context';
 import { useTheme } from '@/theme';
 import { Screen, Text, Button } from '@/components/ui';
 
 export default function LoginScreen() {
   const t = useTheme();
+  const router = useRouter();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -120,6 +122,17 @@ export default function LoginScreen() {
         </View>
 
         <Button label="Log in" onPress={onSubmit} loading={submitting} fullWidth size="lg" style={{ marginTop: t.space.xs }} />
+
+        <Pressable
+          onPress={() => router.push('/(auth)/forgot-password')}
+          hitSlop={8}
+          accessibilityRole="link"
+          style={{ alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 12 }}
+        >
+          <Text variant="bodySm" tone="muted">
+            Forgot your password?
+          </Text>
+        </Pressable>
       </KeyboardAvoidingView>
     </Screen>
   );

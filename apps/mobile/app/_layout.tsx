@@ -12,12 +12,14 @@ import {
   PlusJakartaSans_700Bold,
   PlusJakartaSans_800ExtraBold,
 } from '@expo-google-fonts/plus-jakarta-sans';
+// Geist for body text, the same face the web dashboard uses, so both clients
+// read as one product. Plus Jakarta stays on headings for the extra weight.
 import {
-  useFonts as useInter,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-} from '@expo-google-fonts/inter';
+  useFonts as useGeist,
+  Geist_400Regular,
+  Geist_500Medium,
+  Geist_600SemiBold,
+} from '@expo-google-fonts/geist';
 import { AuthProvider, useAuth } from '@/auth/context';
 import { ThemeProvider, useTheme } from '@/theme';
 import { InAppNoticeProvider } from '@/components/InAppNotice';
@@ -76,13 +78,13 @@ export default function RootLayout() {
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
   });
-  const [interLoaded] = useInter({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
+  const [geistLoaded] = useGeist({
+    Geist_400Regular,
+    Geist_500Medium,
+    Geist_600SemiBold,
   });
 
-  const ready = jakartaLoaded && interLoaded;
+  const ready = jakartaLoaded && geistLoaded;
 
   const onLayout = useCallback(() => {
     if (ready) SplashScreen.hideAsync().catch(() => undefined);

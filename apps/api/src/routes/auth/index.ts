@@ -5,6 +5,13 @@ import { generateTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
 import { extractRefreshToken, isMobileClient } from '../../lib/auth-transport.js';
+import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
+import {
+    createResetToken,
+    parseResetToken,
+    passwordResetEmail,
+    verifyResetToken,
+} from '../../services/password-reset.js';
 
 // Validation schemas. `businessType` is optional and defaults to SERVICE so
 // older / SERVICE-only clients can omit it. The handler decides whether to
@@ -391,6 +398,92 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
         return { success: true };
     });
+
+    // POST /auth/forgot-password - Email a one-hour reset link.
+    //
+    // Always answers 200 with the same body: the form must not reveal which
+    // addresses have accounts. Tight rate limit because it sends mail.
+    fastify.post(
+        '/forgot-password',
+        { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
+        async (request) => {
+            const body = z.object({ email: z.string().email() }).parse(request.body);
+
+            const user = await fastify.prisma.user.findFirst({
+                where: { email: body.email, isActive: true },
+                select: { id: true, name: true, email: true, passwordHash: true, tenantId: true },
+            });
+
+            if (user) {
+                const token = createResetToken(user, config.jwtSecret);
+                const link = `${config.frontendUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+
+                // Account email always goes from the platform sender, never
+                // from a tenant's connected Gmail: this is Bookly writing to
+                // its own customer.
+                const creds = resolveGmailCreds({
+                    tenantGmailUser: null,
+                    tenantGmailAppPasswordEncrypted: null,
+                    tenantGmailFromName: null,
+                });
+                if (!creds) {
+                    request.log.error({ userId: user.id }, 'Password reset requested but no platform email sender is configured');
+                } else {
+                    const mail = passwordResetEmail({ name: user.name, link });
+                    const result = await sendEmail({ ...creds, to: user.email, ...mail });
+                    if (!result.ok) {
+                        request.log.error({ err: result.error, userId: user.id }, 'Password reset email failed to send');
+                    }
+                }
+
+                await audit({
+                    prisma: fastify.prisma,
+                    action: 'auth.password_reset.requested',
+                    actorType: 'USER',
+                    tenantId: user.tenantId,
+                    actorId: user.id,
+                    ipAddress: request.ip,
+                });
+            }
+
+            return { success: true };
+        },
+    );
+
+    // POST /auth/reset-password - Set a new password from a reset link.
+    fastify.post(
+        '/reset-password',
+        { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } },
+        async (request) => {
+            const body = z.object({
+                token: z.string().min(20),
+                password: z.string().min(8),
+            }).parse(request.body);
+
+            const parsed = parseResetToken(body.token);
+            const user = parsed
+                ? await fastify.prisma.user.findFirst({ where: { id: parsed.userId, isActive: true } })
+                : null;
+
+            if (!user || !verifyResetToken(body.token, user, config.jwtSecret)) {
+                throw fastify.httpErrors.badRequest('This reset link is invalid or has expired. Request a new one.');
+            }
+
+            const passwordHash = await bcrypt.hash(body.password, 12);
+            await fastify.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+            await audit({
+                prisma: fastify.prisma,
+                action: 'auth.password_reset.completed',
+                actorType: 'USER',
+                tenantId: user.tenantId,
+                actorId: user.id,
+                ipAddress: request.ip,
+            });
+
+            return { success: true };
+        },
+    );
 };
 
 export default authRoutes;

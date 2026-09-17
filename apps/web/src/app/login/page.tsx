@@ -90,8 +90,17 @@ export default function LoginPage() {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="••••••••"
+                            autoComplete="current-password"
                             required
                         />
+                        <div className="flex justify-end -mt-1">
+                            <Link
+                                href="/forgot-password"
+                                className="text-body-sm text-ink-300 hover:text-ink-50 transition-colors py-1"
+                            >
+                                Forgot your password?
+                            </Link>
+                        </div>
                         <GlowButton
                             type="submit"
                             disabled={isLoading}

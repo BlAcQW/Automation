@@ -145,9 +145,9 @@ export const fonts = {
   display: 'PlusJakartaSans_700Bold',
   displaySemi: 'PlusJakartaSans_600SemiBold',
   displayExtra: 'PlusJakartaSans_800ExtraBold',
-  bodyRegular: 'Inter_400Regular',
-  bodyMedium: 'Inter_500Medium',
-  bodySemi: 'Inter_600SemiBold',
+  bodyRegular: 'Geist_400Regular',
+  bodyMedium: 'Geist_500Medium',
+  bodySemi: 'Geist_600SemiBold',
 } as const;
 
 // Type scale (size / lineHeight).

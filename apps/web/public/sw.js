@@ -3,7 +3,7 @@
 // Bump this whenever the caching strategy changes — the `activate` handler
 // deletes every cache that isn't the current name, so an old cache holding a
 // stale build is purged.
-const CACHE_NAME = 'bookly-v1';
+const CACHE_NAME = 'bookly-v2';
 // Only truly-static, public assets. Auth-gated HTML documents (e.g.
 // /dashboard) are NOT precached — their markup embeds build-specific chunk
 // URLs that go stale, which would resurrect the stale-code class of bug.

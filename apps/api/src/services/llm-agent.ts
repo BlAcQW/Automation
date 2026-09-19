@@ -17,8 +17,13 @@ import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/reso
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { computeAvailableSlots } from './availability.js';
 import { buildCustomerMemory } from './customer-memory.js';
-import { safeZone, startOfDayInZone, zonedTimeToUtc } from './timezone.js';
+import { safeZone, startOfDayInZone, zonedDateString, zonedTimeString, zonedTimeToUtc } from './timezone.js';
 import { createPaymentLink } from './payment-link.js';
+import type { Queue } from 'bullmq';
+import type { FastifyBaseLogger } from 'fastify';
+import { effectiveDeposit, HOLD_MINUTES } from './booking-deposit.js';
+import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from './booking-create.js';
+import { createNotification } from './notifications.js';
 
 /** Small and cheap: this is short-turn chat, not reasoning over documents. */
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
@@ -56,8 +61,14 @@ export interface AgentContext {
     /** Tenant.paystackSecretKey as stored (encrypted); null if not connected. */
     paystackSecretKeyEncrypted: string | null;
     businessType: 'SERVICE' | 'PRODUCT';
+    /** Tenant deposit policy (Settings → Deposits). */
+    depositRequired: boolean;
+    defaultDepositAmount: { toString(): string } | number | string | null;
     conversationId: string;
     customerPhone: string;
+    /** Notification/reminder queues, when Redis is configured. */
+    queues?: { notifications: Queue | null; reminders: Queue | null } | null;
+    log?: FastifyBaseLogger;
 }
 
 export interface AgentResult {
@@ -115,9 +126,9 @@ const TOOLS: ChatCompletionTool[] = [
         function: {
             name: 'get_payment_link',
             description:
-                'Get the deposit payment link for the customer\'s booking that still needs paying. ' +
-                'Call this ONLY when the customer has chosen to pay now, or asks how/where to pay. ' +
-                'Omit reference to use their most recent unpaid booking. Returns a link to send them as-is.',
+                'Get the deposit payment link for the customer\'s booking that still needs paying, e.g. when ' +
+                'they ask how or where to pay, or lost the link. Omit reference to use their most recent ' +
+                'unpaid booking. Returns a link to send them as-is.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -134,7 +145,8 @@ const TOOLS: ChatCompletionTool[] = [
             name: 'create_booking',
             description:
                 'Book a slot. Only call after check_availability has confirmed the exact time is free ' +
-                'and the customer has explicitly agreed to it.',
+                'and the customer has explicitly agreed to it. Call it ONCE per appointment; it returns ' +
+                'either CONFIRMED or HELD (with a deposit payUrl to send in the same reply).',
             parameters: {
                 type: 'object',
                 properties: {
@@ -177,14 +189,17 @@ async function runTool(
                 select: { id: true, name: true, description: true, price: true, durationMinutes: true, depositAmount: true },
             });
             return {
-                result: services.map((s) => ({
-                    id: s.id,
-                    name: s.name,
-                    description: s.description,
-                    price: String(s.price),
-                    durationMinutes: s.durationMinutes,
-                    depositRequired: s.depositAmount ? String(s.depositAmount) : null,
-                })),
+                result: services.map((s) => {
+                    const deposit = effectiveDeposit(ctx, s);
+                    return {
+                        id: s.id,
+                        name: s.name,
+                        description: s.description,
+                        price: String(s.price),
+                        durationMinutes: s.durationMinutes,
+                        deposit: deposit > 0 ? `${ctx.currency} ${deposit.toFixed(2)}` : null,
+                    };
+                }),
             };
         }
 
@@ -276,7 +291,7 @@ async function runTool(
                 return {
                     result: {
                         reference: booking.bookingReference,
-                        note: 'This booking has no deposit due online. Let them know they can settle any balance when they arrive.',
+                        note: 'This booking needs no deposit; it is already confirmed. Nothing to pay online.',
                     },
                 };
             }
@@ -347,44 +362,116 @@ async function runTool(
             }
 
             const end = new Date(start.getTime() + service.durationMinutes * 60_000);
-            const reference = `BK${Date.now().toString(36).toUpperCase()}`;
+            const depositAmount = effectiveDeposit(ctx, service);
 
-            const depositAmount = service.depositAmount ? Number(service.depositAmount) : 0;
-            const requiresDeposit = depositAmount > 0;
-
-            const booking = await ctx.prisma.booking.create({
-                data: {
+            // Insert with the slot re-checked inside a transaction. Two
+            // customers who were both told 14:00 is free cannot both get it.
+            let booking;
+            try {
+                booking = await createBookingAtomic({
+                    prisma: ctx.prisma,
                     tenantId: ctx.tenantId,
                     serviceId: service.id,
                     customerName: customerName || 'Customer',
                     customerPhone: ctx.customerPhone,
                     startTime: start,
                     endTime: end,
-                    bookingReference: reference,
-                    // A deposit-bearing service is held, not confirmed, until paid —
-                    // same rule the menu bot applies.
-                    status: requiresDeposit ? 'PENDING_PAYMENT' : 'CONFIRMED',
-                    depositAmount: requiresDeposit ? service.depositAmount : null,
-                },
-                select: { id: true, bookingReference: true, startTime: true, status: true },
+                    depositAmount,
+                });
+            } catch (err) {
+                if (err instanceof SlotTakenError) {
+                    return { result: { error: 'That slot is no longer free. Call check_availability again.' } };
+                }
+                throw err;
+            }
+
+            const whenLocal = `${zonedDateString(booking.startTime, safeZone(ctx.timezone))} ${zonedTimeString(booking.startTime, safeZone(ctx.timezone))}`;
+
+            if (booking.status === 'CONFIRMED') {
+                // No deposit for this business/service: confirmed on the spot,
+                // with the same follow-ups a dashboard booking gets.
+                await afterBookingConfirmed({
+                    prisma: ctx.prisma,
+                    queues: ctx.queues,
+                    log: ctx.log,
+                    tenantId: ctx.tenantId,
+                    timezone: ctx.timezone,
+                    booking,
+                    service,
+                });
+                return {
+                    result: {
+                        reference: booking.bookingReference,
+                        service: service.name,
+                        when: whenLocal,
+                        status: 'CONFIRMED',
+                        deposit: null,
+                    },
+                };
+            }
+
+            // Deposit required: the slot is HELD, not booked, until it is paid.
+            // Make the link now so the customer gets it in the same reply.
+            const payUrl = await createPaymentLink({
+                prisma: ctx.prisma,
+                tenantId: ctx.tenantId,
+                paystackSecretKeyEncrypted: ctx.paystackSecretKeyEncrypted,
+                currency: ctx.currency,
+                entity: 'booking',
+                id: booking.id,
+                amount: depositAmount,
+                customerPhone: ctx.customerPhone,
             });
 
-            // Don't generate a payment link yet. Deposit-bearing bookings offer
-            // the customer a choice — pay the deposit now, or on arrival — so the
-            // link is created lazily by get_payment_link only if they pick "now".
+            if (!payUrl) {
+                // We cannot collect the deposit (Paystack not connected, or it
+                // failed). Holding the slot with no way to pay would just strand
+                // the customer, so confirm it, and tell the owner why.
+                await ctx.prisma.booking.update({
+                    where: { id: booking.id },
+                    data: { status: 'CONFIRMED' },
+                });
+                await afterBookingConfirmed({
+                    prisma: ctx.prisma,
+                    queues: ctx.queues,
+                    log: ctx.log,
+                    tenantId: ctx.tenantId,
+                    timezone: ctx.timezone,
+                    booking,
+                    service,
+                });
+                await createNotification(ctx.prisma, {
+                    tenantId: ctx.tenantId,
+                    type: 'SYSTEM',
+                    title: 'Deposit not collected',
+                    message: `${booking.customerName}'s booking ${booking.bookingReference} was confirmed without the ${ctx.currency} ${depositAmount.toFixed(2)} deposit because no payment link could be created. Connect Paystack in Settings to collect deposits.`,
+                    metadata: { bookingId: booking.id, reason: 'no_payment_link' },
+                }, ctx.log).catch(() => undefined);
+                return {
+                    result: {
+                        reference: booking.bookingReference,
+                        service: service.name,
+                        when: whenLocal,
+                        status: 'CONFIRMED',
+                        deposit: `${ctx.currency} ${depositAmount.toFixed(2)}`,
+                        note: 'Online payment is not available right now, so the booking is confirmed and the deposit will be collected on arrival. Say exactly that.',
+                    },
+                };
+            }
+
             return {
                 result: {
                     reference: booking.bookingReference,
                     service: service.name,
-                    when: booking.startTime.toISOString(),
-                    status: booking.status,
-                    depositRequired: requiresDeposit ? `${ctx.currency} ${depositAmount.toFixed(2)}` : null,
-                    ...(requiresDeposit
-                        ? {
-                              askPayNowOrOnArrival: true,
-                              note: 'Ask the customer whether they want to pay this deposit now to lock the slot in, or pay when they arrive. Only call get_payment_link if they choose to pay now.',
-                          }
-                        : {}),
+                    when: whenLocal,
+                    status: 'HELD',
+                    deposit: `${ctx.currency} ${depositAmount.toFixed(2)}`,
+                    payUrl,
+                    holdMinutes: HOLD_MINUTES,
+                    instruction:
+                        `The slot is only HELD. In THIS reply: say the time is held for ${HOLD_MINUTES} minutes, ` +
+                        'state the deposit amount, and paste payUrl exactly as given. The booking is confirmed once they pay. ' +
+                        'Do NOT call create_booking again for this appointment.',
                 },
             };
         }
@@ -474,15 +561,16 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
         '- If you cannot help, call request_human rather than guessing.',
         '- Never mention tools, internal ids, or that you are an AI.',
         '',
-        'Payment (deposits):',
-        '- Some services need a deposit. When create_booking returns askPayNowOrOnArrival, the slot is',
-        '  booked but the deposit is still due. In your NEXT message, confirm the booking and ask, in one',
-        '  friendly question, whether they would like to pay the deposit now to lock it in, or pay when',
-        '  they arrive. State the deposit amount with the currency. Do not send any link yet.',
-        '- Only when the customer chooses to pay now — or later asks how/where to pay — call',
-        '  get_payment_link and send the returned link exactly as given, with the amount.',
-        '- If they choose to pay on arrival, confirm warmly that the slot is held and the deposit can be',
-        '  settled when they come. Do not send a link.',
+        'Deposits and booking status:',
+        '- Most bookings need a deposit before they are complete. When create_booking returns status HELD,',
+        '  the time is only reserved for a short window. In that SAME reply: say the time is held for',
+        '  the number of minutes given, state the deposit amount with the currency, and paste payUrl',
+        '  exactly as given. Say the booking is confirmed once the deposit is paid. Never say "booked" or',
+        '  "confirmed" for a HELD booking.',
+        '- When create_booking returns status CONFIRMED, it is booked; say so plainly.',
+        '- Call create_booking ONCE per appointment. If the customer then asks about paying, the link,',
+        '  or their booking, use get_payment_link or get_my_bookings. Never re-run create_booking for',
+        '  the same appointment: the slot will look taken because it is theirs.',
         '- Never invent, guess, or alter a payment link. If get_payment_link returns an error, tell them',
         '  the team will send the link shortly.',
     ];

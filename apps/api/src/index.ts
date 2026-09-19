@@ -16,6 +16,7 @@ import prismaPlugin from './plugins/prisma.js';
 import authPlugin from './plugins/auth.js';
 import redisPlugin from './plugins/redis.js';
 import { startNotificationWorkers, stopNotificationWorkers } from './services/notification-worker.js';
+import { startHoldExpirySweeper } from './services/hold-expiry.js';
 
 // Import routes
 import authRoutes from './routes/auth/index.js';
@@ -183,6 +184,8 @@ async function buildApp() {
 // BullMQ workers — drains the notification + reminder queues. Started only
 // when Redis is configured, since BullMQ requires it.
 let workers: ReturnType<typeof startNotificationWorkers> | null = null;
+// Releases booking slots whose deposit was never paid. In-process timer.
+let stopHoldSweeper: (() => void) | null = null;
 
 async function start() {
     try {
@@ -194,6 +197,7 @@ async function start() {
         });
 
         workers = startNotificationWorkers(config.redisUrl);
+        stopHoldSweeper = startHoldExpirySweeper(server.prisma, server.log);
 
         server.log.info(`Bookly API running at http://${config.host}:${config.port}`);
     } catch (err) {
@@ -205,6 +209,7 @@ async function start() {
 async function shutdown(signal: string) {
     app.log.info({ signal }, 'Shutting down gracefully');
     try {
+        stopHoldSweeper?.();
         if (workers) {
             await stopNotificationWorkers(workers);
         }

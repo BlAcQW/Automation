@@ -344,6 +344,8 @@ export interface ProfileInput {
   businessName?: string;
   timezone?: string;
   outOfWindowMessagesEnabled?: boolean;
+  depositRequired?: boolean;
+  defaultDepositAmount?: number;
 }
 
 export function useUpdateProfile() {

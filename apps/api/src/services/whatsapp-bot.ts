@@ -3,6 +3,7 @@ import type { Queue as BullQueue } from 'bullmq';
 import { decrypt } from './crypto.js';
 import { computeAvailableSlots } from './availability.js';
 import { safeZone, zonedTimeToUtc } from './timezone.js';
+import { effectiveDeposit } from './booking-deposit.js';
 import { createPaymentLink } from './payment-link.js';
 import { updateCalendarEvent } from './calendar.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
@@ -111,6 +112,9 @@ export class WhatsAppBotEngine {
     private notificationsQueue: BullQueue | null;
     private remindersQueue: BullQueue | null;
 
+    private depositRequired: boolean;
+    private defaultDepositAmount: number;
+
     constructor(
         prisma: any,
         tenant: any,
@@ -124,7 +128,9 @@ export class WhatsAppBotEngine {
         this.businessType = tenant.businessType || 'SERVICE';
         this.tenantTimezone = tenant.timezone || 'UTC';
         this.paystackSecretKeyEncrypted = tenant.paystackSecretKey ?? null;
-        this.paymentCurrency = tenant.paymentCurrency || 'NGN';
+        this.paymentCurrency = tenant.paymentCurrency || 'GHS';
+        this.depositRequired = tenant.depositRequired ?? true;
+        this.defaultDepositAmount = Number(tenant.defaultDepositAmount ?? 50);
         this.notificationsQueue = queues?.notifications ?? null;
         this.remindersQueue = queues?.reminders ?? null;
     }
@@ -1263,7 +1269,12 @@ export class WhatsAppBotEngine {
 
         const startTime = zonedTimeToUtc(context.selectedDate!, context.selectedTime!, safeZone(this.tenantTimezone))!;
         const endTime = new Date(startTime.getTime() + service.durationMinutes * 60 * 1000);
-        const requiresDeposit = !!service.depositAmount && Number(service.depositAmount) > 0;
+        // Business default (Settings → Deposits) unless the service overrides it.
+        const deposit = effectiveDeposit(
+            { depositRequired: this.depositRequired, defaultDepositAmount: this.defaultDepositAmount },
+            service,
+        );
+        const requiresDeposit = deposit > 0;
 
         // Atomic create: re-check the overlap inside the transaction so two
         // concurrent customers can't both grab the same slot. The window
@@ -1300,7 +1311,7 @@ export class WhatsAppBotEngine {
                     status: requiresDeposit ? 'PENDING_PAYMENT' : 'CONFIRMED',
                     bookingReference: this.generateReference(),
                     publicToken: generatePublicToken(),
-                    depositAmount: requiresDeposit ? service.depositAmount : null,
+                    depositAmount: requiresDeposit ? deposit : null,
                 },
             });
         });

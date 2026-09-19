@@ -17,6 +17,9 @@ export interface AuthTenant {
   timezone: string;
   whatsappConnected?: boolean;
   outOfWindowMessagesEnabled?: boolean;
+  depositRequired?: boolean;
+  defaultDepositAmount?: number;
+  currency?: string;
 }
 
 interface AuthState {

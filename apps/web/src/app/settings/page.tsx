@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
     Building, User as UserIcon, Lock, Calendar, Save, Loader2, CheckCircle, ExternalLink, CreditCard, BarChart3, Mail, MessageSquareMore, BellRing,
-    LayoutGrid, Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Copy,
+    LayoutGrid, Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Copy, Banknote,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -66,6 +66,11 @@ export default function SettingsPage() {
     const [outOfWindowEnabled, setOutOfWindowEnabled] = useState(true);
     const [togglingMessages, setTogglingMessages] = useState(false);
 
+    // Deposits: a booking is only confirmed once the deposit is paid.
+    const [depositRequired, setDepositRequired] = useState(true);
+    const [depositAmount, setDepositAmount] = useState('50');
+    const [savingDeposit, setSavingDeposit] = useState(false);
+
     // Business settings
     const [businessName, setBusinessName] = useState('');
     const [timezone, setTimezone] = useState('UTC');
@@ -106,6 +111,8 @@ export default function SettingsPage() {
             setBusinessName(tenant.name);
             setTimezone(tenant.timezone || 'UTC');
             setOutOfWindowEnabled(tenant.outOfWindowMessagesEnabled ?? true);
+            setDepositRequired(tenant.depositRequired ?? true);
+            setDepositAmount(String(tenant.defaultDepositAmount ?? 50));
         }
         if (user) {
             setName(user.name);
@@ -175,13 +182,37 @@ export default function SettingsPage() {
         setSaving(true);
         setSuccess('');
         try {
-            await api.put('/tenant', { name: businessName, timezone });
+            await api.patch('/auth/profile', { businessName, timezone });
+            await refreshUser();
             setSuccess('Business settings saved');
             setTimeout(() => setSuccess(''), 3000);
         } catch (err) {
             console.error('Failed to save business settings:', err);
+            toast.error('Could not save. Check your connection and try again.');
         } finally {
             setSaving(false);
+        }
+    };
+
+    const saveDeposit = async () => {
+        const amount = Number(depositAmount.replace(/[^0-9.]/g, ''));
+        if (depositRequired && (!Number.isFinite(amount) || amount <= 0)) {
+            toast.error('Enter a deposit amount above 0, or switch deposits off.');
+            return;
+        }
+        setSavingDeposit(true);
+        try {
+            await api.patch('/auth/profile', {
+                depositRequired,
+                ...(Number.isFinite(amount) && amount > 0 ? { defaultDepositAmount: amount } : {}),
+            });
+            await refreshUser();
+            toast.success(depositRequired ? `Deposits on: ${tenant?.currency ?? 'GHS'} ${amount.toFixed(2)}` : 'Deposits off');
+        } catch (err) {
+            console.error('Failed to save deposit settings:', err);
+            toast.error('Could not save. Check your connection and try again.');
+        } finally {
+            setSavingDeposit(false);
         }
     };
 
@@ -346,6 +377,57 @@ export default function SettingsPage() {
                             <Save className="w-4 h-4" /> Save Changes
                         </Button>
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* Deposits: hold the slot until the customer pays. */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>
+                        <Banknote className="w-5 h-5 text-emerald-500" />
+                        Deposits
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <p className="text-sm font-medium text-slate-900 dark:text-white">
+                                Ask for a deposit before a booking is confirmed
+                            </p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-[56ch]">
+                                The assistant holds the time and sends a payment link. The booking is
+                                confirmed when the deposit is paid; unpaid holds are released after 30
+                                minutes so the slot is not lost.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={depositRequired}
+                            onChange={setDepositRequired}
+                            disabled={savingDeposit}
+                            label="Require a deposit"
+                        />
+                    </div>
+                    {depositRequired && (
+                        <div className="max-w-xs">
+                            <DashboardInput
+                                label={`Deposit amount (${tenant?.currency ?? 'GHS'})`}
+                                type="number"
+                                min={1}
+                                step="1"
+                                inputMode="decimal"
+                                value={depositAmount}
+                                onChange={(e) => setDepositAmount(e.target.value)}
+                                placeholder="50"
+                            />
+                            <p className="mt-1.5 text-[13px] text-slate-500 dark:text-slate-400">
+                                Applies to every service unless you set a different deposit on the service itself.
+                            </p>
+                        </div>
+                    )}
+                    <Button onClick={saveDeposit} isLoading={savingDeposit}>
+                        <Save className="w-4 h-4" />
+                        Save deposit settings
+                    </Button>
                 </CardContent>
             </Card>
 

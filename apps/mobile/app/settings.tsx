@@ -38,12 +38,26 @@ export default function SettingsScreen() {
   const [name, setName] = useState(user?.name ?? '');
   const [businessName, setBusinessName] = useState(tenant?.name ?? '');
   const [reminders, setReminders] = useState(tenant?.outOfWindowMessagesEnabled ?? true);
+  const [depositRequired, setDepositRequired] = useState(tenant?.depositRequired ?? true);
+  const [depositAmount, setDepositAmount] = useState(String(tenant?.defaultDepositAmount ?? 50));
   const [note, setNote] = useState<string | null>(null);
+  const currency = tenant?.currency ?? 'GHS';
 
   async function onSave() {
     setNote(null);
+    const amount = Number(depositAmount.replace(/[^0-9.]/g, ''));
+    if (depositRequired && (!Number.isFinite(amount) || amount <= 0)) {
+      setNote('Enter a deposit amount above 0, or switch deposits off.');
+      return;
+    }
     await updateProfile
-      .mutateAsync({ name: name.trim(), businessName: businessName.trim(), outOfWindowMessagesEnabled: reminders })
+      .mutateAsync({
+        name: name.trim(),
+        businessName: businessName.trim(),
+        outOfWindowMessagesEnabled: reminders,
+        depositRequired,
+        ...(Number.isFinite(amount) && amount > 0 ? { defaultDepositAmount: amount } : {}),
+      })
       .catch(() => undefined);
     await refreshUser();
     setNote('Saved.');
@@ -71,6 +85,30 @@ export default function SettingsScreen() {
             onValueChange={setReminders}
           />
         </Card>
+
+        <Text variant="h3" weight="bold" style={{ marginTop: t.space.sm }}>
+          Deposits
+        </Text>
+        <Card padded style={{ gap: t.space.lg }}>
+          <SwitchRow
+            label="Ask for a deposit"
+            description="A booking is only confirmed once the customer pays. Unpaid holds are released after 30 minutes."
+            value={depositRequired}
+            onValueChange={setDepositRequired}
+          />
+          {depositRequired ? (
+            <Field
+              label={`Deposit amount (${currency})`}
+              value={depositAmount}
+              onChangeText={setDepositAmount}
+              keyboardType="decimal-pad"
+              placeholder="50"
+            />
+          ) : null}
+          <Text variant="caption" tone="muted">
+            You can set a different deposit on any service, including none.
+          </Text>
+        </Card>
         <Button label="Save changes" fullWidth loading={updateProfile.isPending} onPress={onSave} />
         {note ? (
           <Text variant="caption" tone="success" center>
@@ -90,7 +128,7 @@ export default function SettingsScreen() {
           />
           <Text variant="caption" tone="muted">
             {mode === 'system'
-              ? `Following your device setting (currently ).`
+              ? `Following your device setting (currently ${scheme}).`
               : `Always ${mode}, whatever your device is set to.`}
           </Text>
         </Card>

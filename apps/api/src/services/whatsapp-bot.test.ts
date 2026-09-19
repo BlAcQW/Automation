@@ -396,7 +396,39 @@ describe('WhatsApp Bot Engine', () => {
             fetchSpy.mockRestore();
         });
 
-        it('writes CONFIRMED and skips Paystack when the service has no deposit', async () => {
+        it('holds the booking with the business default deposit when the service has none', async () => {
+            const { WhatsAppBotEngine } = await import('./whatsapp-bot.js');
+            const { prisma, createBookingMock } = makeBotInState({
+                depositAmount: null,
+                paystackConnected: false,
+            });
+
+            // No tenant deposit fields at all: the defaults (on, 50) apply,
+            // exactly as they do for every tenant created before the setting
+            // existed.
+            const bot = new WhatsAppBotEngine(prisma as any, {
+                id: 'tenant-1',
+                whatsappAccessToken: null,
+                whatsappPhoneNumberId: 'pn-1',
+                businessType: 'SERVICE',
+                timezone: 'UTC',
+                paystackSecretKey: null,
+                paymentCurrency: 'GHS',
+            });
+
+            const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+                new Response('{}', { status: 200 }),
+            );
+
+            await bot.processMessage('conv-1', '+15550100', 'Jane Doe');
+
+            const createCall = createBookingMock.mock.calls[0];
+            expect(createCall[0].data.status).toBe('PENDING_PAYMENT');
+            expect(createCall[0].data.depositAmount).toBe(50);
+            fetchSpy.mockRestore();
+        });
+
+        it('writes CONFIRMED and skips Paystack when the business has deposits switched off', async () => {
             const { WhatsAppBotEngine } = await import('./whatsapp-bot.js');
             const { prisma, createBookingMock } = makeBotInState({
                 depositAmount: null,
@@ -410,7 +442,9 @@ describe('WhatsApp Bot Engine', () => {
                 businessType: 'SERVICE',
                 timezone: 'UTC',
                 paystackSecretKey: null,
-                paymentCurrency: 'NGN',
+                paymentCurrency: 'GHS',
+                depositRequired: false,
+                defaultDepositAmount: 50,
             });
 
             const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(

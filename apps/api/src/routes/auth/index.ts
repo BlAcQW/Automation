@@ -265,6 +265,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 timezone: user.tenant.timezone,
                 whatsappConnected: !!user.tenant.whatsappPhoneNumberId,
                 outOfWindowMessagesEnabled: user.tenant.outOfWindowMessagesEnabled,
+                depositRequired: user.tenant.depositRequired,
+                defaultDepositAmount: Number(user.tenant.defaultDepositAmount),
+                currency: user.tenant.paymentCurrency,
             },
         };
     });
@@ -339,6 +342,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             businessName: z.string().min(2).optional(),
             timezone: z.string().optional(),
             outOfWindowMessagesEnabled: z.boolean().optional(),
+            depositRequired: z.boolean().optional(),
+            defaultDepositAmount: z.number().min(0).max(1_000_000).optional(),
         }).parse(request.body);
 
         // Update user name if provided
@@ -353,7 +358,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         if (
             body.businessName ||
             body.timezone ||
-            body.outOfWindowMessagesEnabled !== undefined
+            body.outOfWindowMessagesEnabled !== undefined ||
+            body.depositRequired !== undefined ||
+            body.defaultDepositAmount !== undefined
         ) {
             await fastify.prisma.tenant.update({
                 where: { id: request.user.tenantId },
@@ -362,6 +369,10 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     ...(body.timezone && { timezone: body.timezone }),
                     ...(body.outOfWindowMessagesEnabled !== undefined && {
                         outOfWindowMessagesEnabled: body.outOfWindowMessagesEnabled,
+                    }),
+                    ...(body.depositRequired !== undefined && { depositRequired: body.depositRequired }),
+                    ...(body.defaultDepositAmount !== undefined && {
+                        defaultDepositAmount: Math.round(body.defaultDepositAmount * 100) / 100,
                     }),
                 },
             });

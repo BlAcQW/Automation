@@ -1,12 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { nanoid } from 'nanoid';
 import { TemplatePurpose } from '@prisma/client';
-import { syncBookingToCalendar, deleteCalendarEvent } from '../../services/calendar.js';
-import { scheduleNotification, scheduleReminder, cancelReminder } from '../../services/notification.js';
+import { scheduleNotification, cancelReminder } from '../../services/notification.js';
 import { cancelBooking } from '../../services/booking-cancel.js';
-import { createNotification } from '../../services/notifications.js';
-import { generatePublicToken } from '../../lib/public-token.js';
+import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from '../../services/booking-create.js';
 
 // Validation schemas
 const createBookingSchema = z.object({
@@ -31,7 +28,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
         const query = z.object({
             from: z.string().optional(),
             to: z.string().optional(),
-            status: z.enum(['CONFIRMED', 'CANCELLED', 'COMPLETED', 'NO_SHOW']).optional(),
+            status: z.enum(['PENDING_PAYMENT', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'NO_SHOW']).optional(),
             page: z.coerce.number().min(1).default(1),
             limit: z.coerce.number().min(1).max(100).default(20),
         }).parse(request.query);
@@ -123,99 +120,54 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.badRequest('Service not found or inactive');
         }
 
-        // Calculate end time
         const startTime = body.startTime;
+        if (Number.isNaN(startTime.getTime())) {
+            throw fastify.httpErrors.badRequest('Invalid start time');
+        }
         const endTime = new Date(startTime.getTime() + service.durationMinutes * 60000);
 
-        // Check for conflicts (using serializable transaction)
-        const booking = await fastify.prisma.$transaction(async (tx) => {
-            // Lock and check for overlapping bookings
-            const conflicting = await tx.booking.findFirst({
-                where: {
-                    tenantId,
-                    status: 'CONFIRMED',
-                    OR: [
-                        {
-                            startTime: { lt: endTime },
-                            endTime: { gt: startTime },
-                        },
-                    ],
-                },
+        // A booking made by staff from the dashboard is a walk-in or a phone
+        // booking: it is confirmed straight away, no deposit hold. The shared
+        // creator still re-checks the slot against held and confirmed bookings.
+        let created;
+        try {
+            created = await createBookingAtomic({
+                prisma: fastify.prisma,
+                tenantId,
+                serviceId: body.serviceId,
+                customerName: body.customerName,
+                customerPhone: body.customerPhone,
+                startTime,
+                endTime,
+                depositAmount: 0,
+                notes: body.notes,
             });
-
-            if (conflicting) {
-                throw new Error('Time slot is no longer available');
+        } catch (err) {
+            if (err instanceof SlotTakenError) {
+                throw fastify.httpErrors.conflict('That time is no longer available');
             }
+            throw err;
+        }
 
-            // Generate unique booking reference
-            const bookingReference = `BK-${nanoid(8).toUpperCase()}`;
-
-            // Create booking
-            return tx.booking.create({
-                data: {
-                    tenantId,
-                    serviceId: body.serviceId,
-                    customerName: body.customerName,
-                    customerPhone: body.customerPhone,
-                    startTime,
-                    endTime,
-                    bookingReference,
-                    publicToken: generatePublicToken(),
-                    notes: body.notes,
-                },
-                include: { service: true },
-            });
-        }, {
-            isolationLevel: 'Serializable',
+        const tenant = await fastify.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { timezone: true },
         });
 
-        // Queue WhatsApp template-driven confirmation + reminder. All proactive
-        // sends go through approved templates so they pass the Meta 24-hour
-        // window check.
-        const bookingTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        await scheduleNotification({
-            queue: fastify.queues.notifications,
-            purpose: TemplatePurpose.BOOKING_CONFIRMATION,
-            tenantId,
-            customerPhone: booking.customerPhone,
-            variables: [
-                booking.customerName,
-                service.name,
-                startTime.toLocaleDateString(),
-                bookingTime,
-                booking.bookingReference,
-            ],
-            jobId: `booking_confirmation_${booking.id}`,
-        });
-
-        // Reminder 1 hour before the appointment.
-        const reminderTime = new Date(startTime.getTime() - 60 * 60 * 1000);
-        await scheduleReminder({
-            queue: fastify.queues.reminders,
-            tenantId,
-            bookingId: booking.id,
-            customerPhone: booking.customerPhone,
-            variables: [service.name, bookingTime],
-            sendAt: reminderTime,
-        });
-
-        // Sync to Google Calendar (if connected)
-        await syncBookingToCalendar({
-            bookingId: booking.id,
-            tenantId,
+        await afterBookingConfirmed({
             prisma: fastify.prisma,
+            queues: fastify.queues,
+            log: fastify.log,
+            tenantId,
+            timezone: tenant?.timezone,
+            booking: created,
+            service,
         });
 
-        // Create in-app notification + mobile push (best-effort push).
-        await createNotification(fastify.prisma, {
-            tenantId,
-            type: 'NEW_BOOKING',
-            title: 'New Booking',
-            message: `${body.customerName} booked ${service.name} for ${body.startTime.toLocaleDateString()}`,
-            metadata: { bookingId: booking.id, bookingReference: booking.bookingReference },
-        }, fastify.log);
-
-        return booking;
+        return fastify.prisma.booking.findUnique({
+            where: { id: created.id },
+            include: { service: true },
+        });
     });
 
     // PATCH /bookings/:id - Update booking

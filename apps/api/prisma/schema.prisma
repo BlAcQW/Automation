@@ -51,6 +51,11 @@ model Tenant {
   // Master switch — when false, the worker skips all out-of-window messages
   // (BOOKING_REMINDER, ORDER_SHIPPED, ORDER_DELIVERED) to save messaging cost.
   outOfWindowMessagesEnabled Boolean    @default(true)
+  // Deposits. When on, a booking is only confirmed once the customer has paid
+  // the deposit; until then it is held for a short window. Per-service
+  // `Service.depositAmount` overrides the default when it is set.
+  depositRequired          Boolean    @default(true)
+  defaultDepositAmount     Decimal    @default(50) @db.Decimal(10, 2)
   isActive              Boolean      @default(true)
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt

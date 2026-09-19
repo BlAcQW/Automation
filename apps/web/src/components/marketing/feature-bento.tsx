@@ -9,6 +9,7 @@ import {
     UsersRound,
 } from 'lucide-react';
 import { ScrollReveal, ScrollRevealItem } from '@/components/primitives/scroll-reveal';
+import { SpotlightCard } from '@/components/primitives/spotlight-card';
 import { cn } from '@/lib/cn';
 
 interface FeatureCell {
@@ -84,7 +85,7 @@ export function FeatureBento() {
 
 function FeatureCard({ title, description, icon: Icon, visual }: FeatureCell) {
     return (
-        <article className="relative h-full overflow-hidden rounded-2xl border border-ink-700 bg-ink-900 p-6 sm:p-7 transition-colors duration-200 hover:border-ink-600">
+        <SpotlightCard className="h-full p-6 sm:p-7">
             <div className="mb-5 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-bookly-emerald-500/10 text-bookly-emerald-400">
                 <Icon className="h-5 w-5" />
             </div>
@@ -93,7 +94,7 @@ function FeatureCard({ title, description, icon: Icon, visual }: FeatureCell) {
 
             {visual === 'inbox' && <InboxPreview />}
             {visual === 'reminder' && <ReminderPreview />}
-        </article>
+        </SpotlightCard>
     );
 }
 

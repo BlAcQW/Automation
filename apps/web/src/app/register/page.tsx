@@ -243,17 +243,7 @@ export default function RegisterPage() {
                                         <p className="text-ink-300 text-[13px] mt-1.5">At least 8 characters.</p>
                                     </div>
 
-                                    <GlowButton
-                                        type="submit"
-                                        disabled={isLoading}
-                                        className="w-full"
-                                        size="lg"
-                                    >
-                                        {isLoading ? 'Creating…' : (<>Create account <ArrowRight className="w-4 h-4" /></>)}
-                                    </GlowButton>
-                                </form>
-
-                                <label className="mt-5 flex items-start gap-3 text-body-sm text-ink-300 cursor-pointer">
+                                <label className="flex items-start gap-3 text-body-sm text-ink-300 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={agreed}
@@ -268,6 +258,16 @@ export default function RegisterPage() {
                                         <Link href="/privacy" className="text-ink-50 underline underline-offset-2" target="_blank">Privacy Policy</Link>.
                                     </span>
                                 </label>
+
+                                    <GlowButton
+                                        type="submit"
+                                        disabled={isLoading}
+                                        className="w-full"
+                                        size="lg"
+                                    >
+                                        {isLoading ? 'Creating…' : (<>Create account <ArrowRight className="w-4 h-4" /></>)}
+                                    </GlowButton>
+                                </form>
                             </motion.div>
                         )}
                     </AnimatePresence>

@@ -3,6 +3,7 @@
 import { type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { NumberTicker } from '@/components/primitives/number-ticker';
 import { cn } from '@/lib/cn';
 
 interface StatCardProps {
@@ -53,7 +54,7 @@ export function StatCard({ name, value, icon, className, index = 0, change }: St
             </div>
 
             <p className="mt-4 sm:mt-5 font-display text-2xl sm:text-3xl font-semibold tracking-tight text-ink-50 tabular-nums leading-none">
-                {value}
+                {typeof value === 'number' ? <NumberTicker value={value} /> : value}
             </p>
             <p className="mt-1.5 text-[13px] text-ink-300">{name}</p>
         </motion.div>

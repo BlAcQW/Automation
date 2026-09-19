@@ -3,6 +3,8 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowRight, CalendarCheck, CreditCard, BellRing } from 'lucide-react';
 import { GlowButton } from '@/components/primitives/glow-button';
+import { BlurFade, BlurFadeWords } from '@/components/primitives/blur-fade';
+import { DotPattern } from '@/components/primitives/dot-pattern';
 import { durations, ease } from '@/lib/motion';
 
 /**
@@ -14,9 +16,10 @@ export function Hero() {
     const reduce = useReducedMotion();
     return (
         <section className="relative isolate overflow-hidden">
-            {/* One ambient light source, top-right, behind the phone. */}
+            {/* One ambient light source, top-right, behind the phone, over a
+                dotted field that fades out before it reaches the edges. */}
             <div className="bg-orb bg-orb-1" aria-hidden />
-            <div className="absolute inset-0 bg-grid opacity-40" aria-hidden />
+            <DotPattern className="[mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,#000_30%,transparent_100%)]" />
 
             <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 lg:pt-32 pb-16 sm:pb-20 lg:pb-28">
                 <div className="grid lg:grid-cols-[1.1fr_1fr] gap-12 lg:gap-16 items-center">
@@ -26,13 +29,13 @@ export function Hero() {
                         transition={{ duration: durations.long, ease: ease.out }}
                     >
                         <h1 className="font-display text-display-xl text-ink-50 text-balance">
-                            Your bookings, taken on WhatsApp. By an assistant that never sleeps.
+                            <BlurFadeWords text="Your bookings, taken on WhatsApp. By an assistant that never sleeps." step={0.045} />
                         </h1>
-                        <p className="mt-6 text-body-lg text-ink-200 max-w-[38ch] text-pretty">
+                        <BlurFade as="p" delay={0.55} className="mt-6 text-body-lg text-ink-200 max-w-[38ch] text-pretty">
                             Bookly answers your customers, books the appointment, collects the deposit and sends the reminder. You just show up.
-                        </p>
+                        </BlurFade>
 
-                        <div className="mt-9 flex flex-col sm:flex-row gap-3">
+                        <BlurFade delay={0.7} className="mt-9 flex flex-col sm:flex-row gap-3">
                             <GlowButton href="/register" size="lg">
                                 Start free
                                 <ArrowRight className="w-4 h-4" />
@@ -40,7 +43,7 @@ export function Hero() {
                             <GlowButton href="#how" variant="ghost" size="lg">
                                 See how it works
                             </GlowButton>
-                        </div>
+                        </BlurFade>
                     </motion.div>
 
                     <motion.div
@@ -90,14 +93,14 @@ function PhoneMock() {
                         </BotBubble>
                         <CustomerBubble time="9:42">1:30 please</CustomerBubble>
                         <BotBubble time="9:42">
-                            Booked: knotless braids, Saturday 1:30 PM. A GHS 50 deposit holds your seat. Pay now or on arrival?
-                        </BotBubble>
-                        <CustomerBubble time="9:43">Pay now</CustomerBubble>
-                        <BotBubble time="9:43">
-                            Here is your payment link. I will remind you the day before.
+                            I have held Saturday 1:30 PM for you for 30 minutes. Pay the GHS 50 deposit here and it is confirmed:
                             <span className="mt-1.5 block truncate text-[12px] text-emerald-200/90 underline underline-offset-2">
                                 paystack.com/pay/adwoa-hair-9f2a
                             </span>
+                        </BotBubble>
+                        <CustomerBubble time="9:43">Done</CustomerBubble>
+                        <BotBubble time="9:43">
+                            Deposit received, you are booked. I will remind you the day before.
                         </BotBubble>
                     </div>
 
@@ -123,7 +126,7 @@ function PhoneMock() {
             </div>
             <div className="hidden lg:block">
                 <EventChip className="absolute -left-52 top-[14%]" delay={0.9} icon={EVENTS[0].icon}>{EVENTS[0].label}</EventChip>
-                {/* Sits in the empty space to the right of the "Pay now" bubble; the
+                {/* Sits in the empty space to the right of the "Done" bubble; the
                     viewport has no room past the phone on the right at 1280px. */}
                 <EventChip className="absolute -right-4 top-[65%]" delay={1.2} icon={EVENTS[1].icon}>{EVENTS[1].label}</EventChip>
                 <EventChip className="absolute -left-48 bottom-[14%]" delay={1.5} icon={EVENTS[2].icon}>{EVENTS[2].label}</EventChip>

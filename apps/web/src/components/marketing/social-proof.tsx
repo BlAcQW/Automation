@@ -11,6 +11,7 @@ import {
     Wrench,
 } from 'lucide-react';
 import { ScrollReveal, ScrollRevealItem } from '@/components/primitives/scroll-reveal';
+import { SpotlightCard } from '@/components/primitives/spotlight-card';
 
 /**
  * Who it is for. This replaces a logo marquee and testimonials that were
@@ -47,15 +48,14 @@ export function WhoItsFor() {
                 <ScrollRevealItem>
                     <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {BUSINESSES.map(({ icon: Icon, name }) => (
-                            <li
-                                key={name}
-                                className="flex items-center gap-3 rounded-xl border border-ink-700 bg-ink-900 px-4 py-3.5"
-                            >
-                                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-bookly-emerald-500/10 text-bookly-emerald-400">
-                                    <Icon className="h-4 w-4" />
-                                </span>
-                                <span className="text-body-sm font-medium text-ink-50">{name}</span>
-                            </li>
+                            <SpotlightCard as="li" key={name} className="rounded-xl">
+                                <div className="flex items-center gap-3 px-4 py-3.5">
+                                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-bookly-emerald-500/10 text-bookly-emerald-400">
+                                        <Icon className="h-4 w-4" />
+                                    </span>
+                                    <span className="text-body-sm font-medium text-ink-50">{name}</span>
+                                </div>
+                            </SpotlightCard>
                         ))}
                     </ul>
                 </ScrollRevealItem>

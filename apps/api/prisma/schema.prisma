@@ -56,6 +56,9 @@ model Tenant {
   // `Service.depositAmount` overrides the default when it is set.
   depositRequired          Boolean    @default(true)
   defaultDepositAmount     Decimal    @default(50) @db.Decimal(10, 2)
+  // The owner asked for the account to be deleted. A person confirms and
+  // removes the tenant; this records the ask and shows it in Settings.
+  deletionRequestedAt      DateTime?
   isActive              Boolean      @default(true)
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
@@ -90,6 +93,12 @@ model User {
   name         String
   role         Role     @default(STAFF)
   isActive     Boolean  @default(true)
+  // When they ticked "I agree" at sign-up. Null for accounts created before
+  // the checkbox existed.
+  termsAcceptedAt DateTime?
+  // Set by the link in the verification email. Null = unverified; the
+  // dashboard nags, nothing is blocked.
+  emailVerifiedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

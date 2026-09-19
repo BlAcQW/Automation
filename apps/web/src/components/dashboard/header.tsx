@@ -38,6 +38,7 @@ export function DashboardHeader() {
             <div className="hidden md:flex flex-1 max-w-sm mx-2">
                 <button
                     type="button"
+                    aria-label="Search"
                     className="w-full h-9 inline-flex items-center gap-2 px-3 rounded-full bg-ink-900 border border-ink-700 text-body-sm text-ink-300 hover:bg-ink-800 transition-colors"
                 >
                     <Search className="h-4 w-4 shrink-0" />

@@ -103,6 +103,7 @@ const envSchema = z.object({
     // Frontend
     FRONTEND_URL: z.string().optional(),
     NEXT_PUBLIC_API_URL: z.string().optional(),
+    API_PUBLIC_URL: z.string().optional(),
 
     // Observability (optional)
     SENTRY_DSN: z.string().optional(),
@@ -208,6 +209,8 @@ export const config = {
     },
 
     frontendUrl: env.FRONTEND_URL || env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') || 'http://localhost:3000',
+    // Where browsers can reach this API (links in emails point here).
+    apiPublicUrl: env.API_PUBLIC_URL || env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
 
     corsOrigins: [
         env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,

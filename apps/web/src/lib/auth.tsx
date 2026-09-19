@@ -27,6 +27,7 @@ interface User {
     email: string;
     name: string;
     role: 'OWNER' | 'STAFF';
+    emailVerifiedAt?: string | null;
 }
 
 interface Tenant {
@@ -39,6 +40,7 @@ interface Tenant {
     depositRequired?: boolean;
     defaultDepositAmount?: number;
     currency?: string;
+    deletionRequestedAt?: string | null;
 }
 
 interface AuthState {
@@ -62,6 +64,7 @@ interface RegisterData {
     businessName: string;
     businessType: 'PRODUCT' | 'SERVICE';
     timezone?: string;
+    acceptTerms: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

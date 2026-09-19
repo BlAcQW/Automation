@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
+import { PLAUSIBLE_DOMAIN, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from '@/lib/site';
 import './globals.css';
 import { Providers } from '@/components/providers';
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
@@ -22,9 +24,28 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-    title: 'Bookly: WhatsApp bookings for small businesses',
-    description: 'Your customers chat. A bot handles bookings, payments, reminders, and FAQs. You run everything from one cinematic dashboard.',
-    keywords: ['whatsapp', 'automation', 'bookings', 'crm', 'small business', 'saas', 'bot'],
+    metadataBase: new URL(SITE_URL),
+    title: {
+        default: 'Bookly: WhatsApp bookings for small businesses',
+        // Every app page sets its own title; this keeps the brand on the tab.
+        template: '%s · Bookly',
+    },
+    description: SITE_DESCRIPTION,
+    keywords: ['whatsapp', 'bookings', 'appointments', 'salon', 'small business', 'ghana', 'deposit'],
+    openGraph: {
+        type: 'website',
+        siteName: SITE_NAME,
+        title: 'Bookly: your bookings, taken on WhatsApp',
+        description: SITE_DESCRIPTION,
+        url: SITE_URL,
+        locale: 'en_GH',
+    },
+    twitter: {
+        card: 'summary_large_image',
+        title: 'Bookly: your bookings, taken on WhatsApp',
+        description: SITE_DESCRIPTION,
+    },
+    robots: { index: true, follow: true },
     manifest: '/manifest.json',
     appleWebApp: {
         capable: true,
@@ -58,9 +79,19 @@ export default function RootLayout({
         // is required because the class is set before hydration.
         <html lang="en" suppressHydrationWarning>
             <body className="bg-ink-950 text-ink-50 font-sans antialiased selection:bg-bookly-emerald-500/30 selection:text-ink-50">
+                {/* Keyboard and screen-reader users jump past the nav. Visible only on focus. */}
+                <a
+                    href="#main"
+                    className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-bookly-emerald-500 focus:px-4 focus:py-2 focus:text-on-accent focus:outline-none"
+                >
+                    Skip to content
+                </a>
                 <Providers>{children}</Providers>
                 <GrainOverlay />
                 <ServiceWorkerRegistration />
+                {PLAUSIBLE_DOMAIN && (
+                    <Script defer data-domain={PLAUSIBLE_DOMAIN} src="https://plausible.io/js/script.js" strategy="afterInteractive" />
+                )}
             </body>
         </html>
     );

@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { supportMailto, supportWhatsAppUrl } from '@/lib/site';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
     Building, User as UserIcon, Lock, Calendar, Save, Loader2, CheckCircle, ExternalLink, CreditCard, BarChart3, Mail, MessageSquareMore, BellRing,
-    LayoutGrid, Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Copy, Banknote,
+    LayoutGrid, Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Copy, Banknote, Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -194,6 +195,24 @@ export default function SettingsPage() {
         }
     };
 
+    const [deleting, setDeleting] = useState(false);
+    const requestDeletion = async () => {
+        const ok = confirm(
+            'Ask us to delete your Bookly account? We will confirm with you by email before anything is removed.',
+        );
+        if (!ok) return;
+        setDeleting(true);
+        try {
+            await api.post('/auth/delete-request', {});
+            await refreshUser();
+            toast.success('Request received. We will email you to confirm.');
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? 'Could not send the request. Try again.');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
     const saveDeposit = async () => {
         const amount = Number(depositAmount.replace(/[^0-9.]/g, ''));
         if (depositRequired && (!Number.isFinite(amount) || amount <= 0)) {
@@ -372,6 +391,10 @@ export default function SettingsPage() {
                             {timezones.map(tz => <option key={tz} value={tz}>{tz}</option>)}
                         </select>
                     </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Prices and deposits are in <span className="font-medium text-slate-900 dark:text-white">{tenant?.currency ?? 'GHS'}</span>.
+                        Change the currency under Payments below.
+                    </p>
                     <div className="pt-2">
                         <Button onClick={saveBusiness} isLoading={saving}>
                             <Save className="w-4 h-4" /> Save Changes
@@ -460,6 +483,39 @@ export default function SettingsPage() {
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Delete account: a request a person confirms, never a one-click wipe. */}
+            {user?.role === 'OWNER' && (
+                <Card className="border-rose-500/30">
+                    <CardHeader>
+                        <CardTitle>
+                            <Trash2 className="w-5 h-5 text-rose-400" />
+                            Delete account
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {tenant?.deletionRequestedAt ? (
+                            <p className="text-sm text-slate-600 dark:text-slate-300 max-w-[60ch]">
+                                We received your request on{' '}
+                                {new Date(tenant.deletionRequestedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.
+                                A person will confirm it with you within 7 days, then remove your business, chats and bookings.
+                                Changed your mind? Just reply to that email.
+                            </p>
+                        ) : (
+                            <>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[60ch]">
+                                    This removes your business, every conversation and every booking, and disconnects
+                                    your WhatsApp number from Bookly. We confirm with you first; nothing is deleted
+                                    the moment you click.
+                                </p>
+                                <Button variant="destructive" onClick={requestDeletion} isLoading={deleting}>
+                                    Request account deletion
+                                </Button>
+                            </>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Profile Settings */}
             <Card>
@@ -932,7 +988,7 @@ function PlanAndUsageCard() {
                             </>
                         ) : (
                             <a
-                                href="mailto:support@bookingflow.app?subject=Plan%20upgrade"
+                                href={supportMailto("Plan upgrade") ?? supportWhatsAppUrl("I want to upgrade my plan") ?? "/support"}
                                 className="inline-flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400 hover:underline"
                             >
                                 <Mail className="w-4 h-4" /> Contact support

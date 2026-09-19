@@ -30,7 +30,11 @@ api.interceptors.response.use(
         // Bail out — do not enter the retry path or we'll loop forever.
         if (error.response?.status === 401 && isRefreshCall) {
             localStorage.removeItem('accessToken');
-            if (typeof window !== 'undefined') window.location.href = '/login';
+            // Tell the login page why they landed there, and where to go back to.
+            if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+                const next = encodeURIComponent(window.location.pathname + window.location.search);
+                window.location.href = `/login?reason=expired&next=${next}`;
+            }
             return Promise.reject(error);
         }
 

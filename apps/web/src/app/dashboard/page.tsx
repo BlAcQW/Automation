@@ -15,6 +15,7 @@ import { formatMoney, useTenantCurrency } from '@/lib/use-currency';
 import { StatCard } from '@/components/ui/stat-card';
 import { RecentActivity } from '@/components/dashboard/recent-activity';
 import { GettingStarted } from '@/components/dashboard/getting-started';
+import { VerifyEmailBanner } from '@/components/dashboard/verify-email-banner';
 
 interface DashboardStats {
     totalBookings: number;
@@ -53,6 +54,7 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-5 sm:space-y-6">
+            <VerifyEmailBanner />
             <GettingStarted />
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

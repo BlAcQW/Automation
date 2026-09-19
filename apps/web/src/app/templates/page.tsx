@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TemplateModal, TEMPLATE_VARIABLE_ORDER, type TemplateRow } from '@/components/templates/template-modal';
 import { PageHeader } from '@/components/ui/page-header';
+import { SupportLinks } from '@/components/support-links';
 
 export default function TemplatesPage() {
     const queryClient = useQueryClient();
@@ -66,7 +67,8 @@ export default function TemplatesPage() {
                     </a>
                     . Once one is approved, add its exact name here and say what it is for
                     (a reminder, a confirmation). If you are not sure, ask whoever set up your
-                    WhatsApp account, or contact support and we will do it with you.
+                    WhatsApp account, or we will do it with you:{' '}
+                    <SupportLinks inline topic="please help me set up my message templates" />
                 </p>
             </Card>
 

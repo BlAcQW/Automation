@@ -12,6 +12,7 @@ import {
     passwordResetEmail,
     verifyResetToken,
 } from '../../services/password-reset.js';
+import { createVerifyToken, verifyEmailToken, verificationEmail } from '../../services/email-verification.js';
 
 // Validation schemas. `businessType` is optional and defaults to SERVICE so
 // older / SERVICE-only clients can omit it. The handler decides whether to
@@ -22,7 +23,9 @@ const registerSchema = z.object({
     name: z.string().min(2),
     businessName: z.string().min(2),
     businessType: z.enum(['PRODUCT', 'SERVICE']).optional().default('SERVICE'),
-    timezone: z.string().default('UTC'),
+    timezone: z.string().default('Africa/Accra'),
+    // The checkbox on the sign-up form. Recorded with a timestamp on the user.
+    acceptTerms: z.boolean().default(false),
 });
 
 const loginSchema = z.object({
@@ -39,9 +42,19 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/register', async (request, reply) => {
         const body = registerSchema.parse(request.body);
 
-        // Email uniqueness is enforced per-tenant by the @@unique constraint.
-        // A fresh registration creates its own tenant, so there is no conflict
-        // to pre-check here.
+        if (!body.acceptTerms) {
+            throw fastify.httpErrors.badRequest('Please agree to the Terms and Privacy Policy to create an account.');
+        }
+
+        // One email, one account. Login looks users up by email alone, so a
+        // second account with the same address could never be signed into.
+        const taken = await fastify.prisma.user.findFirst({
+            where: { email: body.email },
+            select: { id: true },
+        });
+        if (taken) {
+            throw fastify.httpErrors.conflict('An account with this email already exists. Sign in, or reset your password.');
+        }
 
         // Hash password
         const passwordHash = await bcrypt.hash(body.password, 12);
@@ -81,6 +94,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     passwordHash,
                     name: body.name,
                     role: 'OWNER',
+                    termsAcceptedAt: now,
                 },
             });
 
@@ -98,6 +112,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
             return { tenant, user };
         });
+
+        // Verification email, best-effort: a mail outage must not block sign-up.
+        // The dashboard offers "resend" until it lands.
+        await sendVerificationEmail(result.user, result.tenant.name).catch((err) =>
+            request.log.warn({ err, userId: result.user.id }, 'Verification email not sent'),
+        );
 
         // Generate tokens
         const accessToken = fastify.jwt.sign(
@@ -257,6 +277,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 email: user.email,
                 name: user.name,
                 role: user.role,
+                emailVerifiedAt: user.emailVerifiedAt,
             },
             tenant: {
                 id: user.tenant.id,
@@ -268,6 +289,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 depositRequired: user.tenant.depositRequired,
                 defaultDepositAmount: Number(user.tenant.defaultDepositAmount),
                 currency: user.tenant.paymentCurrency,
+                deletionRequestedAt: user.tenant.deletionRequestedAt,
             },
         };
     });
@@ -409,6 +431,117 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
         return { success: true };
     });
+
+    // GET /auth/verify-email?token= - Landing for the link in the verification
+    // email. Redirects to the web app with a status so the page can speak.
+    fastify.get('/verify-email', { config: { rateLimit: { max: 20, timeWindow: '15 minutes' } } }, async (request, reply) => {
+        const { token } = z.object({ token: z.string().min(20) }).parse(request.query);
+        const front = config.frontendUrl.replace(/\/$/, '');
+
+        const parsed = verifyEmailToken(token, config.jwtSecret);
+        const user = parsed
+            ? await fastify.prisma.user.findFirst({ where: { id: parsed.userId, isActive: true }, select: { id: true, email: true, tenantId: true, emailVerifiedAt: true } })
+            : null;
+
+        if (!user || user.email.toLowerCase() !== parsed!.email) {
+            return reply.redirect(`${front}/verify-email?status=invalid`);
+        }
+        if (!user.emailVerifiedAt) {
+            await fastify.prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+            await audit({
+                prisma: fastify.prisma,
+                action: 'auth.email.verified',
+                actorType: 'USER',
+                tenantId: user.tenantId,
+                actorId: user.id,
+                ipAddress: request.ip,
+            });
+        }
+        return reply.redirect(`${front}/verify-email?status=ok`);
+    });
+
+    // POST /auth/resend-verification - From the dashboard banner.
+    fastify.post('/resend-verification', {
+        preHandler: fastify.authenticate,
+        config: { rateLimit: { max: 3, timeWindow: '15 minutes' } },
+    }, async (request) => {
+        const user = await fastify.prisma.user.findUnique({
+            where: { id: request.user.userId },
+            select: { id: true, email: true, name: true, emailVerifiedAt: true, tenant: { select: { name: true } } },
+        });
+        if (!user) throw fastify.httpErrors.notFound('User not found');
+        if (user.emailVerifiedAt) return { success: true, alreadyVerified: true };
+
+        const sent = await sendVerificationEmail(user, user.tenant.name);
+        if (!sent) {
+            throw fastify.httpErrors.serviceUnavailable('We could not send the email right now. Try again in a few minutes.');
+        }
+        return { success: true };
+    });
+
+    // POST /auth/delete-request - Owner asks for the account to be removed.
+    // A person confirms and deletes; this records the ask, tells support,
+    // and shows the pending state in Settings.
+    fastify.post('/delete-request', {
+        preHandler: fastify.authenticate,
+        config: { rateLimit: { max: 3, timeWindow: '1 hour' } },
+    }, async (request) => {
+        if (request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only the account owner can request deletion');
+        }
+        const body = z.object({ reason: z.string().max(500).optional() }).parse(request.body ?? {});
+
+        const tenant = await fastify.prisma.tenant.update({
+            where: { id: request.user.tenantId },
+            data: { deletionRequestedAt: new Date() },
+            select: { id: true, name: true, deletionRequestedAt: true },
+        });
+        const user = await fastify.prisma.user.findUnique({
+            where: { id: request.user.userId },
+            select: { email: true, name: true },
+        });
+
+        await audit({
+            prisma: fastify.prisma,
+            action: 'tenant.deletion.requested',
+            actorType: 'USER',
+            tenantId: tenant.id,
+            actorId: request.user.userId,
+            metadata: { reason: body.reason ?? null },
+            ipAddress: request.ip,
+        });
+
+        // Tell the team. Goes to the platform mailbox itself.
+        const creds = resolveGmailCreds({ tenantGmailUser: null, tenantGmailAppPasswordEncrypted: null, tenantGmailFromName: null });
+        if (creds) {
+            await sendEmail({
+                ...creds,
+                to: creds.user,
+                subject: `Account deletion requested: ${tenant.name}`,
+                text: `${user?.name ?? 'An owner'} (${user?.email ?? 'unknown email'}) asked to delete tenant ${tenant.name} (${tenant.id}).\n\nReason: ${body.reason ?? '(none given)'}\n\nConfirm with them, then remove the tenant.`,
+            }).catch(() => undefined);
+        } else {
+            request.log.error({ tenantId: tenant.id }, 'Deletion requested but no platform email sender is configured');
+        }
+
+        return { success: true, deletionRequestedAt: tenant.deletionRequestedAt };
+    });
+
+    /** Send the confirm-your-email message. Returns false when no sender is configured or the send failed. */
+    async function sendVerificationEmail(user: { id: string; email: string; name: string }, businessName: string): Promise<boolean> {
+        const creds = resolveGmailCreds({ tenantGmailUser: null, tenantGmailAppPasswordEncrypted: null, tenantGmailFromName: null });
+        if (!creds) {
+            fastify.log.error({ userId: user.id }, 'Verification email requested but no platform email sender is configured');
+            return false;
+        }
+        const token = createVerifyToken(user, config.jwtSecret);
+        const apiBase = (config.apiPublicUrl ?? '').replace(/\/$/, '');
+        const link = `${apiBase}/auth/verify-email?token=${encodeURIComponent(token)}`;
+        const mail = verificationEmail({ name: user.name, businessName, link });
+        const result = await sendEmail({ ...creds, to: user.email, ...mail });
+        if (!result.ok) fastify.log.error({ err: result.error, userId: user.id }, 'Verification email failed to send');
+        return result.ok;
+    }
 
     // POST /auth/forgot-password - Email a one-hour reset link.
     //

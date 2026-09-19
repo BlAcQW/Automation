@@ -54,8 +54,17 @@ export function GettingStarted() {
         staleTime: 30_000,
     });
 
-    // Undefined while loading: don't flash "0 of 3" at someone who is done.
-    if (catalogue === undefined || wa === undefined || (!isProduct && hours === undefined)) return null;
+    const { data: templates } = useQuery<unknown[]>({
+        queryKey: ['templates', 'count'],
+        queryFn: async () => {
+            const body = (await api.get('/templates')).data;
+            return Array.isArray(body) ? body : Array.isArray(body?.data) ? body.data : [];
+        },
+        staleTime: 30_000,
+    });
+
+    // Undefined while loading: don't flash "0 of 4" at someone who is done.
+    if (catalogue === undefined || wa === undefined || templates === undefined || (!isProduct && hours === undefined)) return null;
 
     const steps: Step[] = [
         {
@@ -83,6 +92,13 @@ export function GettingStarted() {
             href: '/whatsapp',
             done: !!wa.connected,
         },
+        {
+            key: 'templates',
+            title: 'Add your message templates',
+            detail: 'WhatsApp only lets us send reminders and confirmations through a template it has approved. We can set this up with you.',
+            href: '/templates',
+            done: templates.length > 0,
+        },
     ];
 
     const remaining = steps.filter((s) => !s.done).length;
@@ -100,7 +116,7 @@ export function GettingStarted() {
                     {doneCount === 0 ? 'Set up your business' : 'Almost there'}
                 </h2>
                 <p className="mt-1 text-body-sm text-ink-300 max-w-[60ch]">
-                    Three steps and your customers can book by sending a WhatsApp message.
+                    A few steps and your customers can book by sending a WhatsApp message.
                 </p>
             </header>
             <ol className="border-t border-ink-700/70 divide-y divide-ink-700/70">

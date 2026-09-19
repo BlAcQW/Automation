@@ -13,7 +13,7 @@ import { CinematicFooter } from '@/components/marketing/cinematic-footer';
  */
 export default function LandingPage() {
     return (
-        <main className="relative bg-ink-950 text-ink-50 min-h-screen">
+        <main id="main" className="relative bg-ink-950 text-ink-50 min-h-screen">
             <MarketingNav />
             <Hero />
             <FeatureBento />

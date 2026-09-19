@@ -29,6 +29,7 @@ export default function RegisterPage() {
     });
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [agreed, setAgreed] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -42,12 +43,20 @@ export default function RegisterPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        if (!agreed) {
+            setError('Please agree to the Terms and Privacy Policy to continue.');
+            return;
+        }
         setIsLoading(true);
 
         try {
             await register({
                 ...formData,
                 businessType: formData.businessType as BusinessType,
+                acceptTerms: true,
+                // The browser knows where the business is; the server would
+                // otherwise default to UTC and every slot would be off.
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Accra',
             });
             router.push('/dashboard');
         } catch (err: any) {
@@ -244,9 +253,21 @@ export default function RegisterPage() {
                                     </GlowButton>
                                 </form>
 
-                                <p className="text-caption uppercase tracking-wider text-ink-400 text-center mt-4">
-                                    By signing up, you agree to our Terms and Privacy Policy
-                                </p>
+                                <label className="mt-5 flex items-start gap-3 text-body-sm text-ink-300 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={agreed}
+                                        onChange={(e) => setAgreed(e.target.checked)}
+                                        required
+                                        className="mt-0.5 h-5 w-5 shrink-0 rounded border-ink-600 bg-ink-900 text-bookly-emerald-500 focus:ring-bookly-emerald-500 focus:ring-offset-ink-950"
+                                    />
+                                    <span>
+                                        I agree to the{' '}
+                                        <Link href="/terms" className="text-ink-50 underline underline-offset-2" target="_blank">Terms</Link>
+                                        {' '}and{' '}
+                                        <Link href="/privacy" className="text-ink-50 underline underline-offset-2" target="_blank">Privacy Policy</Link>.
+                                    </span>
+                                </label>
                             </motion.div>
                         )}
                     </AnimatePresence>

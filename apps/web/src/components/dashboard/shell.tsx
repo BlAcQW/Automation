@@ -38,7 +38,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
                     {/* pb-[7.5rem] on mobile clears the floating bottom tab
                         bar (~73px pill + its own safe-area inset, ~107px on a
                         notched phone); desktop keeps the original padding. */}
-                    <main className="flex-1 p-4 pb-[7.5rem] lg:p-6 lg:pb-6 overflow-auto">
+                    <main id="main" className="flex-1 p-4 pb-[7.5rem] lg:p-6 lg:pb-6 overflow-auto">
                         {children}
                     </main>
                 </div>

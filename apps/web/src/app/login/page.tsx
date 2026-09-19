@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
@@ -21,6 +21,20 @@ export default function LoginPage() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    // Why they are here and where to send them after. Read from the URL in an
+    // effect (not useSearchParams) so the page still prerenders.
+    const [notice, setNotice] = useState('');
+    const [nextPath, setNextPath] = useState('/dashboard');
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('reason') === 'expired') {
+            setNotice('You were signed out after a while away. Sign in to carry on.');
+        }
+        const next = params.get('next');
+        // Only same-site paths: never bounce someone to another domain.
+        if (next && next.startsWith('/') && !next.startsWith('//')) setNextPath(next);
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -28,7 +42,7 @@ export default function LoginPage() {
         setIsLoading(true);
         try {
             await login(email, password);
-            router.push('/dashboard');
+            router.push(nextPath);
         } catch (err: any) {
             setError(err.response?.data?.message || 'Invalid email or password');
         } finally {
@@ -62,6 +76,12 @@ export default function LoginPage() {
                         Welcome back
                     </h1>
                     <p className="text-body text-ink-300 mb-8">Sign in to your Bookly account.</p>
+
+                    {notice && !error && (
+                        <div role="status" className="bg-ink-900 border border-ink-700 text-ink-100 px-4 py-3 rounded-xl mb-6 text-body-sm">
+                            {notice}
+                        </div>
+                    )}
 
                     {error && (
                         <motion.div

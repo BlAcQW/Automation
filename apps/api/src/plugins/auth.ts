@@ -55,7 +55,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
     });
 
     // Admin token namespace. Decorators are:
-    //   request.adminJwtVerify(), fastify.admin.jwt.sign(...)
+    //   request.adminJwtVerify(), (fastify as any).jwt.admin.sign(...)
     // Signed with a SEPARATE secret so a forged user token cannot impersonate
     // an admin.
     await fastify.register(jwtPlugin, {

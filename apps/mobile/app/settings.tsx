@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useTheme, useThemeMode, type ThemeMode } from '@/theme';
 import { useAuth } from '@/auth/context';
-import { useBillingStatus, useUpdateProfile } from '@/api/hooks';
+import { useBillingStatus, useRedeemPromo, useUpdateProfile } from '@/api/hooks';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Field, Button, SwitchRow, Badge, Segmented } from '@/components/ui';
 
@@ -42,6 +42,22 @@ export default function SettingsScreen() {
   const [depositAmount, setDepositAmount] = useState(String(tenant?.defaultDepositAmount ?? 50));
   const [note, setNote] = useState<string | null>(null);
   const currency = tenant?.currency ?? 'GHS';
+
+  const redeemPromo = useRedeemPromo();
+  const [promo, setPromo] = useState('');
+  const [promoNote, setPromoNote] = useState<{ ok: boolean; text: string } | null>(null);
+  async function onRedeem() {
+    setPromoNote(null);
+    try {
+      const r = await redeemPromo.mutateAsync(promo.trim());
+      const until = new Date(r.endsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      setPromoNote({ ok: true, text: `${r.planName} until ${until}.` });
+      setPromo('');
+    } catch (err) {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setPromoNote({ ok: false, text: msg ?? 'That code could not be applied.' });
+    }
+  }
 
   async function onSave() {
     setNote(null);
@@ -149,6 +165,26 @@ export default function SettingsScreen() {
             ) : null}
           </View>
           <UsageBar used={used} limit={limit} />
+          <Field
+            label="Have a promo code?"
+            value={promo}
+            onChangeText={(v) => setPromo(v.toUpperCase())}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            placeholder="LAUNCH-XXXXXXXX"
+          />
+          <Button
+            label="Apply code"
+            variant="secondary"
+            loading={redeemPromo.isPending}
+            disabled={!promo.trim()}
+            onPress={onRedeem}
+          />
+          {promoNote ? (
+            <Text variant="caption" tone={promoNote.ok ? 'success' : 'danger'}>
+              {promoNote.text}
+            </Text>
+          ) : null}
           <Text variant="caption" tone="subtle">
             Manage or upgrade your plan from the web dashboard.
           </Text>

@@ -14,6 +14,7 @@
         "db:push": "prisma db push",
         "db:studio": "prisma studio",
         "db:seed": "tsx prisma/seed.ts",
+        "admin:create": "tsx scripts/create-admin.ts",
         "lint": "eslint src --ext .ts",
         "test": "vitest"
     },

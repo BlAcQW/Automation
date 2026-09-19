@@ -14,6 +14,7 @@ import {
     evaluateSubscription,
     getQuotaState,
 } from '../../services/usage.js';
+import { redeemPromoCode, REDEEM_MESSAGES } from '../../services/promo.js';
 import {
     ensurePaystackCustomer,
     initializeSubscriptionTransaction,
@@ -77,6 +78,44 @@ const billingRoutes: FastifyPluginAsync = async (fastify) => {
                 (a, b) => a.monthlyPrice - b.monthlyPrice,
             ),
             paystackConfigured: isPlatformPaystackConfigured(),
+        };
+    });
+
+    // POST /billing/redeem — apply a promo code from Settings. Owner only;
+    // rate-limited because a code is guessable in principle.
+    fastify.post('/redeem', {
+        preHandler: fastify.authenticate,
+        config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+    }, async (request) => {
+        if (request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only the account owner can apply a promo code');
+        }
+        const body = z.object({ code: z.string().min(1).max(60) }).parse(request.body);
+
+        // Settle any lapsed trial first so the code applies to the real state.
+        await evaluateSubscription(fastify.prisma, request.user.tenantId);
+
+        const result = await redeemPromoCode({ prisma: fastify.prisma, tenantId: request.user.tenantId, code: body.code });
+        if (!result.ok) {
+            throw fastify.httpErrors.badRequest(REDEEM_MESSAGES[result.reason]);
+        }
+
+        await audit({
+            prisma: fastify.prisma,
+            action: 'billing.promo.redeemed',
+            actorType: 'USER',
+            tenantId: request.user.tenantId,
+            actorId: request.user.userId,
+            metadata: { code: body.code.toUpperCase(), planId: result.planId, days: result.days, endsAt: result.endsAt },
+            ipAddress: request.ip,
+        });
+
+        return {
+            success: true,
+            planId: result.planId,
+            planName: result.planName,
+            days: result.days,
+            endsAt: result.endsAt,
         };
     });
 

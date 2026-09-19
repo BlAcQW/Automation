@@ -338,6 +338,16 @@ export function useBillingStatus() {
   });
 }
 
+/** Apply a promo code from Settings; refreshes the plan card on success. */
+export function useRedeemPromo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (code: string): Promise<{ planName: string; endsAt: string; days: number }> =>
+      (await api.post('/billing/redeem', { code })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['billing-status'] }),
+  });
+}
+
 // ---- Profile ----
 export interface ProfileInput {
   name?: string;

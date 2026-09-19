@@ -10,11 +10,16 @@ export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // ----------------- Admin routes -----------------
-    if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
+    // The admin console has its own session. Its login page must be reachable
+    // with no cookie at all; before this, it fell through to the tenant check
+    // below and bounced to /login, so nobody could ever sign in as an admin.
+    if (pathname.startsWith('/admin')) {
+        if (pathname === '/admin/login') return NextResponse.next();
         const adminToken = request.cookies.get('adminAccessToken');
         if (!adminToken) {
             const url = request.nextUrl.clone();
             url.pathname = '/admin/login';
+            url.search = '';
             return NextResponse.redirect(url);
         }
         return NextResponse.next();

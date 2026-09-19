@@ -26,7 +26,10 @@ export default function AdminLoginPage() {
             localStorage.setItem('adminAccessToken', response.data.accessToken);
             const isProd = process.env.NODE_ENV === 'production';
             document.cookie = `adminAccessToken=${encodeURIComponent(response.data.accessToken)}; path=/; max-age=900; samesite=lax${isProd ? '; secure' : ''}`;
-            router.push('/admin');
+            // Full navigation, not router.push: the admin layout only loads the session on
+            // mount, so a client-side push landed on /admin with no admin in state and
+            // bounced straight back here.
+            window.location.assign('/admin');
         } catch (err: any) {
             setError(err.response?.data?.message || 'Invalid email or password');
         } finally {

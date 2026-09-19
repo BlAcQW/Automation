@@ -6,6 +6,7 @@ import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
 import { PLAN_IDS } from '../../services/plans.js';
 import { currentCycleKey } from '../../services/usage.js';
+import { generatePromoCode, normalizePromoCode } from '../../services/promo.js';
 
 // Validation schemas
 const loginSchema = z.object({
@@ -68,12 +69,12 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         // Generate tokens using the ADMIN JWT namespace (separate secret).
-        const accessToken = (fastify as any).admin.jwt.sign(
+        const accessToken = (fastify as any).jwt.admin.sign(
             generateAdminTokenPayload(admin.id, 'admin_access'),
             { expiresIn: config.jwtExpiresIn }
         );
 
-        const refreshToken = (fastify as any).admin.jwt.sign(
+        const refreshToken = (fastify as any).jwt.admin.sign(
             generateAdminTokenPayload(admin.id, 'admin_refresh'),
             { expiresIn: config.jwtRefreshExpiresIn }
         );
@@ -601,6 +602,132 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             name: admin.name,
             isSuperAdmin: admin.isSuperAdmin,
         };
+    });
+
+    // PATCH /admin/auth/password - Change your own admin password.
+    fastify.patch('/auth/password', {
+        preHandler: [fastify.authenticateAdmin],
+    }, async (request) => {
+        const body = z.object({
+            currentPassword: z.string(),
+            newPassword: z.string().min(12, 'Use at least 12 characters'),
+        }).parse(request.body);
+
+        const admin = await fastify.prisma.admin.findUnique({ where: { id: request.admin!.adminId } });
+        if (!admin) throw fastify.httpErrors.notFound('Admin not found');
+        if (!(await bcrypt.compare(body.currentPassword, admin.passwordHash))) {
+            throw fastify.httpErrors.badRequest('Current password is incorrect');
+        }
+        await fastify.prisma.admin.update({
+            where: { id: admin.id },
+            data: { passwordHash: await bcrypt.hash(body.newPassword, 12) },
+        });
+        return { success: true };
+    });
+
+    // ============================================
+    // PROMO CODES
+    // ============================================
+
+    const promoSelect = {
+        id: true, code: true, kind: true, days: true, planId: true, description: true,
+        maxRedemptions: true, redemptionCount: true, expiresAt: true, isActive: true,
+        createdAt: true, createdBy: { select: { name: true } },
+    } as const;
+
+    // GET /admin/promo-codes
+    fastify.get('/promo-codes', { preHandler: [fastify.authenticateAdmin] }, async () => {
+        const codes = await fastify.prisma.promoCode.findMany({
+            orderBy: { createdAt: 'desc' },
+            select: promoSelect,
+        });
+        return { data: codes };
+    });
+
+    // POST /admin/promo-codes
+    fastify.post('/promo-codes', { preHandler: [fastify.authenticateAdmin] }, async (request) => {
+        const body = z.object({
+            code: z.string().max(40).optional(),
+            prefix: z.string().max(12).optional(),
+            kind: z.enum(['TRIAL_EXTENSION', 'PLAN_GRANT']),
+            days: z.number().int().min(1).max(730),
+            planId: z.enum(PLAN_IDS).optional(),
+            description: z.string().max(200).optional(),
+            maxRedemptions: z.number().int().min(1).max(100_000).nullable().optional(),
+            expiresAt: z.string().datetime().nullable().optional(),
+        }).parse(request.body);
+
+        if (body.kind === 'PLAN_GRANT' && !body.planId) {
+            throw fastify.httpErrors.badRequest('A plan grant needs a plan');
+        }
+        if (body.kind === 'PLAN_GRANT' && body.planId === 'free') {
+            throw fastify.httpErrors.badRequest('Granting the Free plan does nothing');
+        }
+
+        const code = body.code ? normalizePromoCode(body.code) : generatePromoCode(body.prefix ?? '');
+        if (code.length < 4) throw fastify.httpErrors.badRequest('Code must be at least 4 characters');
+
+        const existing = await fastify.prisma.promoCode.findUnique({ where: { code }, select: { id: true } });
+        if (existing) throw fastify.httpErrors.conflict(`Code ${code} already exists`);
+
+        const created = await fastify.prisma.promoCode.create({
+            data: {
+                code,
+                kind: body.kind,
+                days: body.days,
+                planId: body.kind === 'PLAN_GRANT' ? body.planId : null,
+                description: body.description,
+                maxRedemptions: body.maxRedemptions ?? null,
+                expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+                createdByAdminId: request.admin!.adminId,
+            },
+            select: promoSelect,
+        });
+
+        await audit({
+            prisma: fastify.prisma,
+            action: 'admin.promo.created',
+            actorType: 'ADMIN',
+            actorId: request.admin!.adminId,
+            metadata: { code: created.code, kind: created.kind, days: created.days, planId: created.planId },
+            ipAddress: request.ip,
+        });
+
+        return created;
+    });
+
+    // PATCH /admin/promo-codes/:id - pause/resume, edit note, cap or expiry.
+    fastify.patch('/promo-codes/:id', { preHandler: [fastify.authenticateAdmin] }, async (request) => {
+        const { id } = request.params as { id: string };
+        const body = z.object({
+            isActive: z.boolean().optional(),
+            description: z.string().max(200).nullable().optional(),
+            maxRedemptions: z.number().int().min(1).max(100_000).nullable().optional(),
+            expiresAt: z.string().datetime().nullable().optional(),
+        }).parse(request.body);
+
+        const updated = await fastify.prisma.promoCode.update({
+            where: { id },
+            data: {
+                ...(body.isActive !== undefined && { isActive: body.isActive }),
+                ...(body.description !== undefined && { description: body.description }),
+                ...(body.maxRedemptions !== undefined && { maxRedemptions: body.maxRedemptions }),
+                ...(body.expiresAt !== undefined && { expiresAt: body.expiresAt ? new Date(body.expiresAt) : null }),
+            },
+            select: promoSelect,
+        });
+        return updated;
+    });
+
+    // GET /admin/promo-codes/:id/redemptions - who used it and what it did.
+    fastify.get('/promo-codes/:id/redemptions', { preHandler: [fastify.authenticateAdmin] }, async (request) => {
+        const { id } = request.params as { id: string };
+        const rows = await fastify.prisma.promoRedemption.findMany({
+            where: { promoCodeId: id },
+            orderBy: { redeemedAt: 'desc' },
+            select: { id: true, redeemedAt: true, effect: true, tenant: { select: { id: true, name: true } } },
+        });
+        return { data: rows };
     });
 };
 

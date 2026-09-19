@@ -796,6 +796,24 @@ function PlanAndUsageCard() {
         }
     };
 
+    const [promoCode, setPromoCode] = useState('');
+    const [redeeming, setRedeeming] = useState(false);
+    const redeem = async () => {
+        if (!promoCode.trim()) return;
+        setRedeeming(true);
+        try {
+            const res = await api.post('/billing/redeem', { code: promoCode.trim() });
+            const until = res.data?.endsAt ? new Date(res.data.endsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+            toast.success(until ? `${res.data.planName} until ${until}` : 'Code applied');
+            setPromoCode('');
+            await queryClient.invalidateQueries({ queryKey: ['billing', 'status'] });
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message ?? 'That code could not be applied');
+        } finally {
+            setRedeeming(false);
+        }
+    };
+
     const cancel = async () => {
         if (!confirm('Cancel subscription? Paid features end at the current period.')) return;
         setCancelling(true);
@@ -936,6 +954,25 @@ function PlanAndUsageCard() {
                         Subscription cancelled. Paid features end on {periodEndDate}.
                     </div>
                 )}
+
+                {/* Promo code */}
+                <form
+                    onSubmit={(e) => { e.preventDefault(); redeem(); }}
+                    className="flex flex-col sm:flex-row sm:items-end gap-3 pt-2 border-t border-slate-200 dark:border-slate-700"
+                >
+                    <div className="flex-1 max-w-xs">
+                        <DashboardInput
+                            label="Have a promo code?"
+                            value={promoCode}
+                            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                            placeholder="LAUNCH-XXXXXXXX"
+                            autoCapitalize="characters"
+                        />
+                    </div>
+                    <Button type="submit" size="sm" variant="outline" isLoading={redeeming} disabled={!promoCode.trim()}>
+                        Apply code
+                    </Button>
+                </form>
 
                 {/* Action buttons */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 dark:border-slate-700">

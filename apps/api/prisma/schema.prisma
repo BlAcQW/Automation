@@ -75,6 +75,7 @@ model Tenant {
   notifications        Notification[]
   messageTemplates     MessageTemplate[]
   tenantUsages         TenantUsage[]
+  promoRedemptions PromoRedemption[]
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -145,7 +146,54 @@ model Admin {
   updatedAt    DateTime  @updatedAt
   lastLoginAt  DateTime?
 
+  promoCodes PromoCode[]
+
   @@index([email])
+}
+
+// ============================================
+// PROMO CODES (platform-level, created by admins)
+// ============================================
+
+enum PromoKind {
+  TRIAL_EXTENSION // adds `days` of trial on the tenant's current (or Pro) plan
+  PLAN_GRANT      // puts the tenant on `planId` for `days`, no card needed
+}
+
+model PromoCode {
+  id              String     @id @default(cuid())
+  code            String     @unique // stored upper-case, no spaces
+  kind            PromoKind
+  days            Int
+  planId          String?    // PLAN_GRANT only
+  description     String?    // internal note: campaign, who it was for
+  maxRedemptions  Int?       // null = unlimited
+  redemptionCount Int        @default(0)
+  expiresAt       DateTime?  // null = never
+  isActive        Boolean    @default(true)
+  createdByAdminId String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  createdBy   Admin?           @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  redemptions PromoRedemption[]
+
+  @@index([isActive])
+}
+
+model PromoRedemption {
+  id          String   @id @default(cuid())
+  promoCodeId String
+  tenantId    String
+  redeemedAt  DateTime @default(now())
+  // What the code did, for the audit trail: previous plan, new trial end.
+  effect      Json?
+
+  promoCode PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([promoCodeId, tenantId])
+  @@index([tenantId])
 }
 
 // ============================================

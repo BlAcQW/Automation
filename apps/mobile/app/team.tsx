@@ -6,6 +6,7 @@ import { useAddTeamMember, useTeam, useUpdateTeamMember } from '@/api/hooks';
 import { TeamMember } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, Avatar, Field, Button, QueryState} from '@/components/ui';
+import { useBottomInset } from '@/lib/layout';
 
 function MemberRow({ item, canManage }: { item: TeamMember; canManage: boolean }) {
   const t = useTheme();
@@ -43,6 +44,7 @@ function MemberRow({ item, canManage }: { item: TeamMember; canManage: boolean }
 
 export default function TeamScreen() {
   const t = useTheme();
+  const bottomInset = useBottomInset();
   const { user } = useAuth();
   const canManage = user?.role === 'OWNER';
   const { data, isLoading, isError } = useTeam();
@@ -81,7 +83,7 @@ export default function TeamScreen() {
           <></>
         </QueryState>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.md }}>
+        <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.md, paddingBottom: bottomInset }}>
           {(data ?? []).map((m) => (
             <MemberRow key={m.id} item={m} canManage={canManage} />
           ))}

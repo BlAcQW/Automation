@@ -61,6 +61,17 @@
 
 ## Session Log (newest first)
 
+### 2026-09-21 (later) — Mobile safe-area audit: content hidden behind system UI
+- **Symptom (user):** screens "interfering" with the phone's status bar / system UI.
+- **Audit result:** the TOP was already fine — `LargeHeader` and `AppHeader` both pad by `insets.top`. Every defect was at the **BOTTOM**, made worse by SDK 54 / RN 0.81 drawing content under the system bars (edge-to-edge is the Android default now).
+- **Bugs found & fixed:**
+  1. `src/features/orders/OrdersList.tsx` — **no `paddingBottom` at all**; for PRODUCT tenants the Orders list scrolled under the floating glass tab bar (last order unreachable). Now `TAB_BAR_INSET`.
+  2. `src/features/products/ProductsList.tsx` — hardcoded `paddingBottom: 96` vs the real `TAB_BAR_INSET` (106) and would drift if constants change. Now uses the constant.
+  3. **All 8 pushed/stack screens** (notifications, settings, templates, team, availability, whatsapp, bookings/[id], orders/[id]) had **no bottom padding**, so the last row / final button sat under the iOS home indicator or Android nav bar.
+- **Fix shape:** added `useBottomInset(extra = 16)` to `src/lib/layout.ts` (insets.bottom + breathing room) and applied it to every stack screen's scroll container. Tab screens keep `TAB_BAR_INSET` (they clear the floating pill instead).
+- **Rule going forward:** tab screens → `TAB_BAR_INSET`; pushed screens → `useBottomInset()`. Never leave a scroll container's `paddingBottom` undefined.
+- Verified with `tsc --noEmit`: zero errors in all edited files. (Pre-existing unrelated error: `@expo-google-fonts/geist` is in package.json but not installed on this server — Mac-only install, harmless here.)
+
 ### 2026-09-21 — "localhost after login" ROOT CAUSE fixed (it was the web middleware, not the PWA)
 - **Symptom:** hitting a protected page without a valid session bounced users to `https://localhost:3006/login`. Earlier SW cache bump was a red herring.
 - **Root cause:** `apps/web/src/middleware.ts` redirected with `request.nextUrl.clone()`. Behind nginx, `next start -H 127.0.0.1 -p 3006` makes `nextUrl` carry the server's own bind host (`localhost:3006`), not the public `Host`. Verified with `curl -I /dashboard` → `location: https://localhost:3006/login`.

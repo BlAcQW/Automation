@@ -6,9 +6,11 @@ import { useConnectWhatsapp, useWhatsappStatus } from '@/api/hooks';
 import { useEmbeddedSignup } from '@/features/whatsapp/useEmbeddedSignup';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, Field, Button, QueryState} from '@/components/ui';
+import { useBottomInset } from '@/lib/layout';
 
 export default function WhatsappScreen() {
   const t = useTheme();
+  const bottomInset = useBottomInset();
   const { data, isLoading, isError } = useWhatsappStatus();
   const connect = useConnectWhatsapp();
   const embedded = useEmbeddedSignup();
@@ -48,7 +50,7 @@ export default function WhatsappScreen() {
           <></>
         </QueryState>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}>
+        <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: bottomInset }}>
           <Card padded style={{ flexDirection: 'row', alignItems: 'center', gap: t.space.md }}>
             <View
               style={{

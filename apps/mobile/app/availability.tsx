@@ -13,6 +13,7 @@ import { WorkingHour } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Button, Field, SwitchRow, DateTimeField, QueryState} from '@/components/ui';
 import { formatDay } from '@/lib/format';
+import { useBottomInset } from '@/lib/layout';
 
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -32,6 +33,7 @@ function seedWeek(server: WorkingHour[] | undefined): WorkingHour[] {
 
 export default function AvailabilityScreen() {
   const t = useTheme();
+  const bottomInset = useBottomInset();
   const { data: serverHours, isLoading, isError } = useWorkingHours();
   const saveHours = useSaveWorkingHours();
   const { data: blackouts } = useBlackouts();
@@ -80,7 +82,7 @@ export default function AvailabilityScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title="Availability" />
-      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}>
+      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: bottomInset }}>
         <Text variant="h3" weight="bold">
           Working hours
         </Text>

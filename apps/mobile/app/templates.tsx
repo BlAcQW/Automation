@@ -4,6 +4,7 @@ import { useTemplates } from '@/api/hooks';
 import { MessageTemplate } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, EmptyState, QueryState} from '@/components/ui';
+import { useBottomInset } from '@/lib/layout';
 
 function TemplateRow({ item }: { item: MessageTemplate }) {
   const t = useTheme();
@@ -26,6 +27,7 @@ function TemplateRow({ item }: { item: MessageTemplate }) {
 export default function TemplatesScreen() {
   const t = useTheme();
   const { data, isLoading, isError } = useTemplates();
+  const bottomInset = useBottomInset();
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
@@ -41,7 +43,9 @@ export default function TemplatesScreen() {
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => <TemplateRow item={item} />}
           contentContainerStyle={
-            (data ?? []).length === 0 ? { flex: 1 } : { padding: t.space.lg, gap: t.space.md }
+            (data ?? []).length === 0
+              ? { flex: 1, paddingBottom: bottomInset }
+              : { padding: t.space.lg, gap: t.space.md, paddingBottom: bottomInset }
           }
           ListEmptyComponent={
             <EmptyState

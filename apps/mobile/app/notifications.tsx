@@ -8,6 +8,7 @@ import { AppHeader } from '@/components/AppHeader';
 import { Text, EmptyState, QueryState} from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { usePullRefresh } from '@/lib/usePullRefresh';
+import { useBottomInset } from '@/lib/layout';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -79,6 +80,7 @@ export default function NotificationsScreen() {
   const { data, isLoading, isError, refetch } = useNotifications();
   const { refreshing, onRefresh } = usePullRefresh(refetch);
   const markAll = useMarkAllRead();
+  const bottomInset = useBottomInset();
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
@@ -104,7 +106,11 @@ export default function NotificationsScreen() {
           renderItem={({ item }) => <Item item={item} />}
           ItemSeparatorComponent={() => <View style={{ height: 0.5, backgroundColor: t.colors.divider, marginLeft: 66 }} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
-          contentContainerStyle={(data ?? []).length === 0 ? { flex: 1 } : undefined}
+          contentContainerStyle={
+            (data ?? []).length === 0
+              ? { flex: 1, paddingBottom: bottomInset }
+              : { paddingBottom: bottomInset }
+          }
           ListEmptyComponent={<EmptyState icon="notifications-outline" title="You're all caught up" subtitle="New bookings and messages will appear here." />}
         />
       )}

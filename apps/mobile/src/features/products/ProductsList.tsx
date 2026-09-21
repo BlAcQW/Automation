@@ -6,6 +6,7 @@ import { useProducts, useToggleProduct } from '@/api/hooks';
 import { Product } from '@/api/types';
 import { Text, Card, Badge, EmptyState } from '@/components/ui';
 import { LargeHeader, HeaderAction } from '@/components/ui';
+import { TAB_BAR_INSET } from '@/lib/layout';
 import { usePullRefresh } from '@/lib/usePullRefresh';
 
 function ProductRow({ item }: { item: Product }) {
@@ -62,7 +63,9 @@ export function ProductsList() {
           keyExtractor={(p) => p.id}
           renderItem={({ item }) => <ProductRow item={item} />}
           contentContainerStyle={
-            (data ?? []).length === 0 ? { flex: 1 } : { padding: t.space.lg, gap: t.space.md, paddingBottom: 96 }
+            (data ?? []).length === 0
+              ? { flex: 1, paddingBottom: TAB_BAR_INSET }
+              : { padding: t.space.lg, gap: t.space.md, paddingBottom: TAB_BAR_INSET }
           }
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
           ListEmptyComponent={<EmptyState icon="cube-outline" title="No products yet" subtitle="Add products your customers can order over WhatsApp." />}

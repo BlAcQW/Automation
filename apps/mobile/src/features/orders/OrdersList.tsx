@@ -6,6 +6,7 @@ import { Order } from '@/api/types';
 import { Text, Card, Badge, Avatar, EmptyState } from '@/components/ui';
 import { formatDateTime, orderStatusLabel, orderStatusTone, paymentTone } from '@/lib/format';
 import { LargeHeader } from '@/components/ui';
+import { TAB_BAR_INSET } from '@/lib/layout';
 import { usePullRefresh } from '@/lib/usePullRefresh';
 
 function OrderRow({ item }: { item: Order }) {
@@ -62,7 +63,11 @@ export function OrdersList() {
         data={data ?? []}
         keyExtractor={(o) => o.id}
         renderItem={({ item }) => <OrderRow item={item} />}
-        contentContainerStyle={(data ?? []).length === 0 ? { flex: 1 } : { padding: t.space.lg, gap: t.space.md }}
+        contentContainerStyle={
+          (data ?? []).length === 0
+            ? { flex: 1, paddingBottom: TAB_BAR_INSET }
+            : { padding: t.space.lg, gap: t.space.md, paddingBottom: TAB_BAR_INSET }
+        }
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.colors.primary} />}
         ListEmptyComponent={<EmptyState icon="cart-outline" title="No orders yet" subtitle="Orders placed through your WhatsApp bot will show up here." />}
       />

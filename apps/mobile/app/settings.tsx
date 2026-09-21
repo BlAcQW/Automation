@@ -5,6 +5,7 @@ import { useAuth } from '@/auth/context';
 import { useBillingStatus, useRedeemPromo, useUpdateProfile } from '@/api/hooks';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Field, Button, SwitchRow, Badge, Segmented } from '@/components/ui';
+import { useBottomInset } from '@/lib/layout';
 
 function UsageBar({ used, limit }: { used: number; limit: number }) {
   const t = useTheme();
@@ -30,6 +31,7 @@ const APPEARANCE_OPTIONS: { value: ThemeMode; label: string; icon: 'phone-portra
 
 export default function SettingsScreen() {
   const t = useTheme();
+  const bottomInset = useBottomInset();
   const { mode, scheme, setMode } = useThemeMode();
   const { user, tenant, refreshUser } = useAuth();
   const updateProfile = useUpdateProfile();
@@ -87,7 +89,7 @@ export default function SettingsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title="Settings" />
-      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}>
+      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: bottomInset }}>
         <Text variant="h3" weight="bold">
           Profile
         </Text>

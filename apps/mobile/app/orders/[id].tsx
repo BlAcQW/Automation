@@ -6,6 +6,7 @@ import { Order } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, Button, EmptyState } from '@/components/ui';
 import { formatDateTime, nextOrderStatus, orderStatusLabel, orderStatusTone, paymentTone } from '@/lib/format';
+import { useBottomInset } from '@/lib/layout';
 
 function Row({ label, value }: { label: string; value: string }) {
   const t = useTheme();
@@ -23,6 +24,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function OrderDetail() {
   const t = useTheme();
+  const bottomInset = useBottomInset();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data } = useOrders();
   const order: Order | undefined = data?.find((o) => o.id === String(id));
@@ -43,7 +45,7 @@ export default function OrderDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title={`#${order.orderRef}`} subtitle={order.customerName} />
-      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}>
+      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: bottomInset }}>
         <View style={{ flexDirection: 'row', gap: t.space.sm }}>
           <Badge label={orderStatusLabel(order.status)} tone={orderStatusTone(order.status)} />
           {order.paymentStatus ? (

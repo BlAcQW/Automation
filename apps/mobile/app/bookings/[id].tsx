@@ -6,6 +6,7 @@ import { Booking } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, Button, EmptyState } from '@/components/ui';
 import { bookingStatusLabel, bookingStatusTone, formatDateTime, paymentTone } from '@/lib/format';
+import { useBottomInset } from '@/lib/layout';
 
 function serviceName(b: Booking): string {
   return b.serviceName || b.service?.name || 'Service';
@@ -27,6 +28,7 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function BookingDetail() {
   const t = useTheme();
+  const bottomInset = useBottomInset();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data } = useBookings();
   const booking = data?.find((b) => b.id === String(id));
@@ -55,7 +57,7 @@ export default function BookingDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title={booking.customerName} subtitle={`Ref ${booking.bookingReference}`} />
-      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg }}>
+      <ScrollView contentContainerStyle={{ padding: t.space.lg, gap: t.space.lg, paddingBottom: bottomInset }}>
         <View style={{ flexDirection: 'row', gap: t.space.sm }}>
           <Badge label={bookingStatusLabel(booking.status)} tone={bookingStatusTone(booking.status)} />
           {booking.paymentStatus ? (

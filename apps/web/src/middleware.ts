@@ -6,6 +6,21 @@ import { NextResponse, type NextRequest } from 'next/server';
 // app/admin/login/page.tsx). The cookie carries the same JWT the API
 // validates on every request, so this is a presence-check, not a validity
 // check.
+// Build an absolute URL on the PUBLIC origin. Behind nginx, `request.nextUrl`
+// carries the server's own bind address (e.g. localhost:3006), so redirecting
+// with `nextUrl.clone()` sent users to https://localhost:3006/login. The proxy
+// forwards the real host/scheme in standard headers; prefer those, falling back
+// to nextUrl only when they're absent (local dev).
+function publicUrl(request: NextRequest, pathname: string, search = ''): URL {
+    const proto =
+        request.headers.get('x-forwarded-proto') ?? request.nextUrl.protocol.replace(':', '');
+    const host =
+        request.headers.get('x-forwarded-host') ??
+        request.headers.get('host') ??
+        request.nextUrl.host;
+    return new URL(`${pathname}${search}`, `${proto}://${host}`);
+}
+
 export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
@@ -17,10 +32,7 @@ export function middleware(request: NextRequest) {
         if (pathname === '/admin/login') return NextResponse.next();
         const adminToken = request.cookies.get('adminAccessToken');
         if (!adminToken) {
-            const url = request.nextUrl.clone();
-            url.pathname = '/admin/login';
-            url.search = '';
-            return NextResponse.redirect(url);
+            return NextResponse.redirect(publicUrl(request, '/admin/login'));
         }
         return NextResponse.next();
     }
@@ -28,10 +40,8 @@ export function middleware(request: NextRequest) {
     // ----------------- Tenant dashboard routes -----------------
     const token = request.cookies.get('accessToken');
     if (!token) {
-        const url = request.nextUrl.clone();
-        url.pathname = '/login';
-        url.searchParams.set('next', pathname);
-        return NextResponse.redirect(url);
+        const next = `?next=${encodeURIComponent(pathname)}`;
+        return NextResponse.redirect(publicUrl(request, '/login', next));
     }
 
     return NextResponse.next();

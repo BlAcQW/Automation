@@ -61,6 +61,14 @@
 
 ## Session Log (newest first)
 
+### 2026-09-21 — "localhost after login" ROOT CAUSE fixed (it was the web middleware, not the PWA)
+- **Symptom:** hitting a protected page without a valid session bounced users to `https://localhost:3006/login`. Earlier SW cache bump was a red herring.
+- **Root cause:** `apps/web/src/middleware.ts` redirected with `request.nextUrl.clone()`. Behind nginx, `next start -H 127.0.0.1 -p 3006` makes `nextUrl` carry the server's own bind host (`localhost:3006`), not the public `Host`. Verified with `curl -I /dashboard` → `location: https://localhost:3006/login`.
+- **Fix:** added `publicUrl()` helper in middleware building redirects from `x-forwarded-proto` / `x-forwarded-host` / `host` headers (fallback to nextUrl for local dev); both tenant and admin redirects use it. Verified live: Location now `https://bookly.ikieguy.online/...`.
+- **Hardening:** nginx now also sends `X-Forwarded-Host $host` on both `/` and `/api/` blocks (reloaded). Fixed latent `.env` `OUTLOOK_REDIRECT_URI` that pointed to `localhost:3001` → now the public callback URL.
+- Also this session: pulled Dev (`3765bf9` promo codes/admin), applied 2 new migrations (DB at 16, up to date), rebuilt + restarted api & web.
+- **Lesson (general):** any Next.js redirect behind a reverse proxy must derive its origin from forwarded headers, never `nextUrl`.
+
 ### 2026-09-10 (later still) — G3 (WebSocket live chat) + G6 (native Embedded Signup)
 - **G3 — DONE & LIVE (backend verified).**
   - Backend: `@fastify/websocket@8` installed; `apps/api/src/services/realtime.ts` (in-memory per-tenant pub/sub) + `routes/realtime/index.ts` (`GET /ws`, JWT via `?token=`, access-type only). Registered plugin+route in index.ts. `publish()` wired into `createNotification` (type:'notification') and the WhatsApp webhook inbound message (type:'message', conversationId).

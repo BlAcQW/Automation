@@ -61,6 +61,13 @@
 
 ## Session Log (newest first)
 
+### 2026-09-23 — Business-owner user guide (PDF)
+- **Wrote [docs/guides/bookly-user-guide.html](./guides/bookly-user-guide.html) → `bookly-user-guide.pdf`** (10 pages, A4). Audience: the **tenant / business owner** who signs up and runs Bookly — not end customers, not platform admins.
+- **Grounded in the real code, not guessed.** Every claim was checked against the shipped behaviour before writing: the 6 bot tools in `llm-agent.ts`, `HOLD_MINUTES = 30` in `booking-deposit.ts`, plan limits in `services/plans.ts` (Free 50/3/1 · Starter $19 500/∞/3 · Pro $49 5000/∞/∞ + customBranding), the 14-day Pro trial set at register, the tenant-level `depositRequired` / `defaultDepositAmount` + per-service override, and the actual page/tab inventory of web + mobile.
+- **Covers:** prerequisites → register & verify → connect WhatsApp (Embedded Signup + manual fallback) → services → availability & blackout dates → Paystack + deposit policy → dashboard → bookings & statuses → chats and human takeover → **the 24-hour window and templates** → mobile app → team → plans/usage/promo codes → other settings (timezone, reminders, Google Calendar, SMS/email fallback) → what the assistant will and will not do → troubleshooting table → FAQ → first-week checklist.
+- **Render command** (same as the validation report): `google-chrome --headless=new --disable-gpu --no-sandbox --no-pdf-header-footer --print-to-pdf=OUT.pdf file://IN.html`.
+- **To regenerate after a feature change:** edit the HTML, re-run that command. The plan table, the 30-minute hold and the deposit defaults are the parts most likely to go stale.
+
 ### 2026-09-21 (later) — Mobile safe-area audit: content hidden behind system UI
 - **Symptom (user):** screens "interfering" with the phone's status bar / system UI.
 - **Audit result:** the TOP was already fine — `LargeHeader` and `AppHeader` both pad by `insets.top`. Every defect was at the **BOTTOM**, made worse by SDK 54 / RN 0.81 drawing content under the system bars (edge-to-edge is the Android default now).

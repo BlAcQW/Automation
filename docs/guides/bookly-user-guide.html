@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bookly — User Guide</title>
+<style>
+  @page { size: A4; margin: 17mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif; color:#111b21; font-size:11.5pt; line-height:1.55; margin:0; }
+  h1 { font-size:30pt; margin:0 0 6px; letter-spacing:-0.6px; color:#04231a; }
+  h2 { font-size:17pt; margin:24px 0 8px; padding:7px 12px; background:#e7f8ef; border-left:5px solid #008069; color:#04231a; border-radius:0 8px 8px 0; }
+  h3 { font-size:12.8pt; margin:16px 0 5px; color:#046a52; }
+  p { margin:6px 0; }
+  .sub { color:#3f5560; font-size:12pt; }
+  .meta { color:#6b7c85; font-size:9.5pt; margin-top:8px; }
+  ul,ol { margin:6px 0 10px; padding-left:22px; }
+  li { margin:3px 0; }
+  table { border-collapse:collapse; width:100%; margin:8px 0 12px; font-size:10pt; }
+  th,td { border:1px solid #dfe7ea; padding:6px 9px; text-align:left; vertical-align:top; }
+  th { background:#f0f5f4; font-weight:700; color:#04231a; }
+  tr:nth-child(even) td { background:#fbfdfc; }
+  .tip { background:#e7f8ef; border:1px solid #a9e3c9; border-radius:9px; padding:9px 13px; margin:9px 0; font-size:10.5pt; }
+  .warn { background:#fff5e6; border:1px solid #f5cf8f; border-radius:9px; padding:9px 13px; margin:9px 0; font-size:10.5pt; }
+  .step { background:#fafcfb; border:1px solid #e3ebe8; border-radius:9px; padding:10px 14px; margin:8px 0; }
+  .step b.n { display:inline-block; background:#008069; color:#fff; width:21px; height:21px; border-radius:50%; text-align:center; font-size:10pt; line-height:21px; margin-right:7px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:9pt; font-weight:700; }
+  .g { background:#d9fdd3; color:#046a52; } .y { background:#fdf0cf; color:#8a5a00; } .r { background:#fde2e2; color:#a11a1a; } .n { background:#eef2f3; color:#51636b; }
+  .pb { page-break-before: always; }
+  .small { font-size:9.5pt; color:#51636b; }
+  .cover { border:2px solid #008069; border-radius:14px; padding:16px 18px; background:#f4fbf8; margin:12px 0 4px; }
+  .flow { display:flex; gap:6px; margin:10px 0; font-size:9.2pt; }
+  .flow div { flex:1; border:1.5px solid #008069; border-radius:8px; padding:7px 8px; background:#fff; text-align:center; }
+  .toc { columns:2; font-size:10.5pt; }
+  .toc a { color:#046a52; text-decoration:none; }
+  code { background:#eef2f3; padding:1px 5px; border-radius:4px; font-size:9.6pt; }
+  .q { font-weight:700; color:#04231a; margin-top:10px; }
+</style>
+</head>
+<body>
+
+<h1>Bookly</h1>
+<div class="sub">User Guide for business owners — take bookings, get paid, and answer customers automatically on WhatsApp.</div>
+<div class="meta">Version 1.0 · September 2026 · bookly.ikieguy.online</div>
+
+<div class="cover">
+  <b>What Bookly does in one sentence:</b> your customers message your WhatsApp number, an assistant books them in, takes a deposit, and reminds them — while you get on with the work.
+  <div class="flow">
+    <div><b>1.</b> Customer messages your WhatsApp</div>
+    <div><b>2.</b> Assistant offers real free times</div>
+    <div><b>3.</b> Booking made, deposit link sent</div>
+    <div><b>4.</b> Reminder sent automatically</div>
+    <div><b>5.</b> You see it all in your dashboard</div>
+  </div>
+</div>
+
+<h2>Contents</h2>
+<div class="toc">
+1. Before you start<br>
+2. Create your account<br>
+3. Connect WhatsApp<br>
+4. Add your services<br>
+5. Set your working hours<br>
+6. Get paid: deposits &amp; Paystack<br>
+7. Your day-to-day: the dashboard<br>
+8. Bookings<br>
+9. Chats &amp; taking over from the assistant<br>
+10. The 24-hour rule &amp; message templates<br>
+11. The mobile app<br>
+12. Your team<br>
+13. Plans, usage &amp; promo codes<br>
+14. Other settings<br>
+15. What the assistant can and cannot do<br>
+16. Troubleshooting<br>
+17. Frequently asked questions<br>
+18. Getting help
+</div>
+
+<h2>1. Before you start</h2>
+<p>You will need:</p>
+<ul>
+  <li>A <b>phone number for your business</b> that is not already used on regular WhatsApp or WhatsApp Business on a phone. This becomes your Bookly number.</li>
+  <li>A <b>Facebook/Meta business account</b> (free) to connect WhatsApp.</li>
+  <li>A <b>Paystack account</b> if you want to collect deposits by mobile money or card. Optional, but strongly recommended.</li>
+  <li>An email address you can access, for verification and password resets.</li>
+</ul>
+<div class="tip"><b>Plan 30–45 minutes</b> for first-time setup. The WhatsApp connection is the longest part; everything after that is quick.</div>
+
+<h2>2. Create your account</h2>
+<div class="step"><b class="n">1</b> Go to <b>bookly.ikieguy.online</b> and choose <b>Register</b>.</div>
+<div class="step"><b class="n">2</b> Enter your name, business name, email and a password (at least 8 characters), then agree to the terms.</div>
+<div class="step"><b class="n">3</b> Check your email and click the verification link. You can keep using Bookly before verifying — you'll just see a reminder banner.</div>
+<div class="step"><b class="n">4</b> You're in. Every new account starts on a <b>14-day free Pro trial</b>, so all features are unlocked while you set up.</div>
+<p><b>Forgot your password later?</b> On the login screen choose <b>Forgot password</b>, and we'll email you a reset link.</p>
+
+<h2>3. Connect WhatsApp</h2>
+<p>This is the most important step — until it's done, nothing can reach your customers.</p>
+<div class="step"><b class="n">1</b> Open <b>WhatsApp</b> in the menu.</div>
+<div class="step"><b class="n">2</b> Click <b>Connect WhatsApp Business</b>. A Facebook window opens.</div>
+<div class="step"><b class="n">3</b> Sign in to Facebook, pick (or create) your business, and choose the phone number you want to use.</div>
+<div class="step"><b class="n">4</b> Confirm the code Meta sends to that number.</div>
+<div class="step"><b class="n">5</b> Back in Bookly, the status turns <span class="pill g">Live</span>. Send a test message to check.</div>
+<div class="warn"><b>If the Facebook window is blocked</b> (ad-blocker, or it simply won't open), use <b>Connect manually instead</b> on the same page and paste the <b>Phone Number ID</b>, <b>WhatsApp Business Account ID</b> and <b>access token</b> from Meta → WhatsApp → API Setup.</div>
+<div class="tip"><b>Important:</b> a number already active on the WhatsApp app on a phone cannot be used. Either use a fresh number, or delete the existing WhatsApp account on that number first.</div>
+
+<h2>4. Add your services</h2>
+<p>The assistant can only offer what you list here — it will never invent a service or a price.</p>
+<div class="step"><b class="n">1</b> Go to <b>Services</b> → <b>Add service</b>.</div>
+<div class="step"><b class="n">2</b> Fill in:
+<ul>
+  <li><b>Name</b> — what customers will see, e.g. "Haircut".</li>
+  <li><b>Price</b> and <b>Duration in minutes</b> — duration controls how your day is split into slots.</li>
+  <li><b>Category</b> (optional) — to group services.</li>
+  <li><b>Deposit</b> (optional) — overrides your default deposit for this one service. Leave blank to use the default; set 0 for no deposit.</li>
+</ul>
+</div>
+<div class="step"><b class="n">3</b> Keep <b>Active</b> on. Switch it off any time to hide a service without deleting it.</div>
+<div class="tip">Get durations right — a 30-minute service and a 60-minute service produce completely different available times.</div>
+
+<h2>5. Set your working hours</h2>
+<div class="step"><b class="n">1</b> Go to <b>Availability</b>.</div>
+<div class="step"><b class="n">2</b> Turn each day on or off, and set opening and closing times.</div>
+<div class="step"><b class="n">3</b> Press <b>Save working hours</b>.</div>
+<h3>Blackout dates</h3>
+<p>Closing for a holiday, a funeral, or travel? Add the date under <b>Blackout dates</b> with an optional reason. The assistant will not offer any time on those days.</p>
+<div class="tip">Bookly only ever offers times that are genuinely free — it checks your hours, your blackout dates and your existing bookings before it says anything.</div>
+
+<h2 class="pb">6. Get paid: deposits &amp; Paystack</h2>
+<p>Deposits are the single biggest reason businesses stop losing money to no-shows. A customer who has paid something turns up.</p>
+<h3>Connect Paystack</h3>
+<div class="step"><b class="n">1</b> Go to <b>Settings</b> and find the payments section.</div>
+<div class="step"><b class="n">2</b> Paste your <b>Paystack secret key</b> (from your Paystack dashboard).</div>
+<div class="step"><b class="n">3</b> Save. Customers can now pay by <b>mobile money or card</b>, and the money goes straight to your Paystack account — Bookly never holds your money.</div>
+<h3>Choose your deposit policy</h3>
+<table>
+  <tr><th>Setting</th><th>Where</th><th>What it does</th></tr>
+  <tr><td><b>Ask for a deposit</b></td><td>Settings → Deposits</td><td>Master switch. Off = every booking is confirmed immediately with no payment.</td></tr>
+  <tr><td><b>Deposit amount</b></td><td>Settings → Deposits</td><td>The default amount asked for, in your account currency.</td></tr>
+  <tr><td><b>Per-service deposit</b></td><td>Services → edit a service</td><td>Overrides the default for that service. Set 0 for a service that needs no deposit.</td></tr>
+</table>
+<h3>How a deposit booking behaves</h3>
+<ul>
+  <li>The slot is <b>held for 30 minutes</b>, not confirmed. If the customer doesn't pay in that time, the slot is released for someone else.</li>
+  <li>The assistant asks whether they'd like to <b>pay now</b> or <b>pay when they arrive</b>.</li>
+  <li>Choose <b>pay now</b> → it sends a real Paystack link. Paying confirms the booking instantly.</li>
+  <li>Choose <b>pay on arrival</b> → the booking is confirmed and you collect on the day.</li>
+  <li>If a customer asks later "how do I pay?", the assistant finds their unpaid booking and re-sends the link.</li>
+</ul>
+<div class="warn"><b>If Paystack isn't connected</b>, no payment link can be created. Bookly confirms the booking anyway and tells the customer to pay on arrival — and notifies you so nothing is lost silently.</div>
+
+<h2>7. Your day-to-day: the dashboard</h2>
+<p><b>Overview</b> is your morning screen. It shows:</p>
+<ul>
+  <li>Total bookings, <b>today's bookings</b>, active chats and total customers.</li>
+  <li>Whether WhatsApp is <span class="pill g">Live</span> or needs attention.</li>
+  <li>Recent activity, so you can see what happened overnight.</li>
+</ul>
+
+<h2>8. Bookings</h2>
+<p>The <b>Bookings</b> page lists every appointment. Use the filter chips to switch between All, Confirmed, Pending, Completed and Cancelled.</p>
+<table>
+  <tr><th>Status</th><th>Meaning</th></tr>
+  <tr><td><span class="pill y">Pending payment</span></td><td>Held, waiting for the deposit. Released if unpaid after 30 minutes.</td></tr>
+  <tr><td><span class="pill g">Confirmed</span></td><td>Locked in. Deposit paid, or no deposit needed.</td></tr>
+  <tr><td><span class="pill n">Completed</span></td><td>The appointment happened.</td></tr>
+  <tr><td><span class="pill r">Cancelled</span></td><td>Cancelled by you or the customer.</td></tr>
+  <tr><td><span class="pill n">No show</span></td><td>They didn't turn up.</td></tr>
+</table>
+<p>Open any booking to see the customer, service, time and reference, message them on WhatsApp in one tap, resend a payment link, or cancel.</p>
+<h3>Adding a booking yourself</h3>
+<p>Walk-in or phone booking? Add it from the Bookings page. Bookings you create are <b>confirmed straight away with no deposit</b> — Bookly assumes you're handling payment in person. It still checks the slot is genuinely free.</p>
+
+<h2>9. Chats &amp; taking over from the assistant</h2>
+<p><b>Chats</b> is your WhatsApp inbox. Every customer conversation appears here.</p>
+<ul>
+  <li>A <b>green dot</b> means the customer spoke last and is waiting on a reply.</li>
+  <li>A badge shows who is handling it: <b>Bot</b> or <b>You</b>.</li>
+  <li>Open a chat and simply type to reply — the assistant steps aside automatically.</li>
+  <li>Press <b>Resume bot</b> to hand it back when you're done.</li>
+</ul>
+<p>The assistant also hands over to you by itself when a customer asks for a person, sounds frustrated, or asks something outside bookings.</p>
+
+<h2 class="pb">10. The 24-hour rule &amp; message templates</h2>
+<p>This is a WhatsApp rule, not a Bookly limitation, and it surprises everyone at first.</p>
+<div class="warn"><b>You can only send free-typed messages within 24 hours of the customer's last message.</b> Outside that window, WhatsApp only allows pre-approved <b>templates</b>.</div>
+<p>What this means in practice:</p>
+<ul>
+  <li>While a customer is chatting with you, reply freely — no restriction.</li>
+  <li>A day later, you cannot just type "Hi, are you coming?". The message box will tell you the window has closed.</li>
+  <li><b>Reminders and confirmations still work</b>, because Bookly sends those as approved templates.</li>
+</ul>
+<h3>Templates</h3>
+<p>The <b>Templates</b> page lists your Meta-approved message templates and whether each is <span class="pill g">Approved</span> or <span class="pill y">Pending</span>. You register templates in WhatsApp Manager; Bookly uses them for booking confirmations, reminders and cancellations.</p>
+<div class="tip">If reminders aren't arriving, check here first — an unapproved or missing template is the usual cause.</div>
+
+<h2>11. The mobile app</h2>
+<p>The Bookly app gives you the same business on your phone, with <b>push notifications</b> — the main reason to install it.</p>
+<table>
+  <tr><th>Tab</th><th>What it's for</th></tr>
+  <tr><td><b>Overview</b></td><td>Today's numbers and WhatsApp status.</td></tr>
+  <tr><td><b>Bookings</b></td><td>Your appointments, with filters and details.</td></tr>
+  <tr><td><b>Chats</b></td><td>Reply to customers; unread count on the tab.</td></tr>
+  <tr><td><b>Services</b></td><td>Add and edit services and prices.</td></tr>
+  <tr><td><b>More</b></td><td>Notifications, Availability, Templates, WhatsApp, Team, Settings.</td></tr>
+</table>
+<p>Allow notifications when asked — you'll get an alert the moment a booking comes in or a customer replies. Under <b>Settings → Appearance</b> you can force Light or Dark, or follow your phone.</p>
+
+<h2>12. Your team</h2>
+<p>Only the <b>owner</b> can manage the team. Go to <b>Team</b> (in More on mobile) to:</p>
+<ul>
+  <li><b>Add a member</b> — name, email and a temporary password to share with them. They can log in and handle bookings and chats.</li>
+  <li><b>Switch someone off</b> when they leave — this blocks access without deleting their history.</li>
+</ul>
+<p class="small">The owner account cannot be deactivated, and you cannot deactivate yourself.</p>
+
+<h2>13. Plans, usage &amp; promo codes</h2>
+<p>Bookly charges by how many WhatsApp messages you send out each month. Your cycle runs 30 days from the day you signed up, not from the 1st.</p>
+<table>
+  <tr><th>Plan</th><th>Price / month</th><th>Messages</th><th>Services</th><th>Team</th><th>Templates</th></tr>
+  <tr><td><b>Free</b></td><td>$0</td><td>50</td><td>3</td><td>1</td><td>3</td></tr>
+  <tr><td><b>Starter</b></td><td>$19</td><td>500</td><td>Unlimited</td><td>3</td><td>Unlimited</td></tr>
+  <tr><td><b>Pro</b></td><td>$49</td><td>5,000</td><td>Unlimited</td><td>Unlimited</td><td>Unlimited</td></tr>
+</table>
+<p><b>Settings → Plan &amp; usage</b> shows your plan, your status (Trial, Active, Past due or Cancelled) and a bar for messages used this cycle. The bar turns amber near your limit and red when you've hit it.</p>
+<div class="warn">If you run out of messages, the assistant cannot reply to customers until the cycle resets or you upgrade. Watch the bar.</div>
+<h3>Promo codes</h3>
+<p>Given a code? Enter it under <b>Settings → Plan &amp; usage → Have a promo code?</b> and press <b>Apply code</b>. It will either extend your trial or put you on a plan, and Bookly confirms the new end date.</p>
+
+<h2 class="pb">14. Other settings</h2>
+<table>
+  <tr><th>Setting</th><th>What it does</th></tr>
+  <tr><td><b>Your name / Business name</b></td><td>Your business name is what the assistant calls you when greeting customers.</td></tr>
+  <tr><td><b>Timezone</b></td><td>Every time shown to customers uses this. Set it correctly before taking bookings.</td></tr>
+  <tr><td><b>Automated reminders</b></td><td>Sends booking reminders outside the 24-hour window. Turning it off saves messaging cost but customers get no reminder.</td></tr>
+  <tr><td><b>Google Calendar</b></td><td>Connect to have confirmed bookings appear in your calendar automatically.</td></tr>
+  <tr><td><b>SMS fallback</b></td><td>Add Arkesel details so that if WhatsApp delivery fails, the customer still gets an SMS.</td></tr>
+  <tr><td><b>Email fallback</b></td><td>Add your Gmail address and app password as a last resort if both WhatsApp and SMS fail.</td></tr>
+  <tr><td><b>Appearance</b></td><td>Light, Dark, or follow your device (mobile app).</td></tr>
+</table>
+<div class="tip">Set up at least one fallback. Messages occasionally fail for reasons outside anyone's control; a fallback means the customer still hears from you.</div>
+
+<h2>15. What the assistant can and cannot do</h2>
+<table>
+  <tr><th><span class="pill g">It can</span></th><th><span class="pill r">It will not</span></th></tr>
+  <tr><td>
+    <ul>
+      <li>List your services with real prices</li>
+      <li>Offer only genuinely free times</li>
+      <li>Create, hold and confirm a booking</li>
+      <li>Look up a customer's own bookings</li>
+      <li>Send a real deposit payment link</li>
+      <li>Hand the chat over to you</li>
+    </ul>
+  </td><td>
+    <ul>
+      <li>Invent a service, price or free slot</li>
+      <li>Make up or alter a payment link</li>
+      <li>Double-book a taken slot</li>
+      <li>Offer times outside your hours or on a blackout day</li>
+      <li>Keep guessing — it asks for you instead</li>
+    </ul>
+  </td></tr>
+</table>
+<p class="small">Anything with money or a commitment runs through the same checks your dashboard uses, so the assistant cannot promise something your diary can't honour.</p>
+
+<h2>16. Troubleshooting</h2>
+<table>
+  <tr><th>Problem</th><th>Likely cause &amp; fix</th></tr>
+  <tr><td>Customers message and nothing happens</td><td>WhatsApp isn't connected, or the number is wrong. Check the WhatsApp page shows <span class="pill g">Live</span> and send a test message.</td></tr>
+  <tr><td>The assistant says no times are available</td><td>Working hours are off for that day, it's a blackout date, or the service duration doesn't fit. Check Availability and the service duration.</td></tr>
+  <tr><td>"You can only send a template" when replying</td><td>The 24-hour window has closed. Wait for the customer to message, or send an approved template. See section 10.</td></tr>
+  <tr><td>Deposit link never arrives</td><td>Paystack isn't connected, or the service has no deposit set. Check Settings → payments and the service.</td></tr>
+  <tr><td>Reminders not sending</td><td>Automated reminders switched off, no approved reminder template, or you've hit your message limit.</td></tr>
+  <tr><td>Slot disappeared after a customer booked</td><td>Normal — an unpaid held booking is released after 30 minutes so others can book it.</td></tr>
+  <tr><td>Can't log in</td><td>Use Forgot password. If your account was switched off by the owner, ask them to re-enable it.</td></tr>
+  <tr><td>No push notifications on the phone</td><td>Notifications were declined at install. Enable Bookly notifications in your phone's settings.</td></tr>
+</table>
+
+<h2>17. Frequently asked questions</h2>
+<div class="q">Do my customers need to install anything?</div>
+<p>No. They use normal WhatsApp. That's the whole point.</p>
+<div class="q">Can I still reply myself?</div>
+<p>Yes, any time. Open the chat and type — the assistant steps back automatically and waits until you hand it back.</p>
+<div class="q">Does Bookly hold my money?</div>
+<p>No. Payments go directly to your own Paystack account.</p>
+<div class="q">Can I use my personal WhatsApp number?</div>
+<p>Not if it's currently active on the WhatsApp app. Use a separate business number — it's cleaner anyway.</p>
+<div class="q">What happens when my trial ends?</div>
+<p>Your account moves to the Free plan (50 messages a month). Your data stays; upgrade whenever you're ready.</p>
+<div class="q">Can two people use it at once?</div>
+<p>Yes. Add them under Team — subject to your plan's team limit.</p>
+<div class="q">Is it only for salons?</div>
+<p>No. Anything booked by appointment works — clinics, barbers, tutors, consultants, mechanics, photographers — and shops can take orders instead.</p>
+
+<h2>18. Getting help</h2>
+<ul>
+  <li><b>Support page</b> — bookly.ikieguy.online/support</li>
+  <li><b>In the app</b> — Settings has your plan and account details, useful when reporting an issue.</li>
+  <li><b>When reporting a problem</b>, include: your business name, what you expected, what happened, and the customer's phone number if it involves a chat. It gets you a fix far faster.</li>
+</ul>
+
+<div class="cover" style="margin-top:18px">
+  <b>Your first week checklist</b>
+  <ol style="margin-bottom:0">
+    <li>Connect WhatsApp and send yourself a test message.</li>
+    <li>Add every service with the correct price and duration.</li>
+    <li>Set working hours and any blackout dates.</li>
+    <li>Connect Paystack and decide your deposit amount.</li>
+    <li>Install the mobile app and allow notifications.</li>
+    <li>Put your WhatsApp number on your Instagram bio, shopfront and receipts — customers can't book a number they don't know.</li>
+  </ol>
+</div>
+
+<p class="small" style="margin-top:14px">Bookly User Guide v1.0 · September 2026. Features and plan limits may change; your dashboard always shows what's current.</p>
+
+</body>
+</html>

@@ -21,8 +21,21 @@ model Tenant {
   timezone              String       @default("UTC")
   whatsappPhoneNumberId String?      @unique
   whatsappAccountId     String?
-  whatsappAccessToken   String?      // Encrypted
+  whatsappAccessToken   String?      // Encrypted. NULL for hosted numbers — they use the platform token.
   whatsappDisplayNumber String?
+  // Phase 6 — Bookly-hosted numbers. TRUE means this number lives on Bookly's
+  // OWN WABA, so Meta bills Bookly for it and Bookly rebills the tenant. FALSE
+  // (the default) is the bring-your-own path via Embedded Signup, where the
+  // tenant owns the WABA and pays Meta directly.
+  whatsappHosted        Boolean      @default(false)
+  // Onboarding progress for hosted numbers only: PENDING_CODE (added to our
+  // WABA, OTP sent) → REGISTERED (verified + registered for Cloud API).
+  // NULL for bring-your-own numbers, which are live the moment they connect.
+  whatsappNumberStatus  String?
+  // Encrypted. Hosted numbers only — Meta's two-step verification PIN, set when
+  // we register the number. Meta requires a re-register (with this same PIN)
+  // after any display-name change, so it has to outlive onboarding.
+  whatsappRegistrationPin String?
   paystackSecretKey     String?      // Encrypted (AES-GCM via crypto.ts)
   paystackPublicKey     String?      // Public, plaintext OK
   paymentCurrency       String       @default("NGN") // ISO 4217

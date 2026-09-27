@@ -13,6 +13,7 @@ import { QUEUE_NAMES, NotificationJob, ReminderJob } from '../plugins/redis.js';
 import { decrypt } from './crypto.js';
 import { sendTemplateMessage } from './whatsapp-templates.js';
 import { tryReserveOutbound, rollbackOutboundReservation } from './usage.js';
+import { getWhatsappCredentials } from './whatsapp-credentials.js';
 import { sendSms } from './arkesel.js';
 import { sendEmail, resolveGmailCreds } from './gmail-smtp.js';
 import { buildTextBundle, type TextBundle, type MessageLinks } from './notification-text.js';
@@ -76,17 +77,9 @@ interface TenantCreds {
 }
 
 async function loadTenantCreds(tenantId: string): Promise<TenantCreds | null> {
-    const tenant = await prisma.tenant.findUnique({
-        where: { id: tenantId },
-        select: { whatsappAccessToken: true, whatsappPhoneNumberId: true },
-    });
-    if (!tenant?.whatsappAccessToken || !tenant.whatsappPhoneNumberId) {
-        return null;
-    }
-    return {
-        accessToken: decrypt(tenant.whatsappAccessToken),
-        phoneNumberId: tenant.whatsappPhoneNumberId,
-    };
+    // Resolver, not an inline token read: hosted numbers carry no per-tenant
+    // token and must fall back to the platform one. See whatsapp-credentials.ts.
+    return getWhatsappCredentials(prisma, tenantId);
 }
 
 async function alertDashboard(

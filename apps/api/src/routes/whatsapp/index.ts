@@ -9,7 +9,30 @@ import {
     completeEmbeddedSignup,
     EmbeddedSignupError,
 } from '../../services/meta-embedded-signup.js';
+import {
+    isPlatformWabaConfigured,
+    startHostedNumber,
+    resendVerificationCode,
+    verifyAndRegister,
+    deleteHostedNumber,
+    countHostedNumbers,
+    subscribePlatformWaba,
+    NumberOnboardingError,
+} from '../../services/meta-number-onboarding.js';
+import {
+    getWhatsappCredentials,
+    resolveCredentials,
+    selectCredentialSource,
+} from '../../services/whatsapp-credentials.js';
 import { publish } from '../../services/realtime.js';
+
+/**
+ * Meta caps a business portfolio at 20 registered business phone numbers, so
+ * Bookly's own WABA can host at most this many tenants before Meta has to
+ * raise the limit. Guarding here turns "the 21st tenant's onboarding fails
+ * with a Graph error" into a clear message we can act on.
+ */
+const HOSTED_NUMBER_LIMIT = 20;
 
 /**
  * Verify Meta's `X-Hub-Signature-256` header against the raw request body
@@ -98,6 +121,36 @@ interface WhatsAppWebhookPayload {
     }>;
 }
 
+/**
+ * Turn a Graph API failure into something a salon owner can act on.
+ *
+ * Meta's raw errors are written for developers ("(#100) Invalid parameter"),
+ * and the single most common onboarding failure — the number already has a
+ * personal WhatsApp account on it — is otherwise indistinguishable from a
+ * typo. Anything unrecognised falls through to the raw detail so we never
+ * hide a real cause behind a friendly guess.
+ */
+function hostedErrorMessage(err: NumberOnboardingError): string {
+    const d = err.details.toLowerCase();
+
+    if (err.step === 'validate') {
+        return err.details.replace(/^number_onboarding_validate: /, '');
+    }
+    if (d.includes('already') && (d.includes('whatsapp') || d.includes('registered') || d.includes('exists'))) {
+        return 'That number already has a WhatsApp account. Delete WhatsApp on that phone (Settings → Account → Delete my account), wait a few minutes, then try again — or use a different number.';
+    }
+    if (err.step === 'verify_code' || d.includes('code') && d.includes('invalid')) {
+        return 'That code was not accepted. Check the digits, or send a new code.';
+    }
+    if (d.includes('rate') || d.includes('too many') || d.includes('133016')) {
+        return 'Too many attempts on this number. Wait about an hour before trying again — each retry extends the wait.';
+    }
+    if (err.step === 'request_code') {
+        return 'We could not send the code to that number. Check it is correct and can receive SMS, or try a voice call instead.';
+    }
+    return `WhatsApp setup failed at the ${err.step.replace(/_/g, ' ')} step. ${err.details}`;
+}
+
 const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
     // GET /whatsapp/webhook - Webhook verification
     fastify.get('/webhook', async (request, reply) => {
@@ -165,14 +218,249 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
                 whatsappPhoneNumberId: true,
                 whatsappAccountId: true,
                 whatsappDisplayNumber: true,
+                whatsappHosted: true,
+                whatsappNumberStatus: true,
             },
         });
 
+        // A hosted number that has been created but not yet verified is NOT
+        // connected — Meta rejects sends on it — so the UI must show the OTP
+        // step rather than a green "live" badge.
+        const awaitingCode =
+            !!tenant?.whatsappHosted && tenant.whatsappNumberStatus === 'PENDING_CODE';
+
         return {
-            connected: !!tenant?.whatsappPhoneNumberId,
+            connected: !!tenant?.whatsappPhoneNumberId && !awaitingCode,
             phoneNumberId: tenant?.whatsappPhoneNumberId,
             displayNumber: tenant?.whatsappDisplayNumber,
+            hosted: !!tenant?.whatsappHosted,
+            numberStatus: tenant?.whatsappNumberStatus ?? null,
+            awaitingCode,
+            // Drives which onboarding choices the UI offers.
+            hostedAvailable: isPlatformWabaConfigured(),
         };
+    });
+
+    // ---- Phase 6: Bookly-hosted numbers -------------------------------
+    // The tenant's number is added to Bookly's OWN WABA, so Meta bills Bookly
+    // and the tenant pays one local-currency bill to Bookly instead of needing
+    // a card Meta accepts. See services/meta-number-onboarding.ts for why.
+
+    // POST /whatsapp/hosted/start — add the number to our WABA and send an OTP.
+    fastify.post('/hosted/start', {
+        preHandler: [fastify.authenticate],
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '10 minutes',
+                keyGenerator: (req: any) => `${req.user?.tenantId ?? req.ip}:hosted-start`,
+            },
+        },
+    }, async (request) => {
+        if (request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only owner can connect WhatsApp');
+        }
+        if (!isPlatformWabaConfigured()) {
+            throw fastify.httpErrors.serviceUnavailable(
+                'Hosted WhatsApp numbers are not available yet. Connect your own WhatsApp instead.',
+            );
+        }
+
+        const body = z.object({
+            countryCode: z.string().min(1).max(4),
+            localNumber: z.string().min(4).max(20),
+            codeMethod: z.enum(['SMS', 'VOICE']).optional(),
+        }).parse(request.body);
+
+        const tenant = await fastify.prisma.tenant.findUnique({
+            where: { id: request.user.tenantId },
+            select: { name: true, whatsappPhoneNumberId: true, whatsappHosted: true },
+        });
+
+        if (tenant?.whatsappPhoneNumberId) {
+            throw fastify.httpErrors.conflict(
+                'A WhatsApp number is already connected. Disconnect it first.',
+            );
+        }
+
+        // Guard the portfolio cap before spending a slot.
+        const used = await countHostedNumbers().catch(() => 0);
+        if (used >= HOSTED_NUMBER_LIMIT) {
+            throw fastify.httpErrors.serviceUnavailable(
+                'All hosted numbers are in use. Connect your own WhatsApp instead.',
+            );
+        }
+
+        try {
+            const result = await startHostedNumber({
+                countryCode: body.countryCode,
+                localNumber: body.localNumber,
+                verifiedName: tenant?.name ?? 'Bookly',
+                codeMethod: body.codeMethod,
+            });
+
+            // Our app must be subscribed to our WABA for inbound webhooks.
+            // Idempotent, and a failure here would silently break replies, so
+            // it is not swallowed.
+            await subscribePlatformWaba();
+
+            // The two-step PIN is generated per number and kept encrypted: Meta
+            // demands it again on any re-register after a display-name change.
+            const pin = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+
+            await fastify.prisma.tenant.update({
+                where: { id: request.user.tenantId },
+                data: {
+                    whatsappPhoneNumberId: result.phoneNumberId,
+                    whatsappAccountId: config.platformWhatsapp.wabaId,
+                    whatsappAccessToken: null, // hosted numbers use the platform token
+                    whatsappDisplayNumber: result.displayNumber,
+                    whatsappHosted: true,
+                    whatsappNumberStatus: 'PENDING_CODE',
+                    whatsappRegistrationPin: encrypt(pin),
+                },
+            });
+
+            await audit({
+                prisma: fastify.prisma,
+                action: 'whatsapp.hosted_started',
+                actorType: 'USER',
+                actorId: request.user.userId,
+                tenantId: request.user.tenantId,
+                metadata: {
+                    phoneNumberId: result.phoneNumberId,
+                    displayNumber: result.displayNumber,
+                    codeMethod: result.codeMethod,
+                },
+                ipAddress: request.ip,
+            });
+
+            return {
+                success: true,
+                displayNumber: result.displayNumber,
+                codeMethod: result.codeMethod,
+                status: 'PENDING_CODE',
+            };
+        } catch (err) {
+            if (err instanceof NumberOnboardingError) {
+                fastify.log.error({ step: err.step, details: err.details }, 'hosted number start failed');
+                throw fastify.httpErrors.badRequest(hostedErrorMessage(err));
+            }
+            throw err;
+        }
+    });
+
+    // POST /whatsapp/hosted/resend — send the OTP again, optionally by voice.
+    fastify.post('/hosted/resend', {
+        preHandler: [fastify.authenticate],
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '10 minutes',
+                keyGenerator: (req: any) => `${req.user?.tenantId ?? req.ip}:hosted-resend`,
+            },
+        },
+    }, async (request) => {
+        if (request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only owner can connect WhatsApp');
+        }
+
+        const body = z.object({ codeMethod: z.enum(['SMS', 'VOICE']).optional() }).parse(
+            request.body ?? {},
+        );
+
+        const tenant = await fastify.prisma.tenant.findUnique({
+            where: { id: request.user.tenantId },
+            select: { whatsappPhoneNumberId: true, whatsappHosted: true, whatsappNumberStatus: true },
+        });
+
+        if (!tenant?.whatsappHosted || tenant.whatsappNumberStatus !== 'PENDING_CODE' || !tenant.whatsappPhoneNumberId) {
+            throw fastify.httpErrors.badRequest('No number is waiting for a verification code.');
+        }
+
+        try {
+            await resendVerificationCode(tenant.whatsappPhoneNumberId, body.codeMethod ?? 'SMS');
+            return { success: true };
+        } catch (err) {
+            if (err instanceof NumberOnboardingError) {
+                fastify.log.error({ step: err.step, details: err.details }, 'hosted resend failed');
+                throw fastify.httpErrors.badRequest(hostedErrorMessage(err));
+            }
+            throw err;
+        }
+    });
+
+    // POST /whatsapp/hosted/verify — verify the OTP and register for Cloud API.
+    fastify.post('/hosted/verify', {
+        preHandler: [fastify.authenticate],
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '10 minutes',
+                keyGenerator: (req: any) => `${req.user?.tenantId ?? req.ip}:hosted-verify`,
+            },
+        },
+    }, async (request) => {
+        if (request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only owner can connect WhatsApp');
+        }
+
+        const body = z.object({ code: z.string().min(4).max(10) }).parse(request.body);
+
+        const tenant = await fastify.prisma.tenant.findUnique({
+            where: { id: request.user.tenantId },
+            select: {
+                whatsappPhoneNumberId: true,
+                whatsappHosted: true,
+                whatsappNumberStatus: true,
+                whatsappRegistrationPin: true,
+                whatsappDisplayNumber: true,
+            },
+        });
+
+        if (!tenant?.whatsappHosted || tenant.whatsappNumberStatus !== 'PENDING_CODE' || !tenant.whatsappPhoneNumberId) {
+            throw fastify.httpErrors.badRequest('No number is waiting for a verification code.');
+        }
+        if (!tenant.whatsappRegistrationPin) {
+            throw fastify.httpErrors.internalServerError(
+                'Registration PIN missing. Disconnect and start again.',
+            );
+        }
+
+        try {
+            await verifyAndRegister(
+                tenant.whatsappPhoneNumberId,
+                body.code,
+                decrypt(tenant.whatsappRegistrationPin),
+            );
+
+            await fastify.prisma.tenant.update({
+                where: { id: request.user.tenantId },
+                data: { whatsappNumberStatus: 'REGISTERED' },
+            });
+
+            await audit({
+                prisma: fastify.prisma,
+                action: 'whatsapp.hosted_registered',
+                actorType: 'USER',
+                actorId: request.user.userId,
+                tenantId: request.user.tenantId,
+                metadata: { phoneNumberId: tenant.whatsappPhoneNumberId },
+                ipAddress: request.ip,
+            });
+
+            return {
+                success: true,
+                status: 'REGISTERED',
+                displayNumber: tenant.whatsappDisplayNumber,
+            };
+        } catch (err) {
+            if (err instanceof NumberOnboardingError) {
+                fastify.log.error({ step: err.step, details: err.details }, 'hosted verify failed');
+                throw fastify.httpErrors.badRequest(hostedErrorMessage(err));
+            }
+            throw err;
+        }
     });
 
     // POST /whatsapp/connect - Store WhatsApp credentials after embedded signup
@@ -351,6 +639,26 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.forbidden('Only owner can disconnect WhatsApp');
         }
 
+        const current = await fastify.prisma.tenant.findUnique({
+            where: { id: request.user.tenantId },
+            select: { whatsappPhoneNumberId: true, whatsappHosted: true },
+        });
+
+        // A hosted number occupies one of the portfolio's 20 slots, so it must
+        // be removed from our WABA — not merely unlinked from the tenant row —
+        // or abandoned onboardings permanently consume capacity. Best effort:
+        // a Meta-side failure must not leave the tenant unable to disconnect.
+        if (current?.whatsappHosted && current.whatsappPhoneNumberId) {
+            try {
+                await deleteHostedNumber(current.whatsappPhoneNumberId);
+            } catch (err) {
+                fastify.log.error(
+                    { err, phoneNumberId: current.whatsappPhoneNumberId },
+                    'failed to release hosted number from platform WABA — slot may need manual cleanup',
+                );
+            }
+        }
+
         await fastify.prisma.tenant.update({
             where: { id: request.user.tenantId },
             data: {
@@ -358,6 +666,9 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
                 whatsappAccountId: null,
                 whatsappAccessToken: null,
                 whatsappDisplayNumber: null,
+                whatsappHosted: false,
+                whatsappNumberStatus: null,
+                whatsappRegistrationPin: null,
             },
         });
 
@@ -408,18 +719,14 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
             message: z.string(),
         }).parse(request.body);
 
-        const tenant = await fastify.prisma.tenant.findUnique({
-            where: { id: request.user.tenantId },
-        });
-
-        if (!tenant?.whatsappPhoneNumberId || !tenant.whatsappAccessToken) {
+        const creds = await getWhatsappCredentials(fastify.prisma, request.user.tenantId);
+        if (!creds) {
             throw fastify.httpErrors.badRequest('WhatsApp not connected');
         }
 
-        // Decrypt access token and send via WhatsApp Cloud API
-        const accessToken = decrypt(tenant.whatsappAccessToken);
+        const accessToken = creds.accessToken;
         const response = await fetch(
-            `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+            `https://graph.facebook.com/v21.0/${creds.phoneNumberId}/messages`,
             {
                 method: 'POST',
                 headers: {
@@ -561,10 +868,11 @@ async function processMessage(
     // Acknowledge immediately: blue ticks, plus "typing…" so the customer can
     // see the business is on it. Fire-and-forget — a presence failure must not
     // delay or block the actual reply.
-    if (tenant?.whatsappPhoneNumberId && tenant?.whatsappAccessToken && message.id) {
+    const presenceCreds = resolveCredentials(selectCredentialSource(tenant));
+    if (presenceCreds && message.id) {
         void markReadAndTyping({
-            phoneNumberId: tenant.whatsappPhoneNumberId,
-            accessToken: decrypt(tenant.whatsappAccessToken),
+            phoneNumberId: presenceCreds.phoneNumberId,
+            accessToken: presenceCreds.accessToken,
             messageId: message.id,
             logger: fastify.log,
         });
@@ -816,9 +1124,11 @@ async function handleWithAgent(
     const reply = result.reply.trim();
     if (!reply) return;
 
-    const accessToken = decrypt(tenant.whatsappAccessToken);
+    const agentCreds = resolveCredentials(selectCredentialSource(tenant));
+    if (!agentCreds) return;
+    const accessToken = agentCreds.accessToken;
     const response = await fetch(
-        `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+        `https://graph.facebook.com/v21.0/${agentCreds.phoneNumberId}/messages`,
         {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },

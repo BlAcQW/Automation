@@ -24,6 +24,13 @@ interface WhatsAppStatus {
     connected: boolean;
     phoneNumberId?: string;
     displayNumber?: string;
+    /** TRUE when the number sits on Bookly's WABA, so we bill for messages. */
+    hosted?: boolean;
+    numberStatus?: string | null;
+    /** Number created on our WABA but not yet verified — show the OTP step. */
+    awaitingCode?: boolean;
+    /** FALSE when the platform WABA isn't configured; hide the hosted option. */
+    hostedAvailable?: boolean;
 }
 
 export default function WhatsAppSetupPage() {
@@ -38,6 +45,74 @@ export default function WhatsAppSetupPage() {
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const [sdkReady, setSdkReady] = useState(false);
     const [sdkFailed, setSdkFailed] = useState(false);
+
+    // --- Bookly-hosted number ---------------------------------------
+    // The number is added to Bookly's own WABA, so Meta bills Bookly and the
+    // tenant pays us in local currency instead of needing a card Meta accepts.
+    const [hostedForm, setHostedForm] = useState({ countryCode: '233', localNumber: '' });
+    const [hostedSubmitting, setHostedSubmitting] = useState(false);
+    const [otp, setOtp] = useState('');
+    const [verifying, setVerifying] = useState(false);
+    const [resending, setResending] = useState(false);
+
+    async function startHosted(e: React.FormEvent) {
+        e.preventDefault();
+        setHostedSubmitting(true);
+        setMessage(null);
+        try {
+            const res = await api.post('/whatsapp/hosted/start', hostedForm);
+            setMessage({
+                type: 'success',
+                text: `We sent a 6-digit code to ${res.data.displayNumber}. Enter it below.`,
+            });
+            await fetchStatus();
+        } catch (err: any) {
+            setMessage({
+                type: 'error',
+                text: err?.response?.data?.message ?? 'Could not start setup. Check the number and try again.',
+            });
+        } finally {
+            setHostedSubmitting(false);
+        }
+    }
+
+    async function verifyHosted(e: React.FormEvent) {
+        e.preventDefault();
+        setVerifying(true);
+        setMessage(null);
+        try {
+            await api.post('/whatsapp/hosted/verify', { code: otp });
+            setOtp('');
+            setMessage({ type: 'success', text: 'Your WhatsApp number is live.' });
+            await fetchStatus();
+        } catch (err: any) {
+            setMessage({
+                type: 'error',
+                text: err?.response?.data?.message ?? 'That code was not accepted.',
+            });
+        } finally {
+            setVerifying(false);
+        }
+    }
+
+    async function resendCode(codeMethod: 'SMS' | 'VOICE') {
+        setResending(true);
+        setMessage(null);
+        try {
+            await api.post('/whatsapp/hosted/resend', { codeMethod });
+            setMessage({
+                type: 'success',
+                text: codeMethod === 'VOICE' ? 'Calling you with the code now.' : 'New code sent.',
+            });
+        } catch (err: any) {
+            setMessage({
+                type: 'error',
+                text: err?.response?.data?.message ?? 'Could not resend the code.',
+            });
+        } finally {
+            setResending(false);
+        }
+    }
 
     useEffect(() => {
         fetchStatus();
@@ -335,6 +410,64 @@ export default function WhatsAppSetupPage() {
                             <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
                             <span className="text-slate-500 dark:text-slate-400">Checking connection...</span>
                         </div>
+                    ) : status?.awaitingCode ? (
+                        <div className="space-y-5">
+                            <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/50">
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                                    <MessageCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                </div>
+                                <div>
+                                    <p className="font-medium text-amber-900 dark:text-amber-200 text-sm">
+                                        Enter the code we sent to {status.displayNumber}
+                                    </p>
+                                    <p className="text-amber-700 dark:text-amber-300 text-xs">
+                                        It is a 6-digit code, by SMS. It can take a minute to arrive.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <form onSubmit={verifyHosted} className="space-y-4">
+                                <DashboardInput
+                                    label="Verification code"
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value)}
+                                    placeholder="123456"
+                                    inputMode="numeric"
+                                    autoComplete="one-time-code"
+                                    maxLength={8}
+                                    required
+                                />
+                                <div className="flex flex-wrap gap-3">
+                                    <Button type="submit" disabled={verifying || otp.trim().length < 4}>
+                                        {verifying ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                                        Verify and go live
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        disabled={resending}
+                                        onClick={() => resendCode('SMS')}
+                                    >
+                                        Resend SMS
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        disabled={resending}
+                                        onClick={() => resendCode('VOICE')}
+                                    >
+                                        Call me instead
+                                    </Button>
+                                </div>
+                            </form>
+
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Wrong number?{' '}
+                                <button type="button" onClick={disconnect} className="underline hover:text-slate-700 dark:hover:text-slate-200">
+                                    Start again
+                                </button>
+                            </p>
+                        </div>
                     ) : status?.connected ? (
                         <div className="space-y-6">
                             {/* Connected Banner */}
@@ -389,6 +522,66 @@ export default function WhatsAppSetupPage() {
                         </div>
                     ) : (
                         <div className="space-y-6">
+                            {/* Hosted path — we own the number on Bookly's WABA, so Meta
+                                bills us and the tenant never needs a card Meta accepts. */}
+                            {status?.hostedAvailable && (
+                                <div className="p-5 rounded-xl border-2 border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/60 dark:bg-emerald-900/10 space-y-4">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-semibold text-slate-900 dark:text-white text-sm">
+                                                Use a Bookly number
+                                            </p>
+                                            <Badge variant="default">Recommended</Badge>
+                                        </div>
+                                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                                            We set the number up for you and handle the WhatsApp fees — you pay us
+                                            in one bill, by Mobile Money or card. No Facebook account needed.
+                                        </p>
+                                    </div>
+
+                                    <form onSubmit={startHosted} className="space-y-3">
+                                        <div className="flex gap-3">
+                                            <div className="w-28 shrink-0">
+                                                <DashboardInput
+                                                    label="Code"
+                                                    value={hostedForm.countryCode}
+                                                    onChange={(e) => setHostedForm({ ...hostedForm, countryCode: e.target.value })}
+                                                    placeholder="233"
+                                                    inputMode="numeric"
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <DashboardInput
+                                                    label="Business phone number"
+                                                    value={hostedForm.localNumber}
+                                                    onChange={(e) => setHostedForm({ ...hostedForm, localNumber: e.target.value })}
+                                                    placeholder="024 123 4567"
+                                                    inputMode="tel"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            This number must not already have WhatsApp on a phone. Use a spare
+                                            SIM, or delete WhatsApp on that number first.
+                                        </p>
+                                        <Button type="submit" disabled={hostedSubmitting}>
+                                            {hostedSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                                            Send me a code
+                                        </Button>
+                                    </form>
+                                </div>
+                            )}
+
+                            {status?.hostedAvailable && (
+                                <div className="flex items-center gap-3">
+                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                                    <span className="text-xs uppercase tracking-wider text-slate-400">or</span>
+                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                                </div>
+                            )}
+
                             {/* Not Connected Banner */}
                             <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-200 dark:border-slate-600">
                                 <div className="flex items-center gap-3">

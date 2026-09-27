@@ -11,6 +11,7 @@ import { cancelBooking } from './booking-cancel.js';
 import { generatePublicToken } from '../lib/public-token.js';
 import { initializeTransaction } from './paystack.js';
 import { tryReserveOutbound, rollbackOutboundReservation } from './usage.js';
+import { resolveCredentials, selectCredentialSource } from './whatsapp-credentials.js';
 
 /**
  * Thrown by `sendMessage` when the outbound message couldn't be delivered.
@@ -122,9 +123,13 @@ export class WhatsAppBotEngine {
     ) {
         this.prisma = prisma;
         this.tenantId = tenant.id;
-        // Decrypt the stored access token
-        this.accessToken = tenant.whatsappAccessToken ? decrypt(tenant.whatsappAccessToken) : '';
-        this.phoneNumberId = tenant.whatsappPhoneNumberId;
+        // Resolve sending credentials through the shared resolver: a hosted
+        // number has no per-tenant token and must use the platform one, so
+        // reading whatsappAccessToken directly here would make every hosted
+        // tenant silently mute.
+        const creds = resolveCredentials(selectCredentialSource(tenant));
+        this.accessToken = creds?.accessToken ?? '';
+        this.phoneNumberId = creds?.phoneNumberId ?? tenant.whatsappPhoneNumberId;
         this.businessType = tenant.businessType || 'SERVICE';
         this.tenantTimezone = tenant.timezone || 'UTC';
         this.paystackSecretKeyEncrypted = tenant.paystackSecretKey ?? null;

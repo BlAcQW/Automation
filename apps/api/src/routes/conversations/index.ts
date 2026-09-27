@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { decrypt } from '../../services/crypto.js';
 import { checkOutboundQuota, incrementMessageUsage } from '../../services/usage.js';
+import { resolveCredentials, selectCredentialSource } from '../../services/whatsapp-credentials.js';
 import {
     MESSAGE_TYPE,
     MediaError,
@@ -227,11 +228,12 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             where: { id: request.user.tenantId },
         });
 
-        if (tenant?.whatsappPhoneNumberId && tenant.whatsappAccessToken) {
+        const creds = resolveCredentials(selectCredentialSource(tenant));
+        if (creds) {
             try {
-                const accessToken = decrypt(tenant.whatsappAccessToken);
+                const accessToken = creds.accessToken;
                 const response = await fetch(
-                    `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+                    `https://graph.facebook.com/v21.0/${creds.phoneNumberId}/messages`,
                     {
                         method: 'POST',
                         headers: {
@@ -334,7 +336,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         const tenant = await fastify.prisma.tenant.findUnique({
             where: { id: request.user.tenantId },
         });
-        if (!tenant?.whatsappPhoneNumberId || !tenant.whatsappAccessToken) {
+        const mediaCreds = resolveCredentials(selectCredentialSource(tenant));
+        if (!mediaCreds) {
             throw fastify.httpErrors.badRequest('Connect your WhatsApp number before sending media.');
         }
 
@@ -353,11 +356,11 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Upload to Meta BEFORE persisting, so a rejected file never leaves a
         // message in the thread that the customer will not receive.
-        const accessToken = decrypt(tenant.whatsappAccessToken);
+        const accessToken = mediaCreds.accessToken;
         let mediaId: string;
         try {
             mediaId = await uploadToWhatsApp({
-                phoneNumberId: tenant.whatsappPhoneNumberId,
+                phoneNumberId: mediaCreds.phoneNumberId,
                 accessToken,
                 buffer,
                 mimeType: upload.mimetype,
@@ -386,7 +389,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         };
 
         const response = await fetch(
-            `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+            `https://graph.facebook.com/v21.0/${mediaCreds.phoneNumberId}/messages`,
             {
                 method: 'POST',
                 headers: {
@@ -537,7 +540,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         const tenant = await fastify.prisma.tenant.findUnique({
             where: { id: request.user.tenantId },
         });
-        if (!tenant?.whatsappPhoneNumberId || !tenant.whatsappAccessToken) {
+        const sendCreds = resolveCredentials(selectCredentialSource(tenant));
+        if (!sendCreds) {
             throw fastify.httpErrors.badRequest('Connect your WhatsApp number first.');
         }
 
@@ -582,9 +586,9 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             messageType = 'CONTACT';
         }
 
-        const accessToken = decrypt(tenant.whatsappAccessToken);
+        const accessToken = sendCreds.accessToken;
         const response = await fetch(
-            `https://graph.facebook.com/v21.0/${tenant.whatsappPhoneNumberId}/messages`,
+            `https://graph.facebook.com/v21.0/${sendCreds.phoneNumberId}/messages`,
             {
                 method: 'POST',
                 headers: {

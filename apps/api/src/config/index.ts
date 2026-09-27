@@ -100,6 +100,14 @@ const envSchema = z.object({
     OUTLOOK_CLIENT_SECRET: z.string().optional(),
     OUTLOOK_REDIRECT_URI: z.string().optional(),
 
+    // Phase 6 — Bookly-hosted WhatsApp numbers. When these are set, tenants
+    // can be onboarded onto Bookly's OWN WhatsApp Business Account, which
+    // means Meta bills Bookly (not the tenant) for their messages. Optional:
+    // unset simply disables the hosted path and leaves Embedded Signup as
+    // the only way to connect.
+    PLATFORM_WABA_ID: z.string().optional(),
+    PLATFORM_WHATSAPP_TOKEN: z.string().optional(),
+
     // Frontend
     FRONTEND_URL: z.string().optional(),
     NEXT_PUBLIC_API_URL: z.string().optional(),
@@ -168,6 +176,14 @@ export const config = {
         appSecret: env.WHATSAPP_APP_SECRET,
         webhookVerifyToken: env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
         redirectUri: env.WHATSAPP_REDIRECT_URI,
+    },
+
+    // Phase 6 — Bookly's own WABA, used to host tenant numbers so that Meta
+    // bills Bookly rather than each tenant. Mirrors the platformPaystack
+    // pattern: absent config disables the feature instead of crashing.
+    platformWhatsapp: {
+        wabaId: env.PLATFORM_WABA_ID,
+        accessToken: env.PLATFORM_WHATSAPP_TOKEN,
     },
 
     paystack: {

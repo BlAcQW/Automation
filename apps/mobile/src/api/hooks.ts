@@ -360,6 +360,24 @@ export interface ProfileInput {
   bookingCapacity?: number;
 }
 
+/**
+ * Break-glass reveal of one customer's real contact details.
+ *
+ * Every call is written to the tenant's audit log and counts against a
+ * per-user hourly cap, so this is deliberately a single-record action rather
+ * than something a screen calls on render.
+ */
+export function useRevealContact() {
+  return useMutation({
+    mutationFn: async (input: { scope: 'conversation' | 'booking' | 'order'; id: string }) =>
+      (await api.post('/privacy/reveal', input)).data as {
+        customerName: string | null;
+        customerPhone: string | null;
+        customerEmail: string | null;
+      },
+  });
+}
+
 export function useUpdateProfile() {
   return useMutation({
     mutationFn: async (input: ProfileInput) => (await api.patch('/auth/profile', input)).data,

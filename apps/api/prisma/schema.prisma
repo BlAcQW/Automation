@@ -79,6 +79,15 @@ model Tenant {
   // is never masked. Staff who genuinely need a number use the audited,
   // rate-limited reveal endpoint.
   maskCustomerContact      Boolean    @default(true)
+  // Facebook Page + Instagram. One Page access token serves both, because
+  // Instagram messaging is delivered through the Page the IG professional
+  // account is linked to. Unlike WhatsApp, Meta charges nothing per message on
+  // either channel and needs no payment method.
+  facebookPageId           String?    @unique
+  facebookPageName         String?
+  facebookPageToken        String?    // Encrypted
+  instagramUserId          String?    @unique
+  instagramUsername        String?
   // The owner asked for the account to be deleted. A person confirms and
   // removes the tenant; this records the ask and shows it in Settings.
   deletionRequestedAt      DateTime?
@@ -325,7 +334,19 @@ enum BookingStatus {
 model Conversation {
   id              String            @id @default(cuid())
   tenantId        String
-  customerPhone   String
+  // Which inbox this conversation lives in. WhatsApp is the default so every
+  // existing row keeps its meaning without a backfill decision.
+  channel         ConversationChannel @default(WHATSAPP)
+  // The customer's id ON THAT CHANNEL: the phone number for WhatsApp, an
+  // Instagram-scoped id (IGSID) or a Page-scoped id (PSID) otherwise. This,
+  // not the phone, is what identifies a conversation now.
+  externalId      String
+  // Nullable since Instagram and Messenger give us no phone number. A booking
+  // still needs one, so the bot asks for it on those channels — which it has
+  // to anyway, because reminders there can only go out over SMS.
+  customerPhone   String?
+  // @username, Instagram only. Display aid; never an addressing key.
+  customerHandle  String?
   customerName    String?
   state           ConversationState @default(BOT_ACTIVE)
   botContext      Json?             // Current bot flow state
@@ -341,10 +362,17 @@ model Conversation {
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   messages Message[]
 
-  @@unique([tenantId, customerPhone])
+  @@unique([tenantId, channel, externalId])
   @@index([tenantId])
   @@index([customerPhone])
   @@index([tenantId, lastInboundAt])
+  @@index([tenantId, channel])
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  INSTAGRAM
+  MESSENGER
 }
 
 enum ConversationState {

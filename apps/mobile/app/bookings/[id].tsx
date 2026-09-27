@@ -7,6 +7,8 @@ import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, Button, EmptyState } from '@/components/ui';
 import { bookingStatusLabel, bookingStatusTone, formatDateTime, paymentTone } from '@/lib/format';
 import { useBottomInset } from '@/lib/layout';
+import { MaskedContact } from '@/components/MaskedContact';
+import { useRevealContact } from '@/api/hooks';
 
 function serviceName(b: Booking): string {
   return b.serviceName || b.service?.name || 'Service';
@@ -29,6 +31,7 @@ function Row({ label, value }: { label: string; value: string }) {
 export default function BookingDetail() {
   const t = useTheme();
   const bottomInset = useBottomInset();
+  const reveal = useRevealContact();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data } = useBookings();
   const booking = data?.find((b) => b.id === String(id));
@@ -54,6 +57,19 @@ export default function BookingDetail() {
     if (res?.authorizationUrl) Linking.openURL(res.authorizationUrl);
   }
 
+  async function openWhatsApp() {
+    if (!booking) return;
+    // A masked viewer must go through reveal first, so the access is recorded
+    // and the link is built from a real number rather than bullet characters.
+    let phone = booking.customerPhone;
+    if (booking.contactMasked) {
+      const res = await reveal.mutateAsync({ scope: 'booking', id: booking.id }).catch(() => null);
+      if (!res?.customerPhone) return;
+      phone = res.customerPhone;
+    }
+    Linking.openURL(`https://wa.me/${phone.replace(/\D/g, '')}`);
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
       <AppHeader title={booking.customerName} subtitle={`Ref ${booking.bookingReference}`} />
@@ -75,7 +91,15 @@ export default function BookingDetail() {
           <View style={{ height: 0.5, backgroundColor: t.colors.divider }} />
           <Row label="Customer" value={booking.customerName} />
           <View style={{ height: 0.5, backgroundColor: t.colors.divider }} />
-          <Row label="Phone" value={booking.customerPhone} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: t.space.lg, paddingVertical: t.space.sm }}>
+            <Text variant="bodySm" tone="muted">Phone</Text>
+            <MaskedContact
+              value={booking.customerPhone}
+              masked={booking.contactMasked}
+              scope="booking"
+              recordId={booking.id}
+            />
+          </View>
           <View style={{ height: 0.5, backgroundColor: t.colors.divider }} />
           <Row label="Reference" value={booking.bookingReference} />
         </Card>
@@ -95,7 +119,7 @@ export default function BookingDetail() {
             icon="logo-whatsapp"
             variant="secondary"
             fullWidth
-            onPress={() => Linking.openURL(`https://wa.me/${booking.customerPhone.replace(/\D/g, '')}`)}
+            onPress={openWhatsApp}
           />
           {canPay ? (
             <Button

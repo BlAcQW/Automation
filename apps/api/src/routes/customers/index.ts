@@ -55,6 +55,8 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
                 select: {
                     id: true, // real conversation id — the reveal endpoint resolves on this
                     customerPhone: true,
+                    customerHandle: true,
+                    channel: true,
                     customerName: true,
                     updatedAt: true, // Last active
                 },
@@ -75,7 +77,11 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // 2. Get stats for these specific phones
-        const phones = conversations.map(c => c.customerPhone);
+        // Instagram and Messenger conversations have no phone, so they simply
+        // carry no order/booking history to join on.
+        const phones = conversations
+            .map(c => c.customerPhone)
+            .filter((p): p is string => !!p);
 
         const [orderCounts, bookingCounts] = await Promise.all([
             fastify.prisma.order.groupBy({
@@ -99,18 +105,21 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
 
         // 3. Merge data
         const customers = conversations.map(c => {
-            const orders = orderCounts.find(o => o.customerPhone === c.customerPhone);
-            const bookings = bookingCounts.find(b => b.customerPhone === c.customerPhone);
+            const phone = c.customerPhone;
+            const orders = phone ? orderCounts.find(o => o.customerPhone === phone) : undefined;
+            const bookings = phone ? bookingCounts.find(b => b.customerPhone === phone) : undefined;
 
             return {
                 // The id is only a list key on the client. Handing over the raw
                 // phone here would undo the masking two lines below.
-                id: mask ? phoneKey(c.customerPhone) : c.customerPhone,
+                id: mask ? phoneKey(phone ?? c.id) : (phone ?? c.id),
                 // Separate from `id`, which is only a list key: reveal has to
                 // address a real record, and the masked id is a one-way hash.
                 conversationId: c.id,
                 name: c.customerName || 'Unknown',
-                phone: mask ? maskPhone(c.customerPhone) : c.customerPhone,
+                phone: phone ? (mask ? maskPhone(phone) : phone) : null,
+                handle: c.customerHandle ?? null,
+                channel: c.channel,
                 contactMasked: mask,
                 lastActive: c.updatedAt,
                 totalOrders: orders?._count || 0,

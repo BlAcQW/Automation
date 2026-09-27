@@ -9,6 +9,8 @@ export interface Conversation {
   id: string;
   customerName?: string | null;
   customerPhone: string;
+  /** Server masked the contact for this viewer (STAFF). */
+  contactMasked?: boolean;
   state: ConversationState;
   lastMessage?: string | null;
   lastMessageAt?: string | null;
@@ -68,6 +70,8 @@ export interface Booking {
   id: string;
   customerName: string;
   customerPhone: string;
+  /** Server masked the contact for this viewer (STAFF). */
+  contactMasked?: boolean;
   serviceName?: string | null;
   service?: { name?: string } | null;
   startTime: string;
@@ -177,6 +181,8 @@ export interface Order {
   orderRef: string;
   customerName: string;
   customerPhone: string;
+  /** Server masked the contact for this viewer (STAFF). */
+  contactMasked?: boolean;
   totalAmount: number | string;
   status: OrderStatus;
   paymentStatus?: PaymentStatus;

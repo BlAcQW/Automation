@@ -24,6 +24,7 @@ import {
     resolveCredentials,
     selectCredentialSource,
 } from '../../services/whatsapp-credentials.js';
+import { resolveConversation } from '../../services/conversation-resolver.js';
 import { publish } from '../../services/realtime.js';
 
 /**
@@ -878,31 +879,15 @@ async function processMessage(
         });
     }
 
-    // Find or create conversation
-    let conversation = await fastify.prisma.conversation.findUnique({
-        where: {
-            tenantId_customerPhone: {
-                tenantId: tenant.id,
-                customerPhone,
-            },
-        },
+    // Find or create conversation. On WhatsApp the phone IS the channel
+    // identity, so it is both externalId and the stored phone.
+    const conversation = await resolveConversation(fastify.prisma, {
+        tenantId: tenant.id,
+        channel: 'WHATSAPP',
+        externalId: customerPhone,
+        customerPhone,
+        customerName,
     });
-
-    if (!conversation) {
-        conversation = await fastify.prisma.conversation.create({
-            data: {
-                tenantId: tenant.id,
-                customerPhone,
-                customerName,
-                state: 'BOT_ACTIVE',
-            },
-        });
-    } else if (customerName && !conversation.customerName) {
-        await fastify.prisma.conversation.update({
-            where: { id: conversation.id },
-            data: { customerName },
-        });
-    }
 
     // Idempotency: Meta retries webhooks aggressively. If we've already stored
     // this whatsappMsgId on this conversation, drop the duplicate before

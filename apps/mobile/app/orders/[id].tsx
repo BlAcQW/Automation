@@ -7,6 +7,8 @@ import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, Button, EmptyState } from '@/components/ui';
 import { formatDateTime, nextOrderStatus, orderStatusLabel, orderStatusTone, paymentTone } from '@/lib/format';
 import { useBottomInset } from '@/lib/layout';
+import { MaskedContact } from '@/components/MaskedContact';
+import { useRevealContact } from '@/api/hooks';
 
 function Row({ label, value }: { label: string; value: string }) {
   const t = useTheme();
@@ -25,6 +27,7 @@ function Row({ label, value }: { label: string; value: string }) {
 export default function OrderDetail() {
   const t = useTheme();
   const bottomInset = useBottomInset();
+  const reveal = useRevealContact();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data } = useOrders();
   const order: Order | undefined = data?.find((o) => o.id === String(id));
@@ -41,6 +44,19 @@ export default function OrderDetail() {
 
   const next = nextOrderStatus(order.status);
   const canCancel = order.status !== 'CANCELLED' && order.status !== 'DELIVERED';
+
+  async function openWhatsApp() {
+    if (!order) return;
+    // A masked viewer must go through reveal first, so the access is recorded
+    // and the link is built from a real number rather than bullet characters.
+    let phone = order.customerPhone;
+    if (order.contactMasked) {
+      const res = await reveal.mutateAsync({ scope: 'order', id: order.id }).catch(() => null);
+      if (!res?.customerPhone) return;
+      phone = res.customerPhone;
+    }
+    Linking.openURL(`https://wa.me/${phone.replace(/\D/g, '')}`);
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: t.colors.background }}>
@@ -79,7 +95,15 @@ export default function OrderDetail() {
           <View style={{ height: 0.5, backgroundColor: t.colors.divider }} />
           <Row label="Placed" value={formatDateTime(order.createdAt)} />
           <View style={{ height: 0.5, backgroundColor: t.colors.divider }} />
-          <Row label="Phone" value={order.customerPhone} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: t.space.lg, paddingVertical: t.space.sm }}>
+            <Text variant="bodySm" tone="muted">Phone</Text>
+            <MaskedContact
+              value={order.customerPhone}
+              masked={order.contactMasked}
+              scope="order"
+              recordId={order.id}
+            />
+          </View>
           {order.deliveryAddress ? (
             <>
               <View style={{ height: 0.5, backgroundColor: t.colors.divider }} />
@@ -103,7 +127,7 @@ export default function OrderDetail() {
             icon="logo-whatsapp"
             variant="secondary"
             fullWidth
-            onPress={() => Linking.openURL(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}`)}
+            onPress={openWhatsApp}
           />
           {canCancel ? (
             <Button label="Cancel order" variant="danger" fullWidth onPress={() => updateStatus.mutate('CANCELLED')} />

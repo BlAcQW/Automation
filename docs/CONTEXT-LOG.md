@@ -61,6 +61,15 @@
 
 ## Session Log (newest first)
 
+### 2026-09-27 (later still) — Positioning brief: what Bookly actually sells
+- **[docs/strategy/what-bookly-sells.html](./strategy/what-bookly-sells.html) → `.pdf`** (6 pages). Supersedes the earlier plan-tier drafts: value first, price later.
+- **The core reframe: we sell a receptionist, not software.** The customer isn't comparing us to booking apps (they use none) — they're comparing us to hiring someone, or to money already lost. That sets the price anchor and it's a sentence a barber understands.
+- Covers the five jobs in the order the customer feels them (answering while busy wins the customer; deposits and reminders keep them), who it fits and who it doesn't, the real competitive set (a notebook, a human receptionist, manual DMs — none of which charge monthly), the no-show arithmetic, and ready-made lines for landing/bio/objections.
+- **Biggest finding, and the brief's main recommendation:** `/dashboard/stats` returns four counts and **not one cedi figure**. We ask people to pay for value they can't see. A panel showing deposits collected / bookings taken while busy / messages answered would justify price, drive referral (it's what gets screenshotted) and prevent month-three churn. Highest-leverage thing to build.
+- Pricing deliberately left open until that panel exists, so the number can be argued from evidence.
+
+
+
 ### 2026-09-27 (later) — Concurrent booking capacity (a 3-chair salon is no longer a 1-chair salon)
 - **The bug, found while brainstorming pricing.** There is no staff dimension anywhere: `Booking` has no `staffId` and `WorkingHours` is `@@unique([tenantId, dayOfWeek])`. So the availability engine modelled every business as **one resource** — a salon with three chairs was only ever offered one booking per slot and was invisibly losing two thirds of its capacity. Not cosmetic; real revenue.
 - **Fix:** `Tenant.bookingCapacity Int @default(1)` — chairs, rooms, bays. Default 1 reproduces the old behaviour exactly, so no existing tenant changes until they raise it.

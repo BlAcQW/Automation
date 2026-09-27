@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What Bookly Sells</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  :root{
+    --ink:#10201C; --body:#2C3B36; --muted:#66776F; --hair:#DCE4E0;
+    --accent:#0F6E5C; --ochre:#9A7220; --wash:#F2F7F5; --ochrewash:#FBF5E8;
+    --sans:"Archivo",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:var(--sans);color:var(--body);font-size:10.8pt;line-height:1.6;}
+
+  .eyebrow{font-family:var(--mono);font-size:8.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 8px;}
+  h1{font-size:34pt;line-height:1.02;letter-spacing:-.03em;color:var(--ink);margin:0 0 12px;font-weight:700;}
+  .stand{font-size:13pt;line-height:1.45;color:var(--muted);margin:0;max-width:34em;}
+  .meta{font-family:var(--mono);font-size:8.5pt;color:var(--muted);margin-top:14px;padding-top:10px;border-top:1px solid var(--hair);}
+
+  h2{font-size:16pt;letter-spacing:-.018em;color:var(--ink);margin:30px 0 4px;font-weight:600;}
+  h2 .num{font-family:var(--mono);font-size:9pt;color:var(--accent);display:block;letter-spacing:.14em;margin-bottom:5px;font-weight:500;}
+  h3{font-size:11.5pt;color:var(--ink);margin:18px 0 3px;font-weight:600;}
+  p{margin:8px 0;}
+  strong{color:var(--ink);font-weight:600;}
+
+  .lede{font-size:12pt;line-height:1.5;color:var(--ink);}
+
+  .claim{
+    border-left:3px solid var(--accent);background:var(--wash);
+    padding:16px 20px;margin:16px 0;border-radius:0 8px 8px 0;
+  }
+  .claim p{margin:0;font-size:13pt;line-height:1.4;color:var(--ink);font-weight:500;}
+  .claim .sub{font-size:10pt;color:var(--muted);margin-top:8px;font-weight:400;}
+
+  .flag{
+    border:1px solid #E8CF9A;background:var(--ochrewash);
+    padding:14px 18px;margin:14px 0;border-radius:8px;
+  }
+  .flag .tag{font-family:var(--mono);font-size:8pt;letter-spacing:.14em;text-transform:uppercase;color:var(--ochre);display:block;margin-bottom:5px;}
+  .flag p{margin:0;}
+
+  ol.jobs{list-style:none;counter-reset:j;padding:0;margin:14px 0;}
+  ol.jobs li{counter-increment:j;display:grid;grid-template-columns:30px 1fr;gap:12px;margin:12px 0;}
+  ol.jobs li::before{
+    content:counter(j);font-family:var(--mono);font-size:11pt;color:var(--accent);
+    border:1.5px solid var(--accent);border-radius:50%;width:26px;height:26px;
+    display:flex;align-items:center;justify-content:center;font-weight:500;
+  }
+  ol.jobs b{color:var(--ink);}
+
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:10pt;}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--hair);vertical-align:top;}
+  th{font-family:var(--mono);font-size:8.5pt;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--ink);}
+  td.who{color:var(--ink);font-weight:600;width:30%;}
+
+  .say{border:1px solid var(--hair);border-radius:8px;padding:0;margin:12px 0;overflow:hidden;}
+  .say .row{display:grid;grid-template-columns:110px 1fr;border-bottom:1px solid var(--hair);}
+  .say .row:last-child{border-bottom:none;}
+  .say .k{font-family:var(--mono);font-size:8.5pt;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:12px;background:#FAFCFB;}
+  .say .v{padding:12px;color:var(--ink);}
+
+  .sums{font-family:var(--mono);font-size:10pt;background:#FAFCFB;border:1px solid var(--hair);border-radius:8px;padding:14px 18px;margin:12px 0;}
+  .sums div{display:flex;justify-content:space-between;padding:3px 0;}
+  .sums .tot{border-top:1px solid var(--hair);margin-top:6px;padding-top:8px;color:var(--ink);font-weight:500;}
+
+  .foot{margin-top:26px;padding-top:12px;border-top:1px solid var(--hair);font-family:var(--mono);font-size:8.5pt;color:var(--muted);line-height:1.7;}
+  .pb{page-break-before:always;}
+  .nobreak{page-break-inside:avoid;}
+</style>
+</head>
+<body>
+
+<p class="eyebrow">Bookly · Positioning brief</p>
+<h1>What Bookly sells</h1>
+<p class="stand">Before the price list, the product. What a salon owner in Accra is actually buying, what it replaces, and the one thing missing that would make it obvious.</p>
+<p class="meta">September 2026 · written for go-to-market · supersedes earlier plan-tier drafts</p>
+
+<h2><span class="num">01</span>The answer in one word</h2>
+
+<div class="claim">
+  <p>You are selling a receptionist.</p>
+  <p class="sub">Not software. Not "AI automation". Not "the WhatsApp Business API".</p>
+</div>
+
+<p class="lede">That reframe is not cosmetic — it sets the price anchor.</p>
+
+<p>Your customer is not comparing Bookly to other booking apps, because they don't use one. They are comparing it to <strong>hiring someone</strong>, or to <strong>the money already walking out of the door</strong>. A receptionist in Accra costs a real salary every month, takes lunch, and goes home at six. Bookly is a fraction of that and never stops answering.</p>
+
+<p>It is also a sentence a barber understands in three seconds. "A receptionist for your WhatsApp" lands. "Multi-tenant WhatsApp booking automation" does not.</p>
+
+<h2><span class="num">02</span>The five jobs it does</h2>
+
+<p>In the order the customer feels them, not the order they were built.</p>
+
+<ol class="jobs">
+  <li><div><b>Answers while you're working.</b> Mid-haircut you cannot reply, and that customer messages the next salon down the road. The assistant replies instantly, at any hour.</div></li>
+  <li><div><b>Only offers times you are genuinely free.</b> It checks your opening hours, your blackout dates, your existing bookings and how many customers you can serve at once. It cannot promise something your diary can't honour.</div></li>
+  <li><div><b>Takes money before they arrive.</b> A deposit by Mobile Money or card. The slot is held for 30 minutes and released if nobody pays.</div></li>
+  <li><div><b>Chases the no-show.</b> Automatic reminders before the appointment.</div></li>
+  <li><div><b>Keeps one diary.</b> Replaces the notebook and the "I think I have someone at two".</div></li>
+</ol>
+
+<p><strong>Job 1 wins the customer.</strong> It's the pain they feel every working day, and it's what makes them try it.</p>
+<p><strong>Jobs 3 and 4 keep the customer.</strong> That's where the money is, and it's the reason they're still paying in month six.</p>
+
+<h2><span class="num">03</span>Who it is for</h2>
+
+<table>
+  <tr><th>Fits</th><th>Why</th></tr>
+  <tr><td class="who">Appointment businesses</td><td>Salons, barbers, nail and lash techs, spas, dental and aesthetic clinics, physios, tutors, trainers, photographers, mechanics. Anything where time is the inventory.</td></tr>
+  <tr><td class="who">One to eight people</td><td>Big enough to lose bookings while busy, too small to employ a receptionist.</td></tr>
+  <tr><td class="who">Already living in WhatsApp</td><td>Customers message them there today. Bookly improves an existing habit rather than asking for a new one.</td></tr>
+</table>
+
+<table>
+  <tr><th>Doesn't fit (yet)</th><th>Why</th></tr>
+  <tr><td class="who">Walk-in-only trade</td><td>No appointments, nothing to book.</td></tr>
+  <tr><td class="who">Businesses needing "book with a named person"</td><td>There is no per-staff booking yet. A customer cannot ask for Ama specifically.</td></tr>
+  <tr><td class="who">Mobile-Money-only businesses</td><td>Meta requires a card or PayPal to bill for messages, and does not accept MoMo. Until that's solved, these can't complete setup.</td></tr>
+</table>
+
+<h2 class="pb"><span class="num">04</span>What you are really competing with</h2>
+
+<p>Not other SaaS. Your honest competitive set is:</p>
+
+<table>
+  <tr><th>Alternative</th><th>What it costs them</th></tr>
+  <tr><td class="who">A notebook and their own thumbs</td><td>Free, and it mostly works — which is exactly why "cheaper than X" is a weak pitch. You need "earns you more than X."</td></tr>
+  <tr><td class="who">A human receptionist</td><td>A monthly salary. This is your true price anchor for a shop with a few chairs.</td></tr>
+  <tr><td class="who">Answering DMs manually</td><td>Lost bookings and lost evenings. The status quo you are displacing.</td></tr>
+</table>
+
+<p>None of those charge a monthly fee. So the price has to be justified by <strong>recovered revenue</strong>, never by a feature comparison.</p>
+
+<h2><span class="num">05</span>The arithmetic that sells it</h2>
+
+<p>The pitch writes itself, as long as it's in their numbers rather than yours.</p>
+
+<div class="sums nobreak">
+  <div><span>Three no-shows a week</span><span>× GHS 50</span></div>
+  <div><span>Per month</span><span>≈ GHS 600 lost</span></div>
+  <div><span>Bookings missed while mid-service</span><span>harder to count, usually worse</span></div>
+  <div class="tot"><span>Anything priced below that</span><span>is obviously worth paying</span></div>
+</div>
+
+<p class="small">Figures are illustrative — the point is the shape. Ask an owner for their own two numbers and the maths does the selling.</p>
+
+<h2><span class="num">06</span>The hole in the story</h2>
+
+<div class="flag">
+  <span class="tag">The gap worth closing first</span>
+  <p><strong>The product cannot currently prove it works.</strong> The dashboard returns four counts — total bookings, today's bookings, active chats, total customers. Not one cedi figure. No deposits collected, no bookings taken outside working hours, no reminders sent.</p>
+</div>
+
+<p>You are asking people to pay for value they cannot see. A single panel changes that:</p>
+
+<div class="claim">
+  <p>This month: GHS 2,400 in deposits collected · 43 bookings taken while you were busy · 118 messages answered for you</p>
+</div>
+
+<p>That one panel does three jobs at once. It <strong>justifies any price without you arguing</strong>. It is <strong>what the owner screenshots</strong> and sends to another salon owner, which is your cheapest growth channel. And it is <strong>what stops them cancelling in month three</strong>, when the novelty has worn off and they've forgotten what it was like before.</p>
+
+<p>If only one thing gets built off the back of this brief, it should be this.</p>
+
+<h2><span class="num">07</span>What you are no longer selling</h2>
+
+<p><strong>Messages.</strong> You don't supply them — Meta does, and bills the business directly. Selling "5,000 messages" is what creates the confusion of two bills from two companies.</p>
+
+<p>Turn it into a trust line instead, the way the stronger players do:</p>
+
+<div class="claim">
+  <p>"You pay Meta's own rates directly. We don't add a cent on top."</p>
+  <p class="sub">A transparency advantage, not an apology.</p>
+</div>
+
+<h2 class="pb"><span class="num">08</span>How to say it</h2>
+
+<p>One positioning statement, then the same idea cut to length for each place it has to live.</p>
+
+<div class="claim">
+  <p>Bookly is a receptionist for your WhatsApp. It answers customers when you're busy, books them into times you're really free, and takes a deposit so they actually show up.</p>
+</div>
+
+<div class="say">
+  <div class="row"><div class="k">In person</div><div class="v">"You know when you're cutting and your phone keeps buzzing? It answers for you — and takes the deposit."</div></div>
+  <div class="row"><div class="k">Landing hero</div><div class="v">Never lose a booking because you were busy.</div></div>
+  <div class="row"><div class="k">WhatsApp bio</div><div class="v">Book me here — replies instantly, even when I'm with a client.</div></div>
+  <div class="row"><div class="k">Objection: "I reply myself"</div><div class="v">"At two in the morning? On Sunday? While you're mid-service?"</div></div>
+  <div class="row"><div class="k">Objection: "Too expensive"</div><div class="v">"How many no-shows last week? What do you charge?" Then wait.</div></div>
+</div>
+
+<h2><span class="num">09</span>What the story needs next</h2>
+
+<table>
+  <tr><th>Build</th><th>Which part of the pitch it unlocks</th></tr>
+  <tr><td class="who">The value panel</td><td>Turns "it helps" into a number. Justifies price, drives referral, prevents churn. Highest leverage by a distance.</td></tr>
+  <tr><td class="who">Per-staff booking</td><td>"Book with Ama." Opens shops with several stylists and is the natural reason for a bigger business to pay more.</td></tr>
+  <tr><td class="who">A local billing rail</td><td>Until this exists, every Mobile-Money-only business is disqualified at setup — probably most of the market.</td></tr>
+</table>
+
+<p class="foot">
+Positioning brief, September 2026. Supersedes the earlier plan-tier drafts — pricing should be set after the value panel exists, so the number can be argued from evidence rather than from guesswork.<br>
+Currency figures are illustrative. Product facts reflect the codebase as of this date.
+</p>
+
+</body>
+</html>

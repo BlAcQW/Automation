@@ -61,6 +61,20 @@
 
 ## Session Log (newest first)
 
+### 2026-09-27 (night) — Instagram + Messenger channels
+- **One webhook, three channels.** Meta posts all of them to the same verified URL and distinguishes by `object`. The gate at [whatsapp/index.ts](../apps/api/src/routes/whatsapp/index.ts) now routes `page`/`instagram` to `processMessagingWebhook` — an entirely different payload shape (`entry[].messaging[]`, scoped sender ids, no phone anywhere). Echoes are dropped or the bot replies to itself forever; duplicate deliveries are deduped on the provider message id because Meta retries.
+- **[services/channel-send.ts](../apps/api/src/services/channel-send.ts)** — one send path. WhatsApp keeps its own envelope; Messenger and Instagram share the Send API one. `buildTextRequest` is split out and unit-tested because these envelopes fail only at runtime. `supportsOutOfWindowMessaging()` encodes the trap: **only WhatsApp can message after the 24-hour window**, so reminders on IG/Messenger must fall back to SMS.
+- **[services/meta-pages.ts](../apps/api/src/services/meta-pages.ts) + [routes/channels](../apps/api/src/routes/channels/index.ts)** — connect is deliberately **two steps**: discover Pages, then the tenant picks. Auto-taking the first Page is how the wrong business gets wired to someone else's bookings. The selection token carries a live Page token, so it expires after 15 minutes, and a Page already bound to another tenant is rejected (inbound routes by Page id).
+- **One Page token serves both channels** — Instagram messaging is delivered through the linked Page, so there is a single OAuth journey and a single consent screen.
+- **Neither channel costs anything.** No per-message fee, no payment method, no templates. A Mobile-Money-only business that cannot complete WhatsApp billing **can use these today** — which is the real significance, given the Meta billing wall.
+- **UI:** new [/channels](../apps/web/src/app/channels/page.tsx) page (replaces WhatsApp in the sidebar; WhatsApp keeps its own setup screen and is linked from a card). Owner-gated, states per channel, Page picker modal, and it states plainly that reminders are WhatsApp-only.
+- **Tests:** 5 new on the send envelopes. Suite **269 passing / 30 files**. Both apps build; migration applied earlier in the session.
+- ⚠️ **Cannot go live until App Review** approves `pages_messaging` + `instagram_manage_messages`. Everything is built and dormant, same posture as the hosted WABA.
+- ⚠️ **Booking from IG/Messenger has no phone number.** `Booking.customerPhone` is still required, correctly — the bot must ask for one, which it needs anyway for Paystack and for SMS reminders. **The agent does not yet ask.** That is the next piece of work before these channels are genuinely usable.
+- **Trap recorded:** the old find-or-create referenced the composite unique inline and `tsc` did **not** flag it when the key changed, because the tenant-guard `$extends` widens the Prisma client. Resolution now lives in [conversation-resolver.ts](../apps/api/src/services/conversation-resolver.ts) with an explicit return type, which caught the very next mistake.
+
+
+
 ### 2026-09-27 (evening) — Customer contacts masked from staff
 - **Why.** A tenant's customer list is the most valuable thing in their account, and any STAFF user could read and copy every phone number from the dashboard. The book left with them when they did.
 - **[services/contact-privacy.ts](../apps/api/src/services/contact-privacy.ts)** — pure masking (`maskPhone` → `+••••••••4567`, `maskHandle`, `maskEmail`). **Name is never masked** (staff need it; it isn't a channel). **Fails closed:** an unrecognised role is masked, not trusted.

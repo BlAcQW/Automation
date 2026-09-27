@@ -22,7 +22,7 @@ import {
     Boxes,
     Smartphone,
     FileText,
-    ChevronRight,
+    ChevronRight, Share2,
 } from 'lucide-react';
 
 const serviceNavigation = [
@@ -31,7 +31,7 @@ const serviceNavigation = [
     { name: 'Services', href: '/services', icon: Scissors },
     { name: 'Availability', href: '/availability', icon: Clock },
     { name: 'Conversations', href: '/conversations', icon: MessageCircle },
-    { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+    { name: 'Channels', href: '/channels', icon: Share2 },
     { name: 'Templates', href: '/templates', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -43,7 +43,7 @@ const productNavigation = [
     { name: 'Inventory', href: '/inventory', icon: Boxes },
     { name: 'Customers', href: '/customers', icon: Users },
     { name: 'Conversations', href: '/conversations', icon: MessageCircle },
-    { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+    { name: 'Channels', href: '/channels', icon: Share2 },
     { name: 'Templates', href: '/templates', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];

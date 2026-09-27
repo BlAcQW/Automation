@@ -25,6 +25,7 @@ import {
     selectCredentialSource,
 } from '../../services/whatsapp-credentials.js';
 import { resolveConversation } from '../../services/conversation-resolver.js';
+import { sendChannelText, resolveChannelCredentials } from '../../services/channel-send.js';
 import { publish } from '../../services/realtime.js';
 
 /**
@@ -756,11 +757,175 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
     });
 };
 
+/**
+ * Messenger / Instagram webhook payload. Nothing like the WhatsApp one: the
+ * sender is a scoped id, there is no phone anywhere, and messages arrive under
+ * `messaging` rather than `changes`.
+ */
+interface MessagingWebhookPayload {
+    object: string;
+    entry: Array<{
+        /** Page id for Messenger; IG user id for Instagram. */
+        id: string;
+        time?: number;
+        messaging?: Array<{
+            sender?: { id?: string };
+            recipient?: { id?: string };
+            timestamp?: number;
+            message?: {
+                mid?: string;
+                text?: string;
+                is_echo?: boolean;
+                attachments?: Array<{ type?: string }>;
+            };
+        }>;
+    }>;
+}
+
+/**
+ * Handle an inbound Instagram DM or Messenger message.
+ *
+ * Routing is by the receiving account, not the sender: Messenger identifies the
+ * business by Page id, Instagram by IG user id, and both are unique per tenant.
+ */
+async function processMessagingWebhook(
+    fastify: any,
+    payload: MessagingWebhookPayload,
+    channel: 'INSTAGRAM' | 'MESSENGER',
+) {
+    for (const entry of payload.entry ?? []) {
+        const tenant = await fastify.prisma.tenant.findFirst({
+            where: channel === 'INSTAGRAM'
+                ? { instagramUserId: entry.id }
+                : { facebookPageId: entry.id },
+        });
+
+        if (!tenant) {
+            fastify.log.warn({ accountId: entry.id, channel }, 'No tenant for messaging account');
+            continue;
+        }
+
+        for (const event of entry.messaging ?? []) {
+            // Echoes are our own outbound messages coming back. Handling them
+            // would have the bot reply to itself, forever.
+            if (event.message?.is_echo) continue;
+
+            const senderId = event.sender?.id;
+            const text = event.message?.text;
+            if (!senderId || !text) continue;
+
+            await processChannelMessage(fastify, tenant, {
+                channel,
+                senderId,
+                text,
+                providerMessageId: event.message?.mid,
+            });
+        }
+    }
+}
+
+/**
+ * Store and answer one inbound Instagram DM or Messenger message.
+ *
+ * Deliberately thinner than the WhatsApp path: there are no templates, no read
+ * receipts and no media handling on these channels yet, and no per-message fee
+ * to Meta either. What it shares is everything that matters — the same
+ * conversation model, the same agent, the same booking tools.
+ */
+async function processChannelMessage(
+    fastify: any,
+    tenant: any,
+    input: {
+        channel: 'INSTAGRAM' | 'MESSENGER';
+        senderId: string;
+        text: string;
+        providerMessageId?: string;
+    },
+) {
+    const conversation = await resolveConversation(fastify.prisma, {
+        tenantId: tenant.id,
+        channel: input.channel,
+        externalId: input.senderId,
+    });
+
+    // Duplicate delivery is normal — Meta retries. The provider id is unique
+    // per message, so it is what tells a retry from a genuinely new message.
+    if (input.providerMessageId) {
+        const seen = await fastify.prisma.message.findFirst({
+            where: { conversationId: conversation.id, whatsappMsgId: input.providerMessageId },
+            select: { id: true },
+        });
+        if (seen) return;
+    }
+
+    await fastify.prisma.message.create({
+        data: {
+            conversationId: conversation.id,
+            direction: 'INBOUND',
+            content: input.text,
+            messageType: 'TEXT',
+            whatsappMsgId: input.providerMessageId ?? null,
+            metadata: { channel: input.channel },
+        },
+    });
+
+    // Opens the 24-hour reply window. It applies on these channels too, but
+    // without a template escape hatch once it closes.
+    await fastify.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastInboundAt: new Date() },
+    });
+
+    publish(tenant.id, { type: 'message', conversationId: conversation.id });
+
+    // A human has taken over — stay out of the way.
+    if (conversation.state === 'HUMAN_ACTIVE') return;
+
+    const { isLlmEnabled } = await import('../../services/llm-agent.js');
+    if (!isLlmEnabled()) {
+        fastify.log.warn(
+            { channel: input.channel },
+            'No LLM configured — Instagram/Messenger have no menu-bot fallback',
+        );
+        return;
+    }
+
+    try {
+        await handleWithAgent(
+            fastify,
+            tenant,
+            conversation,
+            // No phone on these channels until the bot asks for one; the agent
+            // uses this only to look up past bookings, which correctly finds
+            // none for a first-time Instagram customer.
+            '',
+            input.text,
+            input.channel,
+            input.senderId,
+        );
+    } catch (err) {
+        fastify.log.error({ err, channel: input.channel }, 'Agent failed on messaging channel');
+    }
+}
+
 // Process incoming webhook
 async function processWebhook(
     fastify: any,
     payload: WhatsAppWebhookPayload
 ) {
+    // Meta posts all three channels to this one verified URL and tells them
+    // apart by `object`. Messenger and Instagram use an entirely different
+    // payload shape (entry[].messaging[] rather than entry[].changes[]), so
+    // they get their own handler.
+    if (payload.object === 'page' || payload.object === 'instagram') {
+        await processMessagingWebhook(
+            fastify,
+            payload as unknown as MessagingWebhookPayload,
+            payload.object === 'instagram' ? 'INSTAGRAM' : 'MESSENGER',
+        );
+        return;
+    }
+
     if (payload.object !== 'whatsapp_business_account') {
         return;
     }
@@ -1068,6 +1233,9 @@ async function handleWithAgent(
     conversation: { id: string },
     customerPhone: string,
     content: string,
+    channel: 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER' = 'WHATSAPP',
+    /** Who to reply to on this channel — phone, PSID or IGSID. */
+    recipientId?: string,
 ): Promise<void> {
     const { runAgent } = await import('../../services/llm-agent.js');
     const { checkOutboundQuota, incrementMessageUsage } = await import('../../services/usage.js');
@@ -1109,30 +1277,27 @@ async function handleWithAgent(
     const reply = result.reply.trim();
     if (!reply) return;
 
-    const agentCreds = resolveCredentials(selectCredentialSource(tenant));
-    if (!agentCreds) return;
-    const accessToken = agentCreds.accessToken;
-    const response = await fetch(
-        `https://graph.facebook.com/v21.0/${agentCreds.phoneNumberId}/messages`,
-        {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                messaging_product: 'whatsapp',
-                to: customerPhone,
-                type: 'text',
-                text: { body: reply },
-            }),
-        },
+    const creds = resolveChannelCredentials(
+        tenant,
+        channel,
+        decrypt,
+        resolveCredentials(selectCredentialSource(tenant)),
     );
+    if (!creds) return;
 
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        fastify.log.error({ status: response.status, error }, 'Failed to send agent reply');
+    let providerMessageId: string | undefined;
+    try {
+        const sent = await sendChannelText({
+            channel,
+            credentials: creds,
+            recipientId: recipientId ?? customerPhone,
+            text: reply,
+        });
+        providerMessageId = sent.messageId;
+    } catch (err) {
+        fastify.log.error({ err, channel }, 'Failed to send agent reply');
         return;
     }
-
-    const sent = (await response.json().catch(() => ({}))) as { messages?: Array<{ id?: string }> };
 
     await fastify.prisma.message.create({
         data: {
@@ -1140,8 +1305,8 @@ async function handleWithAgent(
             direction: 'OUTBOUND',
             content: reply,
             messageType: 'TEXT',
-            whatsappMsgId: sent.messages?.[0]?.id ?? null,
-            metadata: { source: 'llm', model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', tools: result.toolsUsed },
+            whatsappMsgId: providerMessageId ?? null,
+            metadata: { source: 'llm', channel, model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', tools: result.toolsUsed },
         },
     });
 

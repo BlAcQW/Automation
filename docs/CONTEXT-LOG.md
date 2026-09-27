@@ -61,6 +61,19 @@
 
 ## Session Log (newest first)
 
+### 2026-09-27 (later) — Concurrent booking capacity (a 3-chair salon is no longer a 1-chair salon)
+- **The bug, found while brainstorming pricing.** There is no staff dimension anywhere: `Booking` has no `staffId` and `WorkingHours` is `@@unique([tenantId, dayOfWeek])`. So the availability engine modelled every business as **one resource** — a salon with three chairs was only ever offered one booking per slot and was invisibly losing two thirds of its capacity. Not cosmetic; real revenue.
+- **Fix:** `Tenant.bookingCapacity Int @default(1)` — chairs, rooms, bays. Default 1 reproduces the old behaviour exactly, so no existing tenant changes until they raise it.
+- **`maxConcurrentDuring(window, bookings)`** in [availability.ts](../apps/api/src/services/availability.ts) — a start/end **sweep**, not a count. A plain overlap count is wrong in the direction that costs money: two bookings that each brush a long candidate slot but never each other occupy only ONE chair, yet a count reports two and refuses the booking. Ends sort before starts so back-to-back bookings never read as two.
+- **Both paths updated** — offering slots ([availability.ts](../apps/api/src/services/availability.ts)) and creating them ([booking-create.ts](../apps/api/src/services/booking-create.ts)). The creation guard matters most: fixing only slot listing would have had the bot offer a time the transaction then rejected. Capacity is read **inside** the serializable transaction so a capacity change can't race the check.
+- **API:** `bookingCapacity` exposed on `GET /auth/me`, accepted on `PATCH /auth/profile` (1–100).
+- **UI:** "At the same time" stepper on the web Availability page and the mobile one, saved alongside working hours.
+- **Tests:** 8 new covering the sweep (touching intervals, non-overlapping bookings inside a long window, busiest-moment detection, clipping). Suite **244 passing / 28 files**. API + web build clean, mobile typechecks.
+- Migration `20260927140000_booking_capacity`, **applied**.
+- **Deliberately NOT done:** per-service capacity override (3 chairs but 1 massage room) — would mirror the `defaultDepositAmount` + `Service.depositAmount` pattern, easy to add later. Nor per-staff booking, which remains the natural anchor for a paid Team tier.
+
+
+
 ### 2026-09-27 — Bookly-hosted WhatsApp numbers (we become the payer)
 - **Why.** As a Tech Provider we cannot hold a Meta credit line, so tenants pay Meta directly and we can't mark messages up. Worse: **Meta accepts cards/PayPal/direct debit but NOT Mobile Money**, so a Ghanaian salon on MoMo literally cannot pay a $2 Meta bill. The cost was never the problem — the payment rail was.
 - **What shipped.** A second onboarding path: the tenant's number is created on **Bookly's own WABA**, so Meta bills Bookly and the tenant pays one local bill. Embedded Signup is untouched and still available.

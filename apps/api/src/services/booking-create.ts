@@ -17,6 +17,7 @@ import { scheduleNotification, scheduleReminder } from './notification.js';
 import { syncBookingToCalendar } from './calendar.js';
 import { createNotification } from './notifications.js';
 import { safeZone, zonedDateString, zonedTimeString } from './timezone.js';
+import { maxConcurrentDuring } from './availability.js';
 
 export class SlotTakenError extends Error {
     constructor(public readonly conflictingBookingId: string) {
@@ -75,16 +76,34 @@ export async function createBookingAtomic(args: CreateBookingArgs): Promise<Crea
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
             return await prisma.$transaction(async (tx) => {
-                const overlap = await tx.booking.findFirst({
+                // Capacity: a salon with three chairs may run three bookings
+                // at once. Read inside the transaction so a capacity change
+                // cannot race with the check.
+                const tenant = await tx.tenant.findUnique({
+                    where: { id: tenantId },
+                    select: { bookingCapacity: true },
+                });
+                const capacity = Math.max(1, tenant?.bookingCapacity ?? 1);
+
+                const overlapping = await tx.booking.findMany({
                     where: {
                         tenantId,
                         status: { in: ['CONFIRMED', 'PENDING_PAYMENT'] },
                         startTime: { lt: endTime },
                         endTime: { gt: startTime },
                     },
-                    select: { id: true },
+                    select: { id: true, startTime: true, endTime: true },
                 });
-                if (overlap) throw new SlotTakenError(overlap.id);
+
+                // Peak concurrency, not a raw count — see maxConcurrentDuring.
+                // Counting overlaps would refuse a long booking that merely
+                // brushes two bookings which never run at the same time.
+                if (
+                    overlapping.length > 0 &&
+                    maxConcurrentDuring({ startTime, endTime }, overlapping) >= capacity
+                ) {
+                    throw new SlotTakenError(overlapping[0].id);
+                }
 
                 return tx.booking.create({
                     data: {

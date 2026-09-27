@@ -16,6 +16,60 @@ export interface SlotComputationInput {
     serviceId?: string;
     /** Slot starts step every `stepMinutes`. Defaults to 30. */
     stepMinutes?: number;
+    /**
+     * How many bookings may overlap. Defaults to the tenant's
+     * `bookingCapacity` (chairs, rooms, bays) when not supplied.
+     */
+    capacity?: number;
+}
+
+/** A booked interval. Only the endpoints matter for capacity maths. */
+export interface BookedInterval {
+    startTime: Date;
+    endTime: Date;
+}
+
+/**
+ * The largest number of bookings running at the same moment at any point
+ * inside `window`.
+ *
+ * A plain count of overlapping bookings is wrong here, and wrong in the
+ * direction that costs the business money: two bookings that each touch a long
+ * candidate slot but never each other only ever occupy ONE chair, yet a count
+ * would report two and refuse the booking. So sweep the start/end events and
+ * track the running peak instead.
+ *
+ * Touching intervals do not overlap — a booking that ends exactly when the
+ * next starts frees the chair.
+ */
+export function maxConcurrentDuring(
+    window: BookedInterval,
+    bookings: readonly BookedInterval[],
+): number {
+    const windowStart = window.startTime.getTime();
+    const windowEnd = window.endTime.getTime();
+
+    // +1 when a booking starts, -1 when it ends, clipped to the window.
+    const events: Array<{ at: number; delta: number }> = [];
+    for (const b of bookings) {
+        const start = Math.max(b.startTime.getTime(), windowStart);
+        const end = Math.min(b.endTime.getTime(), windowEnd);
+        if (start >= end) continue; // no real overlap (includes touching)
+        events.push({ at: start, delta: 1 });
+        events.push({ at: end, delta: -1 });
+    }
+
+    // Ends before starts at the same instant, so back-to-back bookings do not
+    // momentarily read as two.
+    events.sort((a, b) => (a.at - b.at) || (a.delta - b.delta));
+
+    let running = 0;
+    let peak = 0;
+    for (const e of events) {
+        running += e.delta;
+        if (running > peak) peak = running;
+    }
+    return peak;
 }
 
 export interface SlotComputationResult {
@@ -41,6 +95,18 @@ export interface SlotComputationResult {
 export async function computeAvailableSlots(input: SlotComputationInput): Promise<SlotComputationResult> {
     const { prisma, tenantId, date, stepMinutes = 30 } = input;
     let { durationMinutes } = input;
+
+    // Chairs/rooms/bays. Falls back to 1 so a missing tenant behaves exactly
+    // as the engine did before capacity existed.
+    let capacity = input.capacity;
+    if (capacity === undefined) {
+        const tenant = await prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { bookingCapacity: true },
+        });
+        capacity = tenant?.bookingCapacity ?? 1;
+    }
+    if (!Number.isFinite(capacity) || capacity < 1) capacity = 1;
 
     if (input.serviceId) {
         const service = await prisma.service.findFirst({
@@ -100,13 +166,11 @@ export async function computeAvailableSlots(input: SlotComputationInput): Promis
         if (slot.start.getTime() <= now) {
             return false;
         }
-        const slotStart = slot.start.getTime();
-        const slotEnd = slot.end.getTime();
-        return !bookings.some((booking) => {
-            const bookingStart = booking.startTime.getTime();
-            const bookingEnd = booking.endTime.getTime();
-            return slotStart < bookingEnd && slotEnd > bookingStart;
-        });
+        // Free while the busiest moment in the slot still leaves a chair.
+        return maxConcurrentDuring(
+            { startTime: slot.start, endTime: slot.end },
+            bookings,
+        ) < capacity;
     });
 
     return {

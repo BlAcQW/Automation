@@ -18,6 +18,8 @@ export interface AuthTenant {
   whatsappConnected?: boolean;
   outOfWindowMessagesEnabled?: boolean;
   depositRequired?: boolean;
+  /** Chairs / rooms / bays — how many bookings can run at once. */
+  bookingCapacity?: number;
   defaultDepositAmount?: number;
   currency?: string;
 }

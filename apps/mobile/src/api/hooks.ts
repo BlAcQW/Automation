@@ -356,6 +356,8 @@ export interface ProfileInput {
   outOfWindowMessagesEnabled?: boolean;
   depositRequired?: boolean;
   defaultDepositAmount?: number;
+  /** Chairs / rooms / bays — how many bookings can run at once. */
+  bookingCapacity?: number;
 }
 
 export function useUpdateProfile() {

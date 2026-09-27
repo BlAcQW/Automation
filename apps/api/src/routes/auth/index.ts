@@ -288,6 +288,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 outOfWindowMessagesEnabled: user.tenant.outOfWindowMessagesEnabled,
                 depositRequired: user.tenant.depositRequired,
                 defaultDepositAmount: Number(user.tenant.defaultDepositAmount),
+                bookingCapacity: user.tenant.bookingCapacity,
                 currency: user.tenant.paymentCurrency,
                 deletionRequestedAt: user.tenant.deletionRequestedAt,
             },
@@ -366,6 +367,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             outOfWindowMessagesEnabled: z.boolean().optional(),
             depositRequired: z.boolean().optional(),
             defaultDepositAmount: z.number().min(0).max(1_000_000).optional(),
+            // Chairs / rooms / bays — how many bookings can run at once.
+            bookingCapacity: z.number().int().min(1).max(100).optional(),
         }).parse(request.body);
 
         // Update user name if provided
@@ -382,7 +385,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             body.timezone ||
             body.outOfWindowMessagesEnabled !== undefined ||
             body.depositRequired !== undefined ||
-            body.defaultDepositAmount !== undefined
+            body.defaultDepositAmount !== undefined ||
+            body.bookingCapacity !== undefined
         ) {
             await fastify.prisma.tenant.update({
                 where: { id: request.user.tenantId },
@@ -395,6 +399,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     ...(body.depositRequired !== undefined && { depositRequired: body.depositRequired }),
                     ...(body.defaultDepositAmount !== undefined && {
                         defaultDepositAmount: Math.round(body.defaultDepositAmount * 100) / 100,
+                    }),
+                    ...(body.bookingCapacity !== undefined && {
+                        bookingCapacity: body.bookingCapacity,
                     }),
                 },
             });

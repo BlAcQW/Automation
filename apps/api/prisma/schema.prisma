@@ -69,6 +69,11 @@ model Tenant {
   // `Service.depositAmount` overrides the default when it is set.
   depositRequired          Boolean    @default(true)
   defaultDepositAmount     Decimal    @default(50) @db.Decimal(10, 2)
+  // How many bookings the business can serve at the same time — chairs in a
+  // salon, rooms in a clinic, bays in a workshop. Availability and booking
+  // creation both allow up to this many overlapping bookings. Default 1 keeps
+  // the old single-resource behaviour for every existing tenant.
+  bookingCapacity          Int        @default(1)
   // The owner asked for the account to be deleted. A person confirms and
   // removes the tenant; this records the ask and shows it in Settings.
   deletionRequestedAt      DateTime?

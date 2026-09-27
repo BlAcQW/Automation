@@ -7,8 +7,10 @@ import {
   useBlackouts,
   useDeleteBlackout,
   useSaveWorkingHours,
+  useUpdateProfile,
   useWorkingHours,
 } from '@/api/hooks';
+import { useAuth } from '@/auth/context';
 import { WorkingHour } from '@/api/types';
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Button, Field, SwitchRow, DateTimeField, QueryState} from '@/components/ui';
@@ -34,6 +36,8 @@ function seedWeek(server: WorkingHour[] | undefined): WorkingHour[] {
 export default function AvailabilityScreen() {
   const t = useTheme();
   const bottomInset = useBottomInset();
+  const { tenant, refreshUser } = useAuth();
+  const updateProfile = useUpdateProfile();
   const { data: serverHours, isLoading, isError } = useWorkingHours();
   const saveHours = useSaveWorkingHours();
   const { data: blackouts } = useBlackouts();
@@ -44,6 +48,13 @@ export default function AvailabilityScreen() {
   const [savedNote, setSavedNote] = useState(false);
   const [boDate, setBoDate] = useState('');
   const [boReason, setBoReason] = useState('');
+  // Chairs / rooms / bays. Seeded from the session's tenant; the engine used
+  // to offer a single booking per slot regardless of how many a business runs.
+  const [capacity, setCapacity] = useState<number>(tenant?.bookingCapacity ?? 1);
+
+  useEffect(() => {
+    if (tenant?.bookingCapacity) setCapacity(tenant.bookingCapacity);
+  }, [tenant?.bookingCapacity]);
 
   useEffect(() => {
     if (serverHours) setWeek(seedWeek(serverHours));
@@ -56,6 +67,8 @@ export default function AvailabilityScreen() {
 
   async function onSaveHours() {
     await saveHours.mutateAsync(week).catch(() => undefined);
+    await updateProfile.mutateAsync({ bookingCapacity: capacity }).catch(() => undefined);
+    await refreshUser().catch(() => undefined);
     setSavedNote(true);
   }
 
@@ -106,6 +119,61 @@ export default function AvailabilityScreen() {
               ) : null}
             </View>
           ))}
+        </Card>
+        <Card style={{ gap: t.space.sm }}>
+          <Text variant="body" weight="semi">
+            At the same time
+          </Text>
+          <Text variant="caption" tone="muted">
+            How many customers you can serve at once — chairs, rooms or bays.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.space.md, marginTop: t.space.xs }}>
+            <Pressable
+              hitSlop={8}
+              accessibilityLabel="Fewer at a time"
+              disabled={capacity <= 1}
+              onPress={() => {
+                setCapacity((c) => Math.max(1, c - 1));
+                setSavedNote(false);
+              }}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: t.colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: capacity <= 1 ? 0.4 : 1,
+              }}
+            >
+              <Text variant="body" weight="semi">−</Text>
+            </Pressable>
+            <Text variant="h2" weight="semi" style={{ minWidth: 44, textAlign: 'center' }}>
+              {capacity}
+            </Text>
+            <Pressable
+              hitSlop={8}
+              accessibilityLabel="More at a time"
+              disabled={capacity >= 100}
+              onPress={() => {
+                setCapacity((c) => Math.min(100, c + 1));
+                setSavedNote(false);
+              }}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: t.colors.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: capacity >= 100 ? 0.4 : 1,
+              }}
+            >
+              <Text variant="body" weight="semi">+</Text>
+            </Pressable>
+          </View>
         </Card>
         <Button label="Save working hours" fullWidth loading={saveHours.isPending} onPress={onSaveHours} />
         {savedNote ? (

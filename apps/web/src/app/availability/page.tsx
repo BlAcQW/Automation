@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { motion } from 'framer-motion';
-import { Clock, Save, Loader2, Plus, Trash2, CalendarOff } from 'lucide-react';
+import { Clock, Save, Loader2, Plus, Trash2, CalendarOff, Users } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -37,6 +37,10 @@ export default function AvailabilityPage() {
     const [blackoutDate, setBlackoutDate] = useState('');
     const [blackoutReason, setBlackoutReason] = useState('');
     const [savingBlackout, setSavingBlackout] = useState(false);
+    // How many bookings can run at the same time — chairs, rooms, bays. The
+    // engine offered one booking per slot before this existed, so a multi-chair
+    // salon was showing only a fraction of its real availability.
+    const [capacity, setCapacity] = useState(1);
 
     useEffect(() => {
         fetchData();
@@ -44,10 +48,12 @@ export default function AvailabilityPage() {
 
     const fetchData = async () => {
         try {
-            const [hoursRes, blackoutsRes] = await Promise.all([
+            const [hoursRes, blackoutsRes, meRes] = await Promise.all([
                 api.get('/availability/hours'),
                 api.get('/availability/blackouts'),
+                api.get('/auth/me'),
             ]);
+            setCapacity(meRes.data?.tenant?.bookingCapacity ?? 1);
 
             const hoursMap: { [key: number]: { enabled: boolean; start: string; end: string } } = {};
             for (let i = 0; i < 7; i++) {
@@ -79,6 +85,7 @@ export default function AvailabilityPage() {
                     isActive: true,
                 }));
             await api.put('/availability/hours', hoursData);
+            await api.patch('/auth/profile', { bookingCapacity: capacity });
         } catch (err) {
             console.error('Failed to save hours:', err);
         } finally {
@@ -148,6 +155,50 @@ export default function AvailabilityPage() {
                     <Save className="w-4 h-4" /> Save Changes
                 </Button>
             </div>
+
+            {/* Concurrent capacity */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>
+                        <Users className="w-5 h-5 text-emerald-500" />
+                        At the same time
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                aria-label="Fewer at a time"
+                                onClick={() => setCapacity(Math.max(1, capacity - 1))}
+                                className="w-10 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700/40 disabled:opacity-40"
+                                disabled={capacity <= 1}
+                            >
+                                −
+                            </button>
+                            <span className="w-12 text-center text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
+                                {capacity}
+                            </span>
+                            <button
+                                type="button"
+                                aria-label="More at a time"
+                                onClick={() => setCapacity(Math.min(100, capacity + 1))}
+                                className="w-10 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700/40 disabled:opacity-40"
+                                disabled={capacity >= 100}
+                            >
+                                +
+                            </button>
+                        </div>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 sm:max-w-md">
+                            How many customers you can serve at once — chairs in a salon, rooms in a
+                            clinic, bays in a workshop.{' '}
+                            {capacity === 1
+                                ? 'Right now only one booking is offered per time slot.'
+                                : `Up to ${capacity} bookings can share the same time slot.`}
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Working Hours */}
             <Card>

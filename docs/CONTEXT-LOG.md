@@ -61,6 +61,21 @@
 
 ## Session Log (newest first)
 
+### 2026-09-27 (evening) — Customer contacts masked from staff
+- **Why.** A tenant's customer list is the most valuable thing in their account, and any STAFF user could read and copy every phone number from the dashboard. The book left with them when they did.
+- **[services/contact-privacy.ts](../apps/api/src/services/contact-privacy.ts)** — pure masking (`maskPhone` → `+••••••••4567`, `maskHandle`, `maskEmail`). **Name is never masked** (staff need it; it isn't a channel). **Fails closed:** an unrecognised role is masked, not trusted.
+- **[services/contact-privacy-policy.ts](../apps/api/src/services/contact-privacy-policy.ts)** — resolves the policy per request. OWNER short-circuits with **no DB hit**; a failed tenant read masks rather than exposes.
+- **Masked server-side, at the API boundary** — conversations (list, detail, human-active, pending), customers, bookings (list, upcoming, detail, by-customer), orders (list + 5 single returns). Masking in the browser would leave the real number in the network response.
+- **Two bypasses found and closed:** the customers list used the **raw phone as the row `id`** (masking the display field alone would still have shipped it — now a SHA-256 prefix), and **phone search** let a staff member probe digit-by-digit and watch the result count (now name-only for masked viewers).
+- **[routes/privacy/index.ts](../apps/api/src/routes/privacy/index.ts)** — audited break-glass reveal, **20/hour per user**. The rate limit is the real control: masking stops casual copying, the limit stops harvesting the list one record at a time. Logged even for owners, so "who looked at this customer" always has an answer. `GET /privacy/policy` tells clients whether to render reveal affordances.
+- **Owner-only toggle** `Tenant.maskCustomerContact` (default **true** — safe behaviour without doing anything). The PATCH guard checks `role === 'OWNER'`, so staff cannot switch off the masking that covers them.
+- **UX:** [MaskedContact](../apps/web/src/components/ui/masked-contact.tsx) — masked value + eye icon, one tap to reveal, and it says "logged" out loud. A hard block would just be worked around with a photo of the screen; a visible audit trail deters idle curiosity.
+- **Tests:** 20 new. Suite **264 passing / 29 files**. Both apps build; migration `20260927160000_mask_customer_contact` applied.
+- **Next (agreed order):** Instagram + Messenger channels. Investigation already done — the existing webhook is gated at [whatsapp/index.ts:763](../apps/api/src/routes/whatsapp/index.ts#L763) to `whatsapp_business_account` and IG/Messenger post `instagram`/`page` to the **same verified URL**; the real work is `Conversation.@@unique([tenantId, customerPhone])` → `[tenantId, channel, externalId]` with phone nullable. Blocked from going live by App Review for `instagram_manage_messages` + `pages_messaging`.
+- **Still to do on masking:** mobile — the `wa.me` buttons in [bookings/[id]](../apps/mobile/app/bookings/[id].tsx) and [orders/[id]](../apps/mobile/app/orders/[id].tsx) still assume a raw number and need routing through reveal.
+
+
+
 ### 2026-09-27 (later still) — Positioning brief: what Bookly actually sells
 - **[docs/strategy/what-bookly-sells.html](./strategy/what-bookly-sells.html) → `.pdf`** (6 pages). Supersedes the earlier plan-tier drafts: value first, price later.
 - **The core reframe: we sell a receptionist, not software.** The customer isn't comparing us to booking apps (they use none) — they're comparing us to hiring someone, or to money already lost. That sets the price anchor and it's a sentence a barber understands.

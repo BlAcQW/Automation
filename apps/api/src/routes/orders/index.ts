@@ -2,6 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { generatePublicToken } from '../../lib/public-token.js';
+import { maskContact, maskContacts } from '../../services/contact-privacy.js';
+import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 
 // Validation schemas
 const orderItemSchema = z.object({
@@ -90,7 +92,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        return { data: orders };
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return { data: maskContacts(orders, mask) };
     });
 
     // GET /orders/stats - Get order statistics
@@ -136,7 +139,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Order not found');
         }
 
-        return order;
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return maskContact(order, mask);
     });
 
     // GET /orders/by-reference/:ref - Get order by reference
@@ -159,7 +163,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Order not found');
         }
 
-        return order;
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return maskContact(order, mask);
     });
 
     // POST /orders - Create new order
@@ -240,7 +245,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             return newOrder;
         });
 
-        return order;
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return maskContact(order, mask);
     });
 
     // PATCH /orders/:id - Update order
@@ -266,7 +272,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        return order;
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return maskContact(order, mask);
     });
 
     // POST /orders/:id/cancel - Cancel order and restore stock
@@ -307,7 +314,8 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             });
         });
 
-        return order;
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return maskContact(order, mask);
     });
 
     // GET /orders/customer/:phone - Get orders by customer phone

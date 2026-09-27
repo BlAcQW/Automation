@@ -10,11 +10,14 @@ import { StatCard } from '@/components/ui/stat-card';
 import { PageHeader } from '@/components/ui/page-header';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { useProductRouteGuard } from '@/lib/use-product-route-guard';
+import { MaskedContact } from '@/components/ui/masked-contact';
 
 interface Customer {
     id: string; // phone
     name: string;
     phone: string;
+    contactMasked?: boolean;
+    conversationId: string;
     lastActive: string;
     totalOrders: number;
     totalSpent: number;
@@ -131,7 +134,7 @@ export default function CustomersPage() {
                                             {customer.name}
                                         </td>
                                         <td className="px-6 py-4 text-slate-500 font-mono">
-                                            {customer.phone}
+                                            <MaskedContact value={customer.phone} masked={customer.contactMasked} scope="conversation" recordId={customer.conversationId} />
                                         </td>
                                         <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
                                             {customer.totalOrders}
@@ -176,7 +179,7 @@ export default function CustomersPage() {
                                         <p className="font-medium text-slate-900 dark:text-white truncate">{customer.name}</p>
                                         <p className="flex items-center gap-1 text-xs text-slate-500 font-mono mt-0.5">
                                             <Phone className="w-3 h-3" />
-                                            {customer.phone}
+                                            <MaskedContact value={customer.phone} masked={customer.contactMasked} scope="conversation" recordId={customer.conversationId} />
                                         </p>
                                     </div>
                                     <span className="font-medium text-sm text-slate-900 dark:text-white shrink-0">

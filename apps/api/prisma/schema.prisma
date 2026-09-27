@@ -74,6 +74,11 @@ model Tenant {
   // creation both allow up to this many overlapping bookings. Default 1 keeps
   // the old single-resource behaviour for every existing tenant.
   bookingCapacity          Int        @default(1)
+  // Hide most of each customer's phone/email from STAFF in the dashboard, so
+  // a departing staff member cannot walk off with the customer book. The owner
+  // is never masked. Staff who genuinely need a number use the audited,
+  // rate-limited reveal endpoint.
+  maskCustomerContact      Boolean    @default(true)
   // The owner asked for the account to be deleted. A person confirms and
   // removes the tenant; this records the ask and shows it in Settings.
   deletionRequestedAt      DateTime?

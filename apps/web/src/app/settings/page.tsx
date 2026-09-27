@@ -69,6 +69,8 @@ export default function SettingsPage() {
 
     // Deposits: a booking is only confirmed once the deposit is paid.
     const [depositRequired, setDepositRequired] = useState(true);
+    const [maskContacts, setMaskContacts] = useState(true);
+    const [togglingMask, setTogglingMask] = useState(false);
     const [depositAmount, setDepositAmount] = useState('50');
     const [savingDeposit, setSavingDeposit] = useState(false);
 
@@ -113,6 +115,7 @@ export default function SettingsPage() {
             setTimezone(tenant.timezone || 'UTC');
             setOutOfWindowEnabled(tenant.outOfWindowMessagesEnabled ?? true);
             setDepositRequired(tenant.depositRequired ?? true);
+            setMaskContacts(tenant.maskCustomerContact ?? true);
             setDepositAmount(String(tenant.defaultDepositAmount ?? 50));
         }
         if (user) {
@@ -232,6 +235,26 @@ export default function SettingsPage() {
             toast.error('Could not save. Check your connection and try again.');
         } finally {
             setSavingDeposit(false);
+        }
+    };
+
+    const toggleMaskContacts = async (next: boolean) => {
+        setTogglingMask(true);
+        setMaskContacts(next);
+        try {
+            await api.patch('/auth/profile', { maskCustomerContact: next });
+            await refreshUser();
+            toast.success(
+                next
+                    ? 'Staff now see customer numbers hidden'
+                    : 'Staff can now see full customer numbers',
+            );
+        } catch (err) {
+            setMaskContacts(!next);
+            toast.error('Could not update the setting');
+            console.error('Failed to toggle contact masking:', err);
+        } finally {
+            setTogglingMask(false);
         }
     };
 
@@ -412,6 +435,26 @@ export default function SettingsPage() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-5">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <p className="text-sm font-medium text-slate-900 dark:text-white">
+                                Hide customer numbers from staff
+                            </p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-[56ch]">
+                                Your team sees only the last four digits, so the customer list cannot
+                                be copied out. They can still reply in the chat as normal, and can
+                                reveal a single number when they need it — each reveal is recorded.
+                                You always see numbers in full.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={maskContacts}
+                            onChange={toggleMaskContacts}
+                            disabled={togglingMask}
+                            label="Hide customer numbers from staff"
+                        />
+                    </div>
+
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <p className="text-sm font-medium text-slate-900 dark:text-white">

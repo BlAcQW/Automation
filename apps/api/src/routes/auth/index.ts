@@ -289,6 +289,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 depositRequired: user.tenant.depositRequired,
                 defaultDepositAmount: Number(user.tenant.defaultDepositAmount),
                 bookingCapacity: user.tenant.bookingCapacity,
+                maskCustomerContact: user.tenant.maskCustomerContact,
                 currency: user.tenant.paymentCurrency,
                 deletionRequestedAt: user.tenant.deletionRequestedAt,
             },
@@ -369,6 +370,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             defaultDepositAmount: z.number().min(0).max(1_000_000).optional(),
             // Chairs / rooms / bays — how many bookings can run at once.
             bookingCapacity: z.number().int().min(1).max(100).optional(),
+            // Owner-only: hide customer contacts from staff.
+            maskCustomerContact: z.boolean().optional(),
         }).parse(request.body);
 
         // Update user name if provided
@@ -386,7 +389,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             body.outOfWindowMessagesEnabled !== undefined ||
             body.depositRequired !== undefined ||
             body.defaultDepositAmount !== undefined ||
-            body.bookingCapacity !== undefined
+            body.bookingCapacity !== undefined ||
+            body.maskCustomerContact !== undefined
         ) {
             await fastify.prisma.tenant.update({
                 where: { id: request.user.tenantId },
@@ -402,6 +406,11 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     }),
                     ...(body.bookingCapacity !== undefined && {
                         bookingCapacity: body.bookingCapacity,
+                    }),
+                    // Only the owner may relax this — a staff member must not
+                    // be able to switch off the masking that covers them.
+                    ...(body.maskCustomerContact !== undefined && request.user.role === 'OWNER' && {
+                        maskCustomerContact: body.maskCustomerContact,
                     }),
                 },
             });

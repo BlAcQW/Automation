@@ -4,6 +4,8 @@ import { TemplatePurpose } from '@prisma/client';
 import { scheduleNotification, cancelReminder } from '../../services/notification.js';
 import { cancelBooking } from '../../services/booking-cancel.js';
 import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from '../../services/booking-create.js';
+import { maskContact, maskContacts } from '../../services/contact-privacy.js';
+import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 
 // Validation schemas
 const createBookingSchema = z.object({
@@ -56,8 +58,10 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             fastify.prisma.booking.count({ where }),
         ]);
 
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+
         return {
-            data: bookings,
+            data: maskContacts(bookings, mask),
             pagination: {
                 page: query.page,
                 limit: query.limit,
@@ -85,7 +89,8 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        return { data: bookings };
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return { data: maskContacts(bookings, mask) };
     });
 
     // GET /bookings/:id - Get single booking
@@ -103,7 +108,8 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Booking not found');
         }
 
-        return booking;
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return maskContact(booking, mask);
     });
 
     // POST /bookings - Create new booking
@@ -275,7 +281,8 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        return { data: bookings };
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return { data: maskContacts(bookings, mask) };
     });
 };
 

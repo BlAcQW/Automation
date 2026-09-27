@@ -38,6 +38,9 @@ interface Tenant {
     whatsappConnected?: boolean;
     outOfWindowMessagesEnabled?: boolean;
     depositRequired?: boolean;
+    /** Owner-only: hide most of each customer's contact from STAFF. */
+    maskCustomerContact?: boolean;
+    bookingCapacity?: number;
     defaultDepositAmount?: number;
     currency?: string;
     deletionRequestedAt?: string | null;

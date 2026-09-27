@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { decrypt } from '../../services/crypto.js';
 import { checkOutboundQuota, incrementMessageUsage } from '../../services/usage.js';
 import { resolveCredentials, selectCredentialSource } from '../../services/whatsapp-credentials.js';
+import { maskContact, maskContacts } from '../../services/contact-privacy.js';
+import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 import {
     MESSAGE_TYPE,
     MediaError,
@@ -47,8 +49,12 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             fastify.prisma.conversation.count({ where }),
         ]);
 
+        // Masked before it leaves the API — never in the browser, or the real
+        // number would still be sitting in the network response.
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+
         return {
-            data: conversations.map((c) => ({
+            data: conversations.map((c) => maskContact({
                 id: c.id,
                 customerPhone: c.customerPhone,
                 customerName: c.customerName,
@@ -60,7 +66,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                 // spoke last and nobody has replied since).
                 lastMessageDirection: c.messages[0]?.direction ?? null,
                 updatedAt: c.updatedAt,
-            })),
+            }, mask)),
             pagination: {
                 page: query.page,
                 limit: query.limit,
@@ -86,14 +92,16 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+
         return {
-            data: conversations.map((c) => ({
+            data: conversations.map((c) => maskContact({
                 id: c.id,
                 customerPhone: c.customerPhone,
                 customerName: c.customerName,
                 lastMessage: c.messages[0]?.content,
                 updatedAt: c.updatedAt,
-            })),
+            }, mask)),
         };
     });
 
@@ -115,7 +123,10 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Conversation not found');
         }
 
-        return conversation;
+        // The whole row goes to the client here, so it must be masked too —
+        // this is the endpoint the chat screen loads.
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        return maskContact(conversation, mask);
     });
 
     // GET /conversations/:id/messages - Get paginated messages
@@ -764,15 +775,17 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+
         return {
-            data: conversations.map((c) => ({
+            data: conversations.map((c) => maskContact({
                 id: c.id,
                 customerPhone: c.customerPhone,
                 customerName: c.customerName,
                 takeoverReason: c.takeoverReason,
                 lastMessage: c.messages[0]?.content,
                 updatedAt: c.updatedAt,
-            })),
+            }, mask)),
             count: conversations.length,
         };
     });

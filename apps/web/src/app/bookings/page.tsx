@@ -17,12 +17,14 @@ import { StatCard } from '@/components/ui/stat-card';
 import { BookingDetailsModal } from '@/components/bookings/booking-details-modal';
 import { PageHeader } from '@/components/ui/page-header';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { MaskedContact } from '@/components/ui/masked-contact';
 
 interface Booking {
     id: string;
     bookingReference: string;
     customerName: string;
     customerPhone: string;
+    contactMasked?: boolean;
     startTime: string;
     endTime: string;
     status: 'PENDING_PAYMENT' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';
@@ -247,7 +249,14 @@ export default function BookingsPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="font-medium text-slate-900 dark:text-white">{booking.customerName}</div>
-                                            <div className="text-xs text-slate-500">{booking.customerPhone}</div>
+                                            <div className="text-xs text-slate-500">
+                                                <MaskedContact
+                                                    value={booking.customerPhone}
+                                                    masked={booking.contactMasked}
+                                                    scope="booking"
+                                                    recordId={booking.id}
+                                                />
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
                                             {booking.service.name}

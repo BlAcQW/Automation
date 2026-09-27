@@ -61,6 +61,20 @@
 
 ## Session Log (newest first)
 
+### 2026-09-27 — Bookly-hosted WhatsApp numbers (we become the payer)
+- **Why.** As a Tech Provider we cannot hold a Meta credit line, so tenants pay Meta directly and we can't mark messages up. Worse: **Meta accepts cards/PayPal/direct debit but NOT Mobile Money**, so a Ghanaian salon on MoMo literally cannot pay a $2 Meta bill. The cost was never the problem — the payment rail was.
+- **What shipped.** A second onboarding path: the tenant's number is created on **Bookly's own WABA**, so Meta bills Bookly and the tenant pays one local bill. Embedded Signup is untouched and still available.
+- **New:** [services/meta-number-onboarding.ts](../apps/api/src/services/meta-number-onboarding.ts) — Meta's 4 calls (`POST /{WABA}/phone_numbers` → `request_code` → `verify_code` → `register`), split across two endpoints because a human reads the OTP off a handset in between. A failed `request_code` **deletes the number it just created**, and disconnect releases it — the portfolio is capped at 20 registered numbers, so an orphan permanently costs a tenant slot.
+- **New:** [services/whatsapp-credentials.ts](../apps/api/src/services/whatsapp-credentials.ts) — **the important one.** Twelve call sites read `tenant.whatsappAccessToken` inline; hosted numbers have none (they use the platform token), so every one of them would have treated hosted tenants as disconnected. All now go through the resolver, which also withholds credentials until status is `REGISTERED` (sending earlier fails at Meta with `#133010`).
+- **Routes:** `POST /whatsapp/hosted/start|resend|verify`; `/status` gained `hosted`, `numberStatus`, `awaitingCode`, `hostedAvailable`; `/disconnect` releases hosted numbers from our WABA.
+- **Schema:** `whatsappHosted`, `whatsappNumberStatus`, `whatsappRegistrationPin` (encrypted — Meta demands the same two-step PIN on any re-register after a display-name change). Migration `20260927100000_hosted_whatsapp_numbers`, **applied**.
+- **Web:** [whatsapp/page.tsx](../apps/web/src/app/whatsapp/page.tsx) — "Use a Bookly number" card (country code + local number) and a dedicated OTP step with resend-by-SMS/voice. `awaitingCode` is checked **before** `connected` so a half-onboarded number never shows a green badge.
+- **Tests:** 17 new (trunk-zero stripping for Ghanaian `024…` numbers, credential resolution for hosted/BYO/pending/stale-token). Suite **236 passing / 27 files**. API + web typecheck and build clean.
+- ⚠️ **Not live yet — needs config:** `PLATFORM_WABA_ID` and `PLATFORM_WHATSAPP_TOKEN` (a System User token on Bookly's own WABA). Absent, the hosted option is hidden and nothing else changes.
+- ⚠️ **Hard ceiling: 20 hosted tenants**, per Meta's cap of 20 registered business phone numbers per business portfolio. Guarded in the route. Past that, a Solution Partner credit line is the only way up.
+- **Not done:** mobile UI for the hosted path (web only so far); no admin view of hosted-slot usage.
+
+
 ### 2026-09-23 — Business-owner user guide (PDF)
 - **Wrote [docs/guides/bookly-user-guide.html](./guides/bookly-user-guide.html) → `bookly-user-guide.pdf`** (10 pages, A4). Audience: the **tenant / business owner** who signs up and runs Bookly — not end customers, not platform admins.
 - **Grounded in the real code, not guessed.** Every claim was checked against the shipped behaviour before writing: the 6 bot tools in `llm-agent.ts`, `HOLD_MINUTES = 30` in `booking-deposit.ts`, plan limits in `services/plans.ts` (Free 50/3/1 · Starter $19 500/∞/3 · Pro $49 5000/∞/∞ + customBranding), the 14-day Pro trial set at register, the tenant-level `depositRequired` / `defaultDepositAmount` + per-service override, and the actual page/tab inventory of web + mobile.

@@ -4,7 +4,7 @@ Work that is understood but not built. Each entry says what it is, what it's
 blocked on, and what it's worth — so the next person picking it up doesn't have
 to rediscover the research.
 
-Last updated: 13 September 2026.
+Last updated: 29 September 2026.
 
 ---
 
@@ -12,6 +12,7 @@ Last updated: 13 September 2026.
 
 | # | Feature | Effort | Value | Blocked on |
 |---|---------|--------|-------|-----------|
+| 0 | App Review for Instagram + Messenger | ~1 day of work, then Meta's queue | **Very high** | Nothing — the code is done |
 | 1 | Verify WhatsApp Flows still work | ~1 hour | **Very high** | Nothing |
 | 2 | Billing from captured categories | ~2 days | **Very high** | Nothing |
 | 3 | Address request | ~1 day | High (PRODUCT tenants) | Nothing |
@@ -21,6 +22,118 @@ Last updated: 13 September 2026.
 | 7 | Send contact card | ~2 hours | Low | Nothing |
 | 8 | Voice & video calling | ~1 week+ | Medium | Custom dev build |
 | 9 | Groups | ~3 days | **Low** | Meta OBA, per tenant |
+
+---
+
+## 0. App Review for Instagram + Messenger
+
+**What it is.** Instagram DMs and Facebook Messenger are built, tested and
+merged. They cannot serve a single real customer until Meta grants **Advanced
+Access** to the messaging permissions. This is the only thing standing between
+the code and a working channel, and none of it is engineering.
+
+**Why Advanced Access.** Standard Access only covers accounts that have a role
+on our app — our own Page, our own Instagram. The moment we connect a salon we
+do not own, Meta requires Advanced Access, which requires App Review on a
+verified business.
+
+**What we already have.** Business Verification is done — we passed it for the
+WhatsApp permissions. That is normally the slowest part, and it does not have
+to be repeated.
+
+### Permissions to request
+
+All in **one submission**. Messaging scopes do not approve in isolation; the
+base and supporting scopes have to arrive together or the reviewer cannot see a
+working flow.
+
+| Permission | Why we need it |
+|---|---|
+| `pages_messaging` | Receive and send Messenger messages for the tenant's Page |
+| `instagram_manage_messages` | Receive and send Instagram DMs |
+| `instagram_basic` | Read the professional account linked to the Page |
+| `pages_show_list` | Let the owner pick which Page is their business |
+| `pages_manage_metadata` | Subscribe the Page to our messaging webhooks |
+
+These are exactly the scopes in `FB_SCOPES` in
+[apps/web/src/app/channels/page.tsx](apps/web/src/app/channels/page.tsx). Do not
+add others — asking for permissions the use case does not justify is itself a
+documented rejection reason.
+
+### Prerequisites, in order
+
+**1. Make a real API call with each permission first.** Meta requires at least
+one successful call per requested permission within **30 days** before
+submitting, and the call takes up to 2 days to register. Submitting without this
+fails immediately. So: connect our own Page and Instagram in development mode,
+send a DM, let the bot reply, and confirm it worked.
+
+**2. Turn on message access on the Instagram account.** In the Instagram app:
+*Settings → Messages and story replies → Message controls → Connected tools →
+Allow access to messages.* **If this is off, webhooks silently never arrive and
+there is no error anywhere** — not in our logs, not in Meta's. Check it before
+debugging anything else.
+
+**3. Give the test Facebook account a role on the app.** In development mode,
+only people with an app role (admin, developer, tester) can message the
+Instagram account at all. Without this the demo cannot be recorded.
+
+**4. Update the privacy policy.** Ours mentions "Meta" but **never mentions
+Instagram, Facebook or Messenger by name**, and a privacy policy that does not
+name the APIs and the data collected is one of the most common rejection causes.
+Add a paragraph naming Instagram and Messenger, what we receive (message
+content, sender id, profile name) and why.
+
+**5. Create a test Bookly account for the reviewer.** Meta test with their own
+accounts and will not use our personal credentials. They need a login that gets
+them to the Channels screen with nothing already connected.
+
+### The screencast
+
+This is where most submissions die. Reviewers do not explore the product — the
+video *is* the review.
+
+- **One recording per permission**, each showing that specific scope being
+  exercised. A general product tour that never isolates the permission is the
+  single most common failure.
+- Show the **whole journey**: log in to Bookly → Channels → Connect → the
+  Facebook consent screen with the scopes visible → pick a Page → send a DM from
+  a second account → the bot's reply arriving.
+- **The consent screen must be on camera.** A flow that starts after login is
+  treated as unverifiable.
+- English UI or captions, high resolution, visible cursor, annotations on the
+  moments that matter. Audio is not needed.
+- The flow has to genuinely work for a fresh reviewer. Anything they cannot
+  reproduce is rejected.
+
+### What to write in the use-case box
+
+Say plainly what the business does and why each permission is the *minimum*
+needed. Ours is easy to state honestly:
+
+> Bookly is a booking assistant for small appointment businesses. When a
+> customer messages the business on Instagram or Messenger, Bookly replies with
+> the business's real services and genuinely free times, takes the booking, and
+> sends a deposit link. `instagram_manage_messages` and `pages_messaging` are
+> required to receive and answer those messages; `pages_show_list` lets the
+> owner choose which of their Pages to connect; `pages_manage_metadata`
+> subscribes that Page to our webhook; `instagram_basic` reads the professional
+> account linked to it.
+
+### Timeline
+
+Sources disagree — Meta's own docs say around 24 hours, practitioners report
+2–7 days, and at least one 2026 report claims review times doubled. Messaging
+scopes touch private conversations and get more scrutiny than read-only ones, so
+plan for the slow end and expect at least one rejection cycle. Each rejection
+adds several days.
+
+**Blocked on.** Nothing technical. The work is: exercise the permissions in dev
+mode, fix the privacy policy, record the videos, submit.
+
+**Worth.** It is the difference between two finished channels and two dead ones
+— and they are the only channels a Mobile-Money-only business can use at all,
+since Meta charges nothing for them and asks for no payment method.
 
 ---
 

@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { ArrowRight, MessageCircle, Check } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
 import { Section, Eyebrow, Heading } from './sections';
+import { HeroReveal, AnimatedChat, Reveal, LiftCard } from './motion';
 
 /** Nav, hero, pricing and footer for the Sage Cream landing page. */
 
@@ -69,6 +70,7 @@ export function Hero() {
         <section className="grain relative overflow-hidden px-5 pb-16 pt-16 sm:px-8 sm:pb-24 sm:pt-24">
             <div className="mx-auto grid max-w-5xl gap-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
                 <div>
+                    <HeroReveal>
                     <span
                         className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium"
                         style={{ background: 'var(--secondary)', color: 'var(--foreground)' }}
@@ -76,20 +78,26 @@ export function Hero() {
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--primary)' }} />
                         WhatsApp · Instagram · Messenger
                     </span>
+                    </HeroReveal>
 
+                    <HeroReveal delay={0.08}>
                     <h1
                         className="font-display mt-6 text-[2.75rem] leading-[1.03] sm:text-6xl"
                         style={{ color: 'var(--foreground)', textWrap: 'balance' }}
                     >
                         Never lose a booking because you were busy.
                     </h1>
+                    </HeroReveal>
 
+                    <HeroReveal delay={0.16}>
                     <p className="mt-6 max-w-lg text-[17px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
                         Bookly is a receptionist for your WhatsApp and Instagram. It answers
                         customers while you&apos;re working, books them into times you&apos;re really
                         free, and takes a deposit so they actually show up.
                     </p>
+                    </HeroReveal>
 
+                    <HeroReveal delay={0.24}>
                     <div className="mt-8 flex flex-wrap items-center gap-3">
                         <Link
                             href="/register"
@@ -110,59 +118,14 @@ export function Hero() {
                     <p className="mt-5 text-sm" style={{ color: 'var(--muted-foreground)' }}>
                         No payment gateway to set up. No card to start.
                     </p>
+                    </HeroReveal>
                 </div>
 
-                <ChatProof />
+                <HeroReveal delay={0.2}>
+                    <AnimatedChat />
+                </HeroReveal>
             </div>
         </section>
-    );
-}
-
-/** The product doing its job, as the customer sees it. */
-function ChatProof() {
-    const msgs: Array<{ from: 'them' | 'us'; text: string }> = [
-        { from: 'them', text: 'hi, how much for box braids?' },
-        { from: 'us', text: 'Hi! Box braids are GHS 250 and take about 3 hours. Would you like me to check what times are free?' },
-        { from: 'them', text: 'yes saturday if possible' },
-        { from: 'us', text: 'Saturday I have 9:00 and 1:30 open. Which suits you?' },
-        { from: 'them', text: '1:30' },
-        { from: 'us', text: "Lovely. There's a GHS 50 deposit to hold it — would you like to pay now, or when you arrive?" },
-    ];
-    return (
-        <div
-            className="rounded-2xl p-5 shadow-sm sm:p-6"
-            style={{ background: 'var(--secondary)', border: '1px solid var(--border)' }}
-        >
-            <div className="mb-4 flex items-center gap-2.5">
-                <div
-                    className="flex h-8 w-8 items-center justify-center rounded-full"
-                    style={{ background: 'var(--primary)' }}
-                >
-                    <MessageCircle className="h-4 w-4" style={{ color: 'var(--primary-foreground)' }} />
-                </div>
-                <div>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>Glow Hair Studio</p>
-                    <p className="text-[11px]" style={{ color: 'var(--muted-foreground)' }}>replies instantly</p>
-                </div>
-            </div>
-
-            <div className="space-y-2.5">
-                {msgs.map((m, i) => (
-                    <div key={i} className={m.from === 'us' ? 'flex justify-end' : 'flex justify-start'}>
-                        <p
-                            className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-snug"
-                            style={
-                                m.from === 'us'
-                                    ? { background: 'var(--primary)', color: 'var(--primary-foreground)', borderBottomRightRadius: 6 }
-                                    : { background: 'var(--background)', color: 'var(--foreground)', borderBottomLeftRadius: 6 }
-                            }
-                        >
-                            {m.text}
-                        </p>
-                    </div>
-                ))}
-            </div>
-        </div>
     );
 }
 
@@ -200,9 +163,9 @@ export function Pricing() {
                 Three plans. Numbers coming soon.
             </Heading>
 
-            <div className="mt-12 grid gap-5 lg:grid-cols-3">
+            <Reveal className="mt-12 grid gap-5 lg:grid-cols-3">
                 {tiers.map((t) => (
-                    <div
+                    <LiftCard
                         key={t.name}
                         className="flex flex-col rounded-2xl p-7"
                         style={{
@@ -246,9 +209,9 @@ export function Pricing() {
                         >
                             Start free
                         </Link>
-                    </div>
+                    </LiftCard>
                 ))}
-            </div>
+            </Reveal>
 
             <p className="mt-8 text-sm" style={{ color: 'var(--muted-foreground)' }}>
                 You pay Meta&apos;s own message rates directly on WhatsApp — we add nothing on top.

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Reveal, RevealItem, LiftCard } from './motion';
 import {
     MessageCircle, Instagram, Facebook, Wallet, CalendarCheck,
     BellRing, ShieldCheck, Users, ArrowRight, Check,
@@ -57,7 +58,7 @@ export function TheProblem() {
                 Every missed message is a booking that went next door.
             </Heading>
 
-            <div className="mt-12 grid gap-6 sm:grid-cols-2">
+            <Reveal className="mt-12 grid gap-6 sm:grid-cols-2">
                 {[
                     {
                         n: '1',
@@ -70,7 +71,7 @@ export function TheProblem() {
                         d: 'Three no-shows a week at GHS 50 is GHS 600 a month gone, and the chair sat empty while someone else could have had it.',
                     },
                 ].map((c) => (
-                    <div
+                    <LiftCard
                         key={c.n}
                         className="rounded-xl p-7"
                         style={{ background: 'var(--background)', border: '1px solid var(--border)' }}
@@ -83,9 +84,9 @@ export function TheProblem() {
                         </span>
                         <h3 className="mt-4 text-lg font-semibold" style={{ color: 'var(--foreground)' }}>{c.t}</h3>
                         <p className="mt-2 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{c.d}</p>
-                    </div>
+                    </LiftCard>
                 ))}
-            </div>
+            </Reveal>
         </Section>
     );
 }
@@ -109,9 +110,9 @@ export function WhatItDoes() {
                 A receptionist who never takes lunch.
             </Heading>
 
-            <div className="mt-12 grid gap-x-10 gap-y-9 sm:grid-cols-2">
+            <Reveal className="mt-12 grid gap-x-10 gap-y-9 sm:grid-cols-2">
                 {JOBS.map(({ icon: Icon, t, d }) => (
-                    <div key={t} className="flex gap-4">
+                    <RevealItem key={t} className="flex gap-4">
                         <div
                             className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
                             style={{ background: 'var(--secondary)' }}
@@ -122,9 +123,9 @@ export function WhatItDoes() {
                             <h3 className="text-[15px] font-semibold" style={{ color: 'var(--foreground)' }}>{t}</h3>
                             <p className="mt-1.5 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{d}</p>
                         </div>
-                    </div>
+                    </RevealItem>
                 ))}
-            </div>
+            </Reveal>
         </Section>
     );
 }
@@ -209,19 +210,19 @@ export function Channels() {
             <Heading sub="Customers message you the way they already do. Nothing to download, nothing for them to learn.">
                 Your customers don&apos;t install anything.
             </Heading>
-            <div className="mt-12 grid gap-5 sm:grid-cols-3">
+            <Reveal className="mt-12 grid gap-5 sm:grid-cols-3">
                 {items.map(({ icon: Icon, n, d }) => (
-                    <div
+                    <LiftCard
                         key={n}
-                        className="rounded-xl p-6 transition-colors"
+                        className="rounded-xl p-6"
                         style={{ background: 'var(--secondary)', border: '1px solid transparent' }}
                     >
                         <Icon className="h-6 w-6" style={{ color: 'var(--primary)' }} />
                         <h3 className="mt-4 font-semibold" style={{ color: 'var(--foreground)' }}>{n}</h3>
                         <p className="mt-1.5 text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{d}</p>
-                    </div>
+                    </LiftCard>
                 ))}
-            </div>
+            </Reveal>
         </Section>
     );
 }
@@ -236,15 +237,15 @@ export function HowItWorks() {
         <Section id="how" tint>
             <Eyebrow>Getting started</Eyebrow>
             <Heading sub="Most people are taking bookings the same afternoon.">Three steps, once.</Heading>
-            <div className="mt-12 grid gap-8 sm:grid-cols-3">
+            <Reveal className="mt-12 grid gap-8 sm:grid-cols-3">
                 {steps.map((s) => (
-                    <div key={s.n}>
+                    <RevealItem key={s.n}>
                         <span className="font-display text-4xl" style={{ color: 'var(--primary)' }}>{s.n}</span>
                         <h3 className="mt-3 font-semibold" style={{ color: 'var(--foreground)' }}>{s.t}</h3>
                         <p className="mt-1.5 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{s.d}</p>
-                    </div>
+                    </RevealItem>
                 ))}
-            </div>
+            </Reveal>
         </Section>
     );
 }
@@ -261,17 +262,17 @@ export function WhoItsFor() {
             <Heading sub="Anything booked by appointment, run by one to eight people — big enough to lose bookings while you're busy, too small to pay someone to answer the phone.">
                 Built for a business run from a phone.
             </Heading>
-            <div className="mt-10 flex flex-wrap gap-2.5">
+            <Reveal className="mt-10 flex flex-wrap gap-2.5">
                 {fits.map((f) => (
-                    <span
+                    <RevealItem key={f}><span
                         key={f}
                         className="rounded-full px-4 py-2 text-sm"
                         style={{ background: 'var(--secondary)', color: 'var(--foreground)' }}
                     >
                         {f}
-                    </span>
+                    </span></RevealItem>
                 ))}
-            </div>
+            </Reveal>
         </Section>
     );
 }

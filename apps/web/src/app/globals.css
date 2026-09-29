@@ -446,3 +446,73 @@ body {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ------------------------------------------------------------------
+   Landing motion.
+
+   Deliberately CSS, not JS. The audience is on cheap phones and slow
+   connections, and a framer-driven `initial={{opacity:0}}` renders the
+   markup at opacity 0 on the server — so if hydration is slow, blocked or
+   fails, the page is blank. Here the resting state is VISIBLE and motion
+   is added on top, so the worst case is a static page rather than an
+   empty one.
+   ------------------------------------------------------------------ */
+
+@keyframes sage-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+}
+
+@keyframes sage-bubble {
+    from { opacity: 0; transform: translateY(8px) scale(0.97); }
+    to   { opacity: 1; transform: none; }
+}
+
+@keyframes sage-blur-in {
+    from { opacity: 0; transform: translateY(12px); filter: blur(6px); }
+    to   { opacity: 1; transform: none; filter: blur(0); }
+}
+
+@keyframes sage-dot {
+    0%, 100% { opacity: 0.3; }
+    50%      { opacity: 1; }
+}
+
+/* Hero: runs on load, since it is already on screen. */
+.theme-sage .sage-enter {
+    animation: sage-blur-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Below the fold: visible by default, animated only once revealed. */
+.theme-sage .sage-reveal > * {
+    opacity: 1;
+}
+.theme-sage .sage-reveal.is-armed > * {
+    opacity: 0;
+}
+.theme-sage .sage-reveal.is-in > * {
+    animation: sage-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.theme-sage .sage-reveal.is-in > *:nth-child(2) { animation-delay: 0.07s; }
+.theme-sage .sage-reveal.is-in > *:nth-child(3) { animation-delay: 0.14s; }
+.theme-sage .sage-reveal.is-in > *:nth-child(4) { animation-delay: 0.21s; }
+.theme-sage .sage-reveal.is-in > *:nth-child(5) { animation-delay: 0.28s; }
+.theme-sage .sage-reveal.is-in > *:nth-child(6) { animation-delay: 0.35s; }
+.theme-sage .sage-reveal.is-in > *:nth-child(n + 7) { animation-delay: 0.42s; }
+
+.theme-sage .sage-bubble { animation: sage-bubble 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.theme-sage .sage-dot { animation: sage-dot 1s ease-in-out infinite; }
+.theme-sage .sage-dot:nth-child(2) { animation-delay: 0.16s; }
+.theme-sage .sage-dot:nth-child(3) { animation-delay: 0.32s; }
+
+.theme-sage .sage-lift { transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+.theme-sage .sage-lift:hover { transform: translateY(-3px); }
+
+@media (prefers-reduced-motion: reduce) {
+    .theme-sage .sage-enter,
+    .theme-sage .sage-reveal.is-in > *,
+    .theme-sage .sage-bubble,
+    .theme-sage .sage-dot { animation: none !important; }
+    .theme-sage .sage-reveal.is-armed > * { opacity: 1 !important; }
+    .theme-sage .sage-lift:hover { transform: none; }
+}

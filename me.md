@@ -1,0 +1,205 @@
+# Things only you can do
+
+Everything on this list is outside the code. Nothing here can be finished by
+writing software — it needs an account, an approval, a decision, or your card.
+
+Several finished features are sitting inert waiting on items in here.
+
+Last updated: 30 September 2026.
+
+---
+
+## The short version
+
+| # | Thing | Unblocks | Effort |
+|---|---|---|---|
+| 1 | Add a card to your WhatsApp number in Meta | Your bot still replying after 1 Oct | 10 min |
+| 2 | Paystack: aggregator approval + Registered business | All payments and payouts | Weeks — start now |
+| 3 | Meta App Review: Instagram + Messenger | Two finished channels | 1 day + Meta's queue |
+| 4 | Arkesel account for Bookly | Reminders without tenants configuring SMS | 1 hour |
+| 5 | Decide the fee % and the new-tenant hold | Pricing, fraud exposure | A decision |
+| 6 | Rotate two secrets | Security hygiene | 20 min |
+| 7 | `git push origin Dev` | Everything built this session is local only | 1 min |
+
+---
+
+## 1. WhatsApp — add a card before 1 October
+
+**Why:** from 1 October Meta charges for service messages — the ordinary
+replies your bot sends inside the 24-hour window. Reporting from several
+providers says a WhatsApp Business Account with **no payment method on file by
+30 September stops delivering them**. I could not confirm that date on Meta's
+own documentation, so treat it as likely rather than certain — but the fix is
+ten minutes and the downside is your bot going silent.
+
+- [ ] Meta Business Suite → Billing & Payments → select the WABA → add a card
+- [ ] Do this for your own test number at minimum
+
+**Note:** Meta takes Visa/Mastercard/Amex, PayPal, or direct debit. It does
+**not** take Mobile Money. This is the single reason most Ghanaian salons
+cannot complete WhatsApp setup themselves.
+
+---
+
+## 2. Paystack — the big one, start it first
+
+Everything about money is built and **cannot be switched on** without these.
+Both are slow, so they should be in motion while other work continues.
+
+- [ ] **Get written aggregator / marketplace approval.** You will be collecting
+      payments on behalf of other businesses into your own Paystack account.
+      Doing that without explicit sign-off risks the account being frozen —
+      with your tenants' money inside it. Ask in writing and keep the reply.
+- [ ] **Get Registered business status.** Paystack Transfers are gated on it,
+      and every payout depends on Transfers. Without it nobody can withdraw.
+- [ ] Confirm your Paystack account is **GHS-only**, or tell me, because the
+      code does not yet validate currency and a second enabled currency would
+      credit wrongly.
+- [ ] Confirm the Paystack webhook URL points at
+      `https://bookly.ikieguy.online/api/payments/webhook` and that **transfer
+      events** are enabled, not just charges. If transfers go elsewhere,
+      payouts will never be marked paid.
+
+> Separately worth asking them: you are holding funds for third parties, which
+> is regulated in Ghana under the Payment Systems and Services Act 2019. Ask
+> Paystack what they require of you, and consider a lawyer's view. This is not
+> legal advice.
+
+---
+
+## 3. Meta App Review — Instagram and Messenger
+
+Both channels are **built, tested and merged**. They cannot serve a single
+customer until Meta grants Advanced Access. Business Verification is already
+done from the WhatsApp round, which is normally the slowest part.
+
+Full runbook with the screencast rules and the use-case text is in
+[futurefeature.md](futurefeature.md) section 0. The prerequisites that fail
+**silently** if missed:
+
+- [ ] **Make one real API call with each permission first** — required within
+      30 days before submitting, and it takes up to 2 days to register.
+      Connect your own Page and Instagram in dev mode and put a real DM
+      through.
+- [ ] **Turn on message access on the Instagram account.** Instagram app →
+      Settings → Messages and story replies → Message controls → Connected
+      tools → Allow access to messages. **If this is off, webhooks never
+      arrive and there is no error anywhere** — not in our logs, not Meta's.
+- [ ] **Give your test Facebook account a role on the app.** In dev mode only
+      app-role users can message the IG account, so without it you cannot even
+      record the demo.
+- [ ] **Update the privacy policy.** It currently says "Meta" but never names
+      Instagram, Facebook or Messenger, or what data we receive. That is a
+      documented rejection cause.
+- [ ] **Create a test Bookly account for the reviewer** with nothing connected.
+      They test with their own accounts and will not use your credentials.
+- [ ] Record **one screencast per permission**, each showing the Facebook
+      consent screen with the scopes visible. A general product tour that never
+      isolates the permission is the most common way these fail.
+
+Permissions to request, all in one submission:
+`pages_messaging`, `instagram_manage_messages`, `instagram_basic`,
+`pages_show_list`, `pages_manage_metadata`. Nothing else — asking for more
+than the use case justifies is itself grounds for rejection.
+
+---
+
+## 4. Accounts to create, and what to put in `.env`
+
+Everything below is missing today, and each absent value simply disables its
+feature rather than breaking anything.
+
+### Bookly's own WhatsApp number service *(optional — see note)*
+
+- [ ] Create a WABA under **your** Meta Business Manager
+- [ ] Attach your card to it
+- [ ] Create a System User with `whatsapp_business_management` +
+      `whatsapp_business_messaging` on that WABA, and generate a token
+
+```
+PLATFORM_WABA_ID=...
+PLATFORM_WHATSAPP_TOKEN=...
+```
+
+> **Note:** this hosts tenant numbers on your WABA so you pay Meta instead of
+> them. It caps at **20 numbers per business portfolio** (Meta's limit), and
+> tenants can never migrate their number away. Worth doing only if you decide
+> to serve MoMo-only salons on WhatsApp rather than pushing them to Instagram.
+
+### Text messages on your account
+
+- [ ] Open an Arkesel account for Bookly and register a sender ID
+
+```
+PLATFORM_ARKESEL_API_KEY=...
+PLATFORM_ARKESEL_SENDER_ID=Bookly        # what customers see as the sender
+PLATFORM_SMS_BUDGET=200                  # per tenant per month; optional
+```
+
+### Your fee
+
+```
+PLATFORM_FEE_BPS=0        # basis points. 250 = 2.5%. 0 = no fee.
+```
+
+Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
+`NEXT_PUBLIC_WHATSAPP_APP_ID`.
+
+---
+
+## 5. Decisions nobody can make for you
+
+- [ ] **What percentage do you take?** The mechanism is built and set to zero.
+      Price it against what a salon recovers in no-shows, not against other
+      software.
+- [ ] **Hold money from new tenants before their first payout?** Today funds
+      clear the moment a job is marked done, as you asked. The state machine
+      stops instant fraud, but not the patient version: register, take a
+      deposit on a stolen card, wait for the appointment time, mark it done,
+      withdraw — and you eat the chargeback. A hold on **new tenants only**
+      would close it without making established salons wait. Say the word and
+      I will build it.
+- [ ] **Rebuild the plan cards.** They still advertise message counts you no
+      longer supply. See [what-bookly-sells.pdf](docs/strategy/what-bookly-sells.pdf).
+- [ ] **Solution Partner, eventually?** It would let you bill tenants for
+      WhatsApp messages instead of them paying Meta. Long process; revisit
+      when you have volume to show.
+
+---
+
+## 6. Security hygiene
+
+- [ ] **Rotate the Supabase database password.** Its prefix was printed to a
+      terminal during a migration earlier in this project.
+- [ ] **Rotate the WhatsApp access token** that appeared in a screenshot.
+- [ ] Decide whether `/payments/connect` should reject `sk_test_` keys in
+      production. It currently accepts any key that does not return 401, which
+      was part of the critical flaw found in review.
+
+---
+
+## 7. Deploy and operations
+
+- [ ] **`git push origin Dev`** — your git hook blocks me from pushing, so
+      everything built in this session exists only on this server.
+- [ ] After pulling: `npm install --legacy-peer-deps`, then rebuild both apps.
+- [ ] **nginx config is not in git.** `/etc/nginx/sites-available/bookly.ikieguy.online`
+      must be re-applied by hand if the server is ever rebuilt. It carries the
+      WebSocket upgrade and forwarded-host headers that two separate bugs
+      traced back to.
+- [ ] **Supabase free tier auto-pauses after about a week idle.** When it does,
+      the API crash-loops on P1001. Fix: resume the project, then
+      `pm2 restart bookly-api`.
+- [ ] Flip the Meta app to **Live** mode when you are ready for real tenants.
+
+---
+
+## What is finished and waiting on this list
+
+| Built | Waiting on |
+|---|---|
+| Instagram + Messenger channels | App Review (item 3) |
+| Payment collection, wallet, payouts | Paystack approval (item 2) |
+| SMS on Bookly's account | Arkesel account (item 4) |
+| Bookly-hosted WhatsApp numbers | Platform WABA (item 4) |
+| Everything from this session | `git push` (item 7) |

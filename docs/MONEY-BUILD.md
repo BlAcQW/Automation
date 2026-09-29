@@ -53,12 +53,55 @@ same reason.
 - [x] **9. Money screen (web)** — what's ready, what's still clearing, where it
       goes, one withdraw action.
 - [x] **10. Money screen (mobile)** — same, phone-first.
-- [ ] **11. Security review** — full money path: idempotency, concurrency,
-      authorisation, float safety, audit coverage.
+- [x] **11. Security review** — done, adversarial. Found **1 CRITICAL** (a
+      tenant could credit their wallet with money that never reached Bookly and
+      withdraw it — the collection route was inferable from attacker-controlled
+      data) and **4 HIGH**. All five fixed: `3bc67f9`, `269beb6`. Plus an
+      underpayment hole found separately: `7cb09d1`.
+      **Still open: 6 MEDIUM, 6 LOW** — see below.
 - [ ] **12. Structure & flow PDF** — architecture and money movement, for the
       record and for Paystack.
 
 ---
+
+## Open security findings (not yet fixed)
+
+From the adversarial review. None are exploitable while nothing is live, but
+these block real money.
+
+**MEDIUM**
+- **STAFF can trigger a refund** via `POST /bookings/:id/cancel` — no role
+  check — which contradicts the owner-only invariant the money code claims.
+- **Transfer goes to a re-queried recipient**, not the one `createWithdrawal`
+  validated, so a concurrent destination change can bypass the cooling-off.
+- **Currency is never validated.** `deriveBalances` sums across currencies and
+  `Tenant.paymentCurrency` still defaults to NGN.
+- **Payout state machine gaps** — an unconditional `PROCESSING` update can
+  resurrect a settled payout; `transfer.reversed` after success is ignored;
+  nothing reaps a payout whose webhook never arrives.
+- **Underpayment returns 200** to Paystack, so it stops retrying and the money
+  is neither credited nor refunded.
+- **Refund route is re-resolved from the tenant's CURRENT key**, so connecting
+  an own key after a platform payment silently skips the refund.
+
+**LOW**
+- **Rate limits are effectively per-IP**: `keyGenerator` reads `req.user` but
+  rate-limit runs in `onRequest`, before `authenticate`. Needs `hook: 'preHandler'`.
+- Webhook returns different responses for known vs unknown tenants (ID oracle).
+- No step-up auth on withdraw or destination change; a first destination is
+  usable immediately with no notification.
+- P2002 caught inside a transaction leaves it aborted.
+- Daily payout cap is a calendar day, so 2x is available around midnight.
+- `/money/destination/preview` is a number-to-name oracle on the shared key.
+- Ledger and payout rows cascade-delete with the tenant.
+
+## Deliberately not done
+
+- **No hold period before withdrawal.** The owner asked for funds to clear the
+  moment a job is marked done. The state machine blocks the instant fraud, but
+  not the patient version (book for 10 minutes' time, wait, complete,
+  withdraw). A new-tenant-only hold would close it without penalising
+  established salons. The owner's call.
 
 ## Known gaps
 

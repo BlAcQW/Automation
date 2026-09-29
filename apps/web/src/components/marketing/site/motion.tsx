@@ -67,7 +67,7 @@ export function Reveal({
         return () => io.disconnect();
     }, []);
 
-    const cls = ['bronze-reveal', state === 'armed' && 'is-armed', state === 'in' && 'is-in', className]
+    const cls = ['site-reveal', state === 'armed' && 'is-armed', state === 'in' && 'is-in', className]
         .filter(Boolean)
         .join(' ');
 
@@ -94,7 +94,7 @@ export function RevealItem({
 /** Hero entrance. Already on screen, so it plays on load rather than on scroll. */
 export function HeroReveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
     return (
-        <div className="bronze-enter" style={delay ? { animationDelay: `${delay}s` } : undefined}>
+        <div className="site-enter" style={delay ? { animationDelay: `${delay}s` } : undefined}>
             {children}
         </div>
     );
@@ -110,7 +110,7 @@ export function LiftCard({
     className?: string;
     style?: React.CSSProperties;
 }) {
-    return <div className={`bronze-lift ${className}`} style={style}>{children}</div>;
+    return <div className={`site-lift ${className}`} style={style}>{children}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -194,7 +194,7 @@ export function AnimatedChat() {
                 {SCRIPT.slice(0, shown).map((m, i) => (
                     <div key={i} className={m.from === 'us' ? 'flex justify-end' : 'flex justify-start'}>
                         <p
-                            className={playing ? 'bronze-bubble max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-snug' : 'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-snug'}
+                            className={playing ? 'site-bubble max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-snug' : 'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-snug'}
                             style={
                                 m.from === 'us'
                                     ? { background: 'var(--primary)', color: 'var(--primary-foreground)', borderBottomRightRadius: 6 }
@@ -215,7 +215,7 @@ export function AnimatedChat() {
                             {[0, 1, 2].map((i) => (
                                 <span
                                     key={i}
-                                    className="bronze-dot block h-1.5 w-1.5 rounded-full"
+                                    className="site-dot block h-1.5 w-1.5 rounded-full"
                                     style={{ background: 'var(--primary-foreground)' }}
                                 />
                             ))}

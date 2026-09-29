@@ -393,29 +393,31 @@ body {
 }
 
 /* ------------------------------------------------------------------
-   Sunset Luxury Bronze — the marketing site's theme, from 21st.dev
-   (sh20raj). Dark, warm and high-contrast: it reads as a salon that
-   charges well, and amber on near-black stays legible on a cheap phone
-   in bright sun.
+   Marketing theme — Bookly's own palette.
 
-   Scoped to `.theme-bronze`, never :root — the dashboard keeps its own
-   palette, so restyling marketing cannot change what an owner sees.
+   Deliberately the SAME emerald-on-ink the dashboard uses, rather than a
+   separate marketing look. Someone who signs up from this page lands in an
+   app that looks like the page they came from, which is one less moment of
+   "is this the right place?".
+
+   Still scoped to a class rather than :root, so the marketing layout's own
+   spacing and type cannot leak into the product.
    ------------------------------------------------------------------ */
-.theme-bronze {
-    --background: #0c0a09;
-    --foreground: #fafaf9;
-    --card: #1c1917;
-    --card-foreground: #fafaf9;
-    --primary: #f59e0b;
-    --primary-foreground: #451a03;
-    --secondary: #451a03;
-    --secondary-foreground: #fde68a;
-    --muted: #292524;
-    --muted-foreground: #a8a29e;
-    --accent: #f43f5e;
-    --accent-foreground: #ffffff;
-    --border: #44403c;
-    --ring: #f59e0b;
+.theme-site {
+    --background: var(--ink-950);
+    --foreground: var(--ink-50);
+    --card: var(--ink-900);
+    --card-foreground: var(--ink-50);
+    --primary: var(--bookly-emerald-500);
+    --primary-foreground: var(--ink-1000);
+    --secondary: var(--ink-800);
+    --secondary-foreground: var(--bookly-emerald-100);
+    --muted: var(--ink-800);
+    --muted-foreground: var(--ink-300);
+    --accent: var(--bookly-emerald-400);
+    --accent-foreground: var(--ink-1000);
+    --border: var(--ink-700);
+    --ring: var(--bookly-emerald-500);
     --radius: 0.75rem;
     --sage-sans: 'Albert Sans', ui-sans-serif, system-ui, sans-serif;
     --sage-serif: 'DM Serif Display', ui-serif, Georgia, serif;
@@ -425,14 +427,24 @@ body {
     font-family: var(--sage-sans);
 }
 
-.theme-bronze .font-display {
+/* Emerald glow behind the hero, matching the brand rather than amber. */
+.theme-site .glow::before {
+    content: '';
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 70%;
+    pointer-events: none;
+    background: radial-gradient(60% 60% at 50% 0%, rgba(16, 185, 129, 0.14), transparent 70%);
+}
+
+.theme-site .font-display {
     font-family: var(--sage-serif);
     font-weight: 400;
     letter-spacing: -0.015em;
 }
 
 /* Warm glow behind the hero. Flat near-black looks dead on a phone. */
-.theme-bronze .glow::before {
+.theme-site .glow::before {
     content: '';
     position: absolute;
     inset: -20% -10% auto -10%;
@@ -441,7 +453,7 @@ body {
     background: radial-gradient(60% 60% at 50% 0%, rgba(245, 158, 11, 0.16), transparent 70%);
 }
 
-.theme-bronze .grain::before {
+.theme-site .grain::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -451,7 +463,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .theme-bronze *, .theme-bronze *::before, .theme-bronze *::after {
+    .theme-site *, .theme-site *::before, .theme-site *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
     }
@@ -468,61 +480,61 @@ body {
    empty one.
    ------------------------------------------------------------------ */
 
-@keyframes bronze-rise {
+@keyframes site-rise {
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: none; }
 }
 
-@keyframes bronze-bubble {
+@keyframes site-bubble {
     from { opacity: 0; transform: translateY(8px) scale(0.97); }
     to   { opacity: 1; transform: none; }
 }
 
-@keyframes bronze-blur-in {
+@keyframes site-blur-in {
     from { opacity: 0; transform: translateY(12px); filter: blur(6px); }
     to   { opacity: 1; transform: none; filter: blur(0); }
 }
 
-@keyframes bronze-dot {
+@keyframes site-dot {
     0%, 100% { opacity: 0.3; }
     50%      { opacity: 1; }
 }
 
 /* Hero: runs on load, since it is already on screen. */
-.theme-bronze .bronze-enter {
-    animation: bronze-blur-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+.theme-site .site-enter {
+    animation: site-blur-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* Below the fold: visible by default, animated only once revealed. */
-.theme-bronze .bronze-reveal > * {
+.theme-site .site-reveal > * {
     opacity: 1;
 }
-.theme-bronze .bronze-reveal.is-armed > * {
+.theme-site .site-reveal.is-armed > * {
     opacity: 0;
 }
-.theme-bronze .bronze-reveal.is-in > * {
-    animation: bronze-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+.theme-site .site-reveal.is-in > * {
+    animation: site-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.theme-bronze .bronze-reveal.is-in > *:nth-child(2) { animation-delay: 0.07s; }
-.theme-bronze .bronze-reveal.is-in > *:nth-child(3) { animation-delay: 0.14s; }
-.theme-bronze .bronze-reveal.is-in > *:nth-child(4) { animation-delay: 0.21s; }
-.theme-bronze .bronze-reveal.is-in > *:nth-child(5) { animation-delay: 0.28s; }
-.theme-bronze .bronze-reveal.is-in > *:nth-child(6) { animation-delay: 0.35s; }
-.theme-bronze .bronze-reveal.is-in > *:nth-child(n + 7) { animation-delay: 0.42s; }
+.theme-site .site-reveal.is-in > *:nth-child(2) { animation-delay: 0.07s; }
+.theme-site .site-reveal.is-in > *:nth-child(3) { animation-delay: 0.14s; }
+.theme-site .site-reveal.is-in > *:nth-child(4) { animation-delay: 0.21s; }
+.theme-site .site-reveal.is-in > *:nth-child(5) { animation-delay: 0.28s; }
+.theme-site .site-reveal.is-in > *:nth-child(6) { animation-delay: 0.35s; }
+.theme-site .site-reveal.is-in > *:nth-child(n + 7) { animation-delay: 0.42s; }
 
-.theme-bronze .bronze-bubble { animation: bronze-bubble 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.theme-bronze .bronze-dot { animation: bronze-dot 1s ease-in-out infinite; }
-.theme-bronze .bronze-dot:nth-child(2) { animation-delay: 0.16s; }
-.theme-bronze .bronze-dot:nth-child(3) { animation-delay: 0.32s; }
+.theme-site .site-bubble { animation: site-bubble 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.theme-site .site-dot { animation: site-dot 1s ease-in-out infinite; }
+.theme-site .site-dot:nth-child(2) { animation-delay: 0.16s; }
+.theme-site .site-dot:nth-child(3) { animation-delay: 0.32s; }
 
-.theme-bronze .bronze-lift { transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
-.theme-bronze .bronze-lift:hover { transform: translateY(-3px); }
+.theme-site .site-lift { transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+.theme-site .site-lift:hover { transform: translateY(-3px); }
 
 @media (prefers-reduced-motion: reduce) {
-    .theme-bronze .bronze-enter,
-    .theme-bronze .bronze-reveal.is-in > *,
-    .theme-bronze .bronze-bubble,
-    .theme-bronze .bronze-dot { animation: none !important; }
-    .theme-bronze .bronze-reveal.is-armed > * { opacity: 1 !important; }
-    .theme-bronze .bronze-lift:hover { transform: none; }
+    .theme-site .site-enter,
+    .theme-site .site-reveal.is-in > *,
+    .theme-site .site-bubble,
+    .theme-site .site-dot { animation: none !important; }
+    .theme-site .site-reveal.is-armed > * { opacity: 1 !important; }
+    .theme-site .site-lift:hover { transform: none; }
 }

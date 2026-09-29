@@ -1,9 +1,9 @@
-import { Nav, Footer, MobileCTA } from '@/components/marketing/bronze/chrome';
+import { Nav, Footer, MobileCTA } from '@/components/marketing/site/chrome';
 import {
     PageHero, Section, Eyebrow, Heading, JobsGrid, ChannelCards,
     NoSetupBlock, ClosingCTA,
-} from '@/components/marketing/bronze/pieces';
-import { Reveal } from '@/components/marketing/bronze/motion';
+} from '@/components/marketing/site/pieces';
+import { Reveal } from '@/components/marketing/site/motion';
 
 export const metadata = {
     title: 'What Bookly does',
@@ -24,7 +24,7 @@ export default function FeaturesPage() {
     ];
 
     return (
-        <main id="main" className="theme-bronze min-h-screen">
+        <main id="main" className="theme-site min-h-screen">
             <Nav />
             <PageHero
                 eyebrow="What it does"

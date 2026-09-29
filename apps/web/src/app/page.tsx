@@ -1,10 +1,10 @@
-import { Nav, Footer, MobileCTA } from '@/components/marketing/bronze/chrome';
-import { HomeHero } from '@/components/marketing/bronze/home-hero';
+import { Nav, Footer, MobileCTA } from '@/components/marketing/site/chrome';
+import { HomeHero } from '@/components/marketing/site/home-hero';
 import {
     Section, Eyebrow, Heading, ChannelCards, NoSetupBlock, ClosingCTA, CTA,
     TrustStrip, Comparison, WorksWith,
-} from '@/components/marketing/bronze/pieces';
-import { Reveal, LiftCard } from '@/components/marketing/bronze/motion';
+} from '@/components/marketing/site/pieces';
+import { Reveal, LiftCard } from '@/components/marketing/site/motion';
 
 export const metadata = {
     title: 'Bookly — never lose a booking because you were busy',
@@ -19,7 +19,7 @@ export const metadata = {
  */
 export default function HomePage() {
     return (
-        <main id="main" className="theme-bronze min-h-screen">
+        <main id="main" className="theme-site min-h-screen">
             <Nav />
             <HomeHero />
             <TrustStrip />

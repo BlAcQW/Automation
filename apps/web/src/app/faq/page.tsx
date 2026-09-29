@@ -1,5 +1,5 @@
-import { Nav, Footer, MobileCTA } from '@/components/marketing/bronze/chrome';
-import { PageHero, Section, ClosingCTA } from '@/components/marketing/bronze/pieces';
+import { Nav, Footer, MobileCTA } from '@/components/marketing/site/chrome';
+import { PageHero, Section, ClosingCTA } from '@/components/marketing/site/pieces';
 
 export const metadata = {
     title: 'Questions — Bookly',
@@ -34,7 +34,7 @@ export default function FaqPage() {
     ];
 
     return (
-        <main id="main" className="theme-bronze min-h-screen">
+        <main id="main" className="theme-site min-h-screen">
             <Nav />
             <PageHero
                 eyebrow="Questions"

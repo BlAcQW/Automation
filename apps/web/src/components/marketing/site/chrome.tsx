@@ -39,7 +39,7 @@ export function Nav() {
                 className="sticky z-50 border-b backdrop-blur-xl"
                 style={{
                     top: 'env(safe-area-inset-top, 0px)',
-                    background: 'rgba(12,10,9,0.72)',
+                    background: 'rgba(10,15,13,0.72)',
                     borderColor: 'var(--border)',
                 }}
             >
@@ -147,7 +147,7 @@ export function MobileCTA() {
         <div
             className="fixed inset-x-0 bottom-0 z-40 border-t px-4 py-3 backdrop-blur-xl md:hidden"
             style={{
-                background: 'rgba(12,10,9,0.9)',
+                background: 'rgba(10,15,13,0.92)',
                 borderColor: 'var(--border)',
                 paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)',
             }}

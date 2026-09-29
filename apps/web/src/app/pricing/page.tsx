@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { Check } from 'lucide-react';
-import { Nav, Footer, MobileCTA } from '@/components/marketing/bronze/chrome';
-import { PageHero, Section, ClosingCTA } from '@/components/marketing/bronze/pieces';
-import { Reveal, LiftCard } from '@/components/marketing/bronze/motion';
+import { Nav, Footer, MobileCTA } from '@/components/marketing/site/chrome';
+import { PageHero, Section, ClosingCTA } from '@/components/marketing/site/pieces';
+import { Reveal, LiftCard } from '@/components/marketing/site/motion';
 
 export const metadata = {
     title: 'Pricing — Bookly',
@@ -22,7 +22,7 @@ export default function PricingPage() {
     ];
 
     return (
-        <main id="main" className="theme-bronze min-h-screen">
+        <main id="main" className="theme-site min-h-screen">
             <Nav />
             <PageHero
                 eyebrow="Pricing"

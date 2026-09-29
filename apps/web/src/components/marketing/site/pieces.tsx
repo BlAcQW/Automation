@@ -209,7 +209,7 @@ export function ClosingCTA({ title, sub }: { title: string; sub: string }) {
                 >
                     {title}
                 </h2>
-                <p className="mx-auto mt-4 max-w-xl text-[15px] sm:text-[16px]" style={{ color: 'rgba(253,230,138,0.75)' }}>
+                <p className="mx-auto mt-4 max-w-xl text-[15px] sm:text-[16px]" style={{ color: 'var(--bookly-emerald-200)' }}>
                     {sub}
                 </p>
                 <div className="mx-auto mt-8 max-w-xs">
@@ -283,7 +283,7 @@ export function Comparison() {
             {rows.map(([a, b], i) => (
                 <div key={a} className="grid grid-cols-2 border-t text-[14px]" style={{ borderColor: 'var(--border)' }}>
                     <div className="px-4 py-3.5 sm:px-6" style={{ color: 'var(--muted-foreground)' }}>{a}</div>
-                    <div className="px-4 py-3.5 font-medium sm:px-6" style={{ color: 'var(--foreground)', background: i % 2 ? 'transparent' : 'rgba(69,26,3,0.25)' }}>
+                    <div className="px-4 py-3.5 font-medium sm:px-6" style={{ color: 'var(--foreground)', background: i % 2 ? 'transparent' : 'rgba(16,185,129,0.06)' }}>
                         {b}
                     </div>
                 </div>

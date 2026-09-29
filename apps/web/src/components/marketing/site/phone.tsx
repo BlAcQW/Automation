@@ -84,20 +84,20 @@ export function PhoneChat() {
             {/* The phone. Bezel and screen are plain CSS — no image to load. */}
             <div
                 className="relative w-full max-w-[310px] rounded-[2.6rem] p-2.5 shadow-2xl"
-                style={{ background: '#1c1917', border: '1px solid #44403c' }}
+                style={{ background: 'var(--ink-800)', border: '1px solid var(--ink-600)' }}
             >
                 {/* Notch */}
                 <div
                     className="absolute left-1/2 top-3 z-10 h-5 w-24 -translate-x-1/2 rounded-full"
-                    style={{ background: '#1c1917' }}
+                    style={{ background: 'var(--ink-800)' }}
                     aria-hidden="true"
                 />
 
-                <div className="overflow-hidden rounded-[2.1rem]" style={{ background: '#0b0b0c' }}>
+                <div className="overflow-hidden rounded-[2.1rem]" style={{ background: 'var(--ink-1000)' }}>
                     {/* Status bar */}
                     <div
                         className="flex items-center justify-between px-5 pb-1.5 pt-3 text-[10px] font-medium"
-                        style={{ color: '#e7e5e4' }}
+                        style={{ color: 'var(--ink-200)' }}
                         aria-hidden="true"
                     >
                         <span>9:41</span>
@@ -131,11 +131,11 @@ export function PhoneChat() {
                         {SCRIPT.slice(0, shown).map((m, i) => (
                             <div key={`${channel}-${i}`} className={m.from === 'us' ? 'flex justify-end' : 'flex justify-start'}>
                                 <p
-                                    className={`${playing ? 'bronze-bubble ' : ''}max-w-[82%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug`}
+                                    className={`${playing ? 'site-bubble ' : ''}max-w-[82%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug`}
                                     style={
                                         m.from === 'us'
                                             ? { background: c.brand, color: '#fff', borderBottomRightRadius: 5 }
-                                            : { background: '#26262a', color: '#f5f5f4', borderBottomLeftRadius: 5 }
+                                            : { background: 'var(--ink-700)', color: 'var(--ink-50)', borderBottomLeftRadius: 5 }
                                     }
                                 >
                                     {m.text}
@@ -150,7 +150,7 @@ export function PhoneChat() {
                                     style={{ background: c.brand, borderBottomRightRadius: 5 }}
                                 >
                                     {[0, 1, 2].map((i) => (
-                                        <span key={i} className="bronze-dot block h-1.5 w-1.5 rounded-full bg-white" />
+                                        <span key={i} className="site-dot block h-1.5 w-1.5 rounded-full bg-white" />
                                     ))}
                                 </div>
                             </div>

@@ -28,6 +28,8 @@ import { creditDepositToWallet } from './wallet-credit.js';
 export interface FulfillableBooking {
     id: string;
     bookingReference: string;
+    /** What this booking asked for. Compared against what actually arrived. */
+    depositAmount?: unknown;
     customerName: string;
     customerPhone: string;
     startTime: Date;
@@ -40,7 +42,31 @@ export interface FulfillableOrder {
     id: string;
     orderRef: string;
     customerPhone: string;
+    /** What this order asked for. Compared against what actually arrived. */
     totalAmount: unknown; // Prisma Decimal — coerced via Number()
+}
+
+
+/**
+ * Did the customer actually pay what was asked?
+ *
+ * Nothing compared these before, so any non-zero payment confirmed the
+ * booking and credited the wallet with whatever turned up. The charge amount
+ * is fixed at initialize time so an ordinary customer cannot drive this, but
+ * partial payments exist on some channels and a mismatch would otherwise be
+ * recorded silently as a correct balance.
+ *
+ * A small tolerance absorbs rounding between the decimal column and the
+ * provider's integer minor units. Overpayment is accepted — refusing it would
+ * strand a customer's money for being too generous.
+ */
+const UNDERPAYMENT_TOLERANCE_MINOR = 1;
+
+export function isSufficientPayment(paidMinor: number, expected: unknown): boolean {
+    if (expected === null || expected === undefined) return true; // nothing to compare
+    const expectedMinor = Math.round(Number(expected) * 100);
+    if (!Number.isFinite(expectedMinor) || expectedMinor <= 0) return true;
+    return paidMinor >= expectedMinor - UNDERPAYMENT_TOLERANCE_MINOR;
 }
 
 /** `applied` is true iff this call performed the UNPAID → PAID flip. */
@@ -62,6 +88,16 @@ export async function fulfillBookingCharge(opts: {
     reference: string;
 }): Promise<FulfillResult> {
     const { fastify, logger, tenantId, booking, verified, reference } = opts;
+
+    // Refuse to confirm a booking that was underpaid. Marking it PAID would
+    // hold the slot and credit the salon for money that never arrived.
+    if (!isSufficientPayment(verified.amountKobo, booking.depositAmount)) {
+        logger.error(
+            { bookingId: booking.id, reference, paidMinor: verified.amountKobo },
+            'Payment is less than the deposit asked for — NOT confirming or crediting',
+        );
+        return { applied: false };
+    }
 
     // Atomic claim: only the writer that sees UNPAID flips to PAID. A
     // concurrent delivery sees count === 0 and returns idempotently, so
@@ -210,6 +246,14 @@ export async function fulfillOrderCharge(opts: {
     reference: string;
 }): Promise<FulfillResult> {
     const { fastify, tenantId, order, verified, reference } = opts;
+
+    if (!isSufficientPayment(verified.amountKobo, order.totalAmount)) {
+        fastify.log.error(
+            { orderId: order.id, reference, paidMinor: verified.amountKobo },
+            'Payment is less than the order total — NOT fulfilling or crediting',
+        );
+        return { applied: false };
+    }
 
     // Atomic claim: same TOCTOU guard as the booking branch.
     const claimed = await fastify.prisma.order.updateMany({

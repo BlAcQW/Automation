@@ -445,6 +445,9 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                     startTime: true,
                     paymentStatus: true,
                     serviceId: true,
+                    // Needed to check the customer actually paid what was
+                    // asked before the slot is confirmed and the salon credited.
+                    depositAmount: true,
                     service: { select: { name: true } },
                 },
             });

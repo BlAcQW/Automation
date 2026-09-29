@@ -16,6 +16,7 @@ import { TemplatePurpose } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { createNotification } from './notifications.js';
 import { clearFundsForEntity, depositOutcomeOnCancel, type CancelledBy } from './wallet-clearing.js';
+import { refundDepositForBooking } from './wallet-refund.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
 import { deleteCalendarEvent } from './calendar.js';
 
@@ -114,6 +115,23 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
         }).catch(() => {
             // Never block the cancellation on the ledger — the booking really
             // is cancelled. Releasing the funds can be replayed safely.
+        });
+    } else {
+        // The salon cancelled, so the customer gets their money back —
+        // automatically, not as a held balance waiting for someone to notice.
+        // A deposit held with no owner and no exit is a leak, and the
+        // alternative to refunding is a chargeback that costs more.
+        //
+        // Safe because a salon cancels BEFORE the job is done, so the money is
+        // always still pending: never already released, never already
+        // withdrawn.
+        await refundDepositForBooking({
+            prisma,
+            tenantId: booking.tenantId,
+            bookingId: booking.id,
+        }).catch(() => {
+            // The cancellation itself must still succeed. A failed refund is
+            // logged inside the service and can be retried.
         });
     }
 

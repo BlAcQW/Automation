@@ -39,8 +39,9 @@ same reason.
       carries over with no ledger movement at all. The one exception policy
       cannot cover is the SALON cancelling — that money is held, not released,
       because keeping a customer's money for work nobody will do is
-      indefensible however the terms read. Issuing that refund to the customer
-      is still manual (see below).
+      indefensible however the terms read — and the alternative to refunding is
+      a chargeback that costs more. That refund is **automatic**: money never
+      sits in a state with no owner and no exit.
 - [ ] **5. Payout destination** — add and verify a MoMo number via Paystack
       transfer recipients. Cooling-off before a new destination can be paid to.
 - [ ] **6. Request a withdrawal** — owner-only, balance re-derived inside a
@@ -61,9 +62,9 @@ same reason.
 
 ## Known gaps
 
-- **Salon-cancelled bookings leave money in pending.** Correct and safe — the
-  salon cannot withdraw it — but nobody has given it back to the customer
-  either. Needs an owner-initiated Paystack refund, which is not built.
+- **A failed refund needs a retry path.** If Paystack rejects the refund when a
+  salon cancels, it is logged loudly and the money stays pending, but nothing
+  retries it yet. Replaying is safe — the movement is keyed on the booking.
 
 ## Blocked on you (not on code)
 

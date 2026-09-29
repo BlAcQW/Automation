@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
-export type PaystackStep = 'initialize' | 'verify' | 'signature' | 'config';
+export type PaystackStep = 'initialize' | 'verify' | 'signature' | 'config' | 'refund';
 
 export class PaystackError extends Error {
     constructor(public readonly step: PaystackStep, public readonly details: string) {
@@ -204,4 +204,56 @@ export function verifyWebhookSignature(
     } catch {
         return false;
     }
+}
+
+export interface RefundResult {
+    /** Paystack's id for the refund, used as the ledger idempotency key. */
+    id: string;
+    status: string;
+    amountKobo: number;
+    currency: string;
+}
+
+/**
+ * Refund a transaction, in whole or in part.
+ *
+ * Used when the BUSINESS cancels a paid booking. Deposits are otherwise
+ * non-refundable, but a salon keeping a customer's money for work nobody is
+ * going to do invites a chargeback — which costs the deposit, a dispute fee
+ * and standing with Paystack. Refunding voluntarily is strictly cheaper.
+ *
+ * `amountKobo` omitted refunds the full transaction.
+ */
+export async function refundTransaction(
+    secretKey: string,
+    reference: string,
+    amountKobo?: number,
+): Promise<RefundResult> {
+    const data = await paystackRequest<{
+        id?: number | string;
+        status?: string;
+        amount?: number;
+        currency?: string;
+    }>(
+        '/refund',
+        {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${secretKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                transaction: reference,
+                ...(amountKobo !== undefined ? { amount: amountKobo } : {}),
+            }),
+        },
+        'refund',
+    );
+
+    return {
+        id: String(data.id ?? reference),
+        status: data.status ?? 'pending',
+        amountKobo: data.amount ?? amountKobo ?? 0,
+        currency: data.currency ?? 'GHS',
+    };
 }

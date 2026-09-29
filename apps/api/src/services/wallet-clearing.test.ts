@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bookingStatusClearsFunds,
+  depositOutcomeOnCancel,
   orderStatusClearsFunds,
   pendingFromEntries,
 } from './wallet-clearing.js';
@@ -74,5 +75,21 @@ describe('pendingFromEntries', () => {
   it('is zero when nothing was ever credited', () => {
     expect(pendingFromEntries([])).toBe(0);
     expect(pendingFromEntries([{ account: 'TENANT_AVAILABLE', amountMinor: 100 }])).toBe(0);
+  });
+});
+
+describe('depositOutcomeOnCancel', () => {
+  it('lets the business keep the deposit when the customer cancels', () => {
+    // Non-refundable by policy — the slot was held and then lost. A customer
+    // who cannot make it reschedules instead, which keeps the same booking
+    // and carries the deposit with it.
+    expect(depositOutcomeOnCancel('CUSTOMER')).toBe('FORFEIT_TO_BUSINESS');
+  });
+
+  it('holds the money when the business cancels', () => {
+    // The one case a no-refund policy cannot cover. Keeping a customer's
+    // money for work nobody will do is indefensible however the terms read,
+    // so it is held rather than released to the salon.
+    expect(depositOutcomeOnCancel('BUSINESS')).toBe('HOLD_FOR_REFUND');
   });
 });

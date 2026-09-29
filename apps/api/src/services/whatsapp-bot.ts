@@ -570,6 +570,9 @@ export class WhatsAppBotEngine {
                 }
 
                 const cancelResult = await cancelBooking({
+                    // The customer is cancelling in chat. Deposit is forfeit —
+                    // they are told to reschedule instead if they can.
+                    cancelledBy: 'CUSTOMER',
                     prisma: this.prisma,
                     bookingId: cancelTarget.id,
                     reason: 'customer_whatsapp',

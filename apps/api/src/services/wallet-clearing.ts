@@ -46,6 +46,30 @@ export function pendingFromEntries(
     );
 }
 
+/** Who ended the booking. Decides who keeps the deposit. */
+export type CancelledBy = 'CUSTOMER' | 'BUSINESS';
+
+export type DepositOutcome =
+    /** Non-refundable: the slot was held and then lost. Money is the salon's. */
+    | 'FORFEIT_TO_BUSINESS'
+    /** The salon let the customer down — it must not keep their money. */
+    | 'HOLD_FOR_REFUND';
+
+/**
+ * Where a paid deposit goes when a booking is cancelled.
+ *
+ * Deposits are non-refundable by policy: a customer who cannot make it
+ * reschedules rather than gets money back, and rescheduling keeps the same
+ * booking so the deposit simply carries over.
+ *
+ * The one case policy cannot cover is the salon cancelling. Keeping a
+ * customer's money for work nobody is going to do is indefensible however the
+ * terms are written, so that money is held rather than released.
+ */
+export function depositOutcomeOnCancel(cancelledBy: CancelledBy): DepositOutcome {
+    return cancelledBy === 'BUSINESS' ? 'HOLD_FOR_REFUND' : 'FORFEIT_TO_BUSINESS';
+}
+
 export interface ClearFundsArgs {
     prisma: ExtendedPrismaClient;
     tenantId: string;

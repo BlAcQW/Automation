@@ -123,6 +123,8 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const result = await cancelBooking({
+            // The public link is the customer's own cancel. Deposit is forfeit.
+            cancelledBy: 'CUSTOMER',
             prisma: fastify.prisma,
             bookingId: booking.id,
             reason: 'customer_sms_link',

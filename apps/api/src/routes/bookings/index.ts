@@ -244,6 +244,9 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const result = await cancelBooking({
+            // The dashboard is the salon. They must not keep the deposit for
+            // work they cancelled.
+            cancelledBy: 'BUSINESS',
             prisma: fastify.prisma,
             bookingId: id,
             reason: 'dashboard',

@@ -15,6 +15,7 @@ import { Queue } from 'bullmq';
 import { TemplatePurpose } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { createNotification } from './notifications.js';
+import { clearFundsForEntity, depositOutcomeOnCancel, type CancelledBy } from './wallet-clearing.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
 import { deleteCalendarEvent } from './calendar.js';
 
@@ -27,6 +28,11 @@ export interface CancelBookingArgs {
     bookingId: string;
     /** Free-text reason recorded on the in-app notification metadata. */
     reason: string;
+    /**
+     * Who ended it. Required, with no default, because it decides who keeps
+     * the deposit — and a default would quietly pick one.
+     */
+    cancelledBy: CancelledBy;
     notificationsQueue?: Queue | null;
     remindersQueue?: Queue | null;
 }
@@ -37,7 +43,7 @@ export interface CancelBookingArgs {
  * than throwing, so callers can render a friendly "already cancelled" state.
  */
 export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBookingResult> {
-    const { prisma, bookingId, reason } = args;
+    const { prisma, bookingId, reason, cancelledBy } = args;
 
     const booking = await prisma.booking.findUnique({
         where: { id: bookingId },
@@ -91,6 +97,25 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
         message: `Booking ${booking.bookingReference} has been cancelled`,
         metadata: { bookingId: booking.id, reason },
     }).catch(() => undefined);
+
+    // Deposits are non-refundable: a customer who cancels forfeits it, which
+    // is what makes holding the slot worth anything. Rescheduling keeps the
+    // same booking, so a customer who simply moves their time keeps their
+    // money — no ledger movement happens at all.
+    //
+    // When the SALON cancels, the money stays pending instead. It is not
+    // released to them, because keeping a customer's money for work nobody
+    // will do is indefensible however the terms are written.
+    if (depositOutcomeOnCancel(cancelledBy) === 'FORFEIT_TO_BUSINESS') {
+        await clearFundsForEntity({
+            prisma,
+            tenantId: booking.tenantId,
+            bookingId: booking.id,
+        }).catch(() => {
+            // Never block the cancellation on the ledger — the booking really
+            // is cancelled. Releasing the funds can be replayed safely.
+        });
+    }
 
     return {
         ok: true,

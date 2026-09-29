@@ -33,8 +33,14 @@ same reason.
       (an order DELIVERED) moves `TENANT_PENDING` → `TENANT_AVAILABLE`. Event
       driven, so no scheduled job and no waiting: they finish the job, the
       money is theirs.
-- [ ] **4. Refunds** — cancelling a paid booking reverses the tenant's credit and
-      the fee, from pending or available depending on what cleared.
+- [x] **4. No refunds — reschedule instead.** Deposits are non-refundable: a
+      customer who cancels forfeits it, which is what makes holding the slot
+      worth anything. Rescheduling updates the same booking, so the deposit
+      carries over with no ledger movement at all. The one exception policy
+      cannot cover is the SALON cancelling — that money is held, not released,
+      because keeping a customer's money for work nobody will do is
+      indefensible however the terms read. Issuing that refund to the customer
+      is still manual (see below).
 - [ ] **5. Payout destination** — add and verify a MoMo number via Paystack
       transfer recipients. Cooling-off before a new destination can be paid to.
 - [ ] **6. Request a withdrawal** — owner-only, balance re-derived inside a
@@ -52,6 +58,12 @@ same reason.
       record and for Paystack.
 
 ---
+
+## Known gaps
+
+- **Salon-cancelled bookings leave money in pending.** Correct and safe — the
+  salon cannot withdraw it — but nobody has given it back to the customer
+  either. Needs an owner-initiated Paystack refund, which is not built.
 
 ## Blocked on you (not on code)
 

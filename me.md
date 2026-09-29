@@ -15,7 +15,8 @@ Last updated: 30 September 2026.
 |---|---|---|---|
 | 1 | Add a card to your WhatsApp number in Meta | Your bot still replying after 1 Oct | 10 min |
 | 2 | Paystack: aggregator approval + Registered business | All payments and payouts | Weeks — start now |
-| 3 | Meta App Review: Instagram + Messenger | Two finished channels | 1 day + Meta's queue |
+| 3 | **WhatsApp: register 5 message templates** | Reminders, confirmations — none can send today | Half a day + approval |
+| 3b | Meta App Review: Instagram + Messenger | Two finished channels | 1 day + Meta's queue |
 | 4 | Arkesel account for Bookly | Reminders without tenants configuring SMS | 1 hour |
 | 5 | Decide the fee % and the new-tenant hold | Pricing, fraud exposure | A decision |
 | 6 | Rotate two secrets | Security hygiene | 20 min |
@@ -67,7 +68,66 @@ Both are slow, so they should be in motion while other work continues.
 
 ---
 
-## 3. Meta App Review — Instagram and Messenger
+## 3. WhatsApp — the part still outstanding as a Tech Provider
+
+Your Tech Provider verification is **done**, and you have Advanced access to
+`whatsapp_business_messaging` and `whatsapp_business_management`. Nothing more
+is needed on that. But four things sit outside the codebase and one of them is
+currently breaking a core feature.
+
+### 3.1 Register your message templates — nothing works out-of-window without them
+
+**You have zero templates registered.** I checked: the database has none, and
+none are approved.
+
+This matters more than it sounds. WhatsApp only allows free-typed messages
+within 24 hours of the customer's last message. Outside that window you may
+send **only approved templates** — so with none registered, every one of these
+silently fails to send:
+
+| Purpose | When it fires | What breaks without it |
+|---|---|---|
+| `BOOKING_CONFIRMATION` | After a deposit is paid | Customer never gets confirmation |
+| `BOOKING_REMINDER` | Before the appointment | **No reminders — half the no-show story** |
+| `BOOKING_RESCHEDULED` | After a time change | Customer not told the new time |
+| `BOOKING_CANCELLED` | On cancellation | Customer not told |
+| `ORDER_CONFIRMATION` | After an order is paid | Buyer never gets confirmation |
+
+- [ ] Go to **WhatsApp Manager → Account tools → Message templates**
+- [ ] Create and submit all five. Category **Utility**, not Marketing —
+      utility is cheaper and approves more easily for transactional messages
+- [ ] Match the variable order the code sends. For the reminder that is:
+      customer name, service, date, time, booking reference
+- [ ] Wait for approval, then check they appear on the Templates page in Bookly
+
+> Reminders are the single biggest reason a deposit reduces no-shows. Until
+> these exist, that half of the product is not running.
+
+### 3.2 Flip the app to Live mode
+
+- [ ] Meta app dashboard → toggle from **Development** to **Live**
+
+In Development mode only people with a role on the app can be messaged. Real
+salon customers cannot be reached at all, so no tenant can genuinely onboard.
+
+### 3.3 Confirm the webhook is subscribed
+
+- [ ] App dashboard → WhatsApp → Configuration → confirm the callback URL is
+      `https://bookly.ikieguy.online/api/whatsapp/webhook` and that the
+      **`messages`** field is subscribed
+
+A verified URL with no field subscription looks healthy and delivers nothing.
+
+### 3.4 Display name approval
+
+Each number's display name is reviewed by Meta when a tenant connects. It is
+what customers see as the sender, so if a tenant's business name is rejected
+they need to pick another. Nothing to do now — just know it is a step that can
+fail during onboarding rather than a setting you control.
+
+---
+
+## 3b. Meta App Review — Instagram and Messenger
 
 Both channels are **built, tested and merged**. They cannot serve a single
 customer until Meta grants Advanced Access. Business Verification is already

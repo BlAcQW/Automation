@@ -48,7 +48,7 @@ same reason.
       serializable transaction, no negative balances, velocity cap.
 - [x] **7. Send the money** — Paystack Transfers plus `transfer.success` /
       `transfer.failed` webhooks; failure returns funds to available.
-- [ ] **8. SMS on Bookly's account** — platform Arkesel key with per-tenant
+- [x] **8. SMS on Bookly's account** — platform Arkesel key with per-tenant
       metering, so one tenant cannot burn the budget.
 - [ ] **9. Money screen (web)** — what's ready, what's still clearing, where it
       goes, one withdraw action.

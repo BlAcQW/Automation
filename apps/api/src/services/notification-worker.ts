@@ -15,6 +15,7 @@ import { sendTemplateMessage } from './whatsapp-templates.js';
 import { tryReserveOutbound, rollbackOutboundReservation } from './usage.js';
 import { getWhatsappCredentials } from './whatsapp-credentials.js';
 import { sendSms } from './arkesel.js';
+import { resolveSmsRoute, withinSmsBudget, DEFAULT_MONTHLY_SMS_BUDGET } from './sms-route.js';
 import { sendEmail, resolveGmailCreds } from './gmail-smtp.js';
 import { buildTextBundle, type TextBundle, type MessageLinks } from './notification-text.js';
 import { config } from '../config/index.js';
@@ -246,22 +247,67 @@ async function trySmsFallback(args: {
         where: { id: args.tenantId },
         select: { arkeselApiKey: true, arkeselSenderId: true },
     });
-    if (!tenant?.arkeselApiKey || !tenant.arkeselSenderId) {
-        return 'not_configured';
+
+    // Default to Bookly's own Arkesel account so a salon owner never has to
+    // open an SMS gateway. Tenants who configured their own keep it — their
+    // sender ID is their brand in the recipient's inbox.
+    const route = resolveSmsRoute(tenant ?? { arkeselApiKey: null, arkeselSenderId: null }, {
+        apiKey: config.platformSms?.apiKey ?? '',
+        senderId: config.platformSms?.senderId ?? '',
+    });
+    if (!route) return 'not_configured';
+
+    // Platform SMS is Bookly's money, so it is metered per tenant. One busy
+    // tenant must not be able to spend everyone else's reminders.
+    const budget = config.platformSms?.monthlyBudget ?? DEFAULT_MONTHLY_SMS_BUDGET;
+    if (route.route === 'PLATFORM') {
+        const cycle = await currentPlatformSmsCount(args.tenantId);
+        if (!withinSmsBudget({ sentThisCycle: cycle, budget })) {
+            log.warn(
+                { tenantId: args.tenantId, cycle, budget },
+                'Platform SMS budget reached for tenant — falling back to no SMS',
+            );
+            return 'not_configured';
+        }
     }
-    let apiKey: string;
-    try {
-        apiKey = decrypt(tenant.arkeselApiKey);
-    } catch {
-        return 'send_failed';
-    }
+
     const res = await sendSms({
-        apiKey,
-        senderId: tenant.arkeselSenderId,
+        apiKey: route.apiKey,
+        senderId: route.senderId,
         to: args.customerPhone,
         message: args.bundle.sms,
     });
+
+    if (res.ok && route.route === 'PLATFORM') {
+        await countPlatformSms(args.tenantId).catch(() => {
+            // A miscount is better than a dropped message; the budget is a
+            // cost guard, not a correctness guarantee.
+        });
+    }
+
     return res.ok ? 'sent' : 'send_failed';
+}
+
+/** Current cycle key, matching how message usage is bucketed. */
+function smsCycleKey(now = new Date()): string {
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+async function currentPlatformSmsCount(tenantId: string): Promise<number> {
+    const row = await prisma.tenantUsage.findUnique({
+        where: { tenantId_month: { tenantId, month: smsCycleKey() } },
+        select: { platformSmsCount: true },
+    });
+    return row?.platformSmsCount ?? 0;
+}
+
+async function countPlatformSms(tenantId: string): Promise<void> {
+    const month = smsCycleKey();
+    await prisma.tenantUsage.upsert({
+        where: { tenantId_month: { tenantId, month } },
+        create: { tenantId, month, platformSmsCount: 1 },
+        update: { platformSmsCount: { increment: 1 } },
+    });
 }
 
 interface EmailFallbackResult {

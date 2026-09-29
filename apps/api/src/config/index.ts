@@ -104,6 +104,12 @@ const envSchema = z.object({
     /// An integer so no float ever touches a fee. Absent or 0 = no fee.
     PLATFORM_FEE_BPS: z.string().optional(),
 
+    /// Bookly's own Arkesel account, so tenants never configure an SMS
+    /// gateway. Absent simply means no platform SMS.
+    PLATFORM_ARKESEL_API_KEY: z.string().optional(),
+    PLATFORM_ARKESEL_SENDER_ID: z.string().optional(),
+    PLATFORM_SMS_BUDGET: z.string().optional(),
+
     // Phase 6 — Bookly-hosted WhatsApp numbers. When these are set, tenants
     // can be onboarded onto Bookly's OWN WhatsApp Business Account, which
     // means Meta bills Bookly (not the tenant) for their messages. Optional:
@@ -185,6 +191,14 @@ export const config = {
     /// Percentage cut of each platform-collected payment, in basis points.
     /// Defaults to 0 — no fee is taken until a rate is deliberately set.
     platformFeeBps: env.PLATFORM_FEE_BPS ? parseInt(env.PLATFORM_FEE_BPS, 10) : 0,
+
+    /// Platform-funded SMS. Mirrors platformPaystack: absent config disables
+    /// the feature cleanly rather than failing at send time.
+    platformSms: {
+        apiKey: env.PLATFORM_ARKESEL_API_KEY,
+        senderId: env.PLATFORM_ARKESEL_SENDER_ID,
+        monthlyBudget: env.PLATFORM_SMS_BUDGET ? parseInt(env.PLATFORM_SMS_BUDGET, 10) : undefined,
+    },
 
     // Phase 6 — Bookly's own WABA, used to host tenant numbers so that Meta
     // bills Bookly rather than each tenant. Mirrors the platformPaystack

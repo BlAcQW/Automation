@@ -44,7 +44,7 @@ same reason.
       sits in a state with no owner and no exit.
 - [x] **5. Payout destination** — add and verify a MoMo number via Paystack
       transfer recipients. Cooling-off before a new destination can be paid to.
-- [ ] **6. Request a withdrawal** — owner-only, balance re-derived inside a
+- [x] **6. Request a withdrawal** — owner-only, balance re-derived inside a
       serializable transaction, no negative balances, velocity cap.
 - [ ] **7. Send the money** — Paystack Transfers plus `transfer.success` /
       `transfer.failed` webhooks; failure returns funds to available.

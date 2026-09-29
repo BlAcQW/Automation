@@ -7,6 +7,11 @@ import { maskPhone } from '../../services/contact-privacy.js';
 import { createNotification } from '../../services/notifications.js';
 import { deriveBalances, ensureWallet } from '../../services/ledger.js';
 import {
+    createWithdrawal,
+    WithdrawalConflictError,
+    WithdrawalRefusedError,
+} from '../../services/payout-request.js';
+import {
     coolingOffUntil,
     createTransferRecipient,
     destinationIsUsable,
@@ -235,6 +240,73 @@ const moneyRoutes: FastifyPluginAsync = async (fastify) => {
             // Said plainly so the UI can explain the wait rather than look broken.
             coolingOffHours: isReplacement ? COOLING_OFF_HOURS : 0,
         };
+    });
+
+    // POST /money/withdraw — send money to the owner's Mobile Money.
+    //
+    // Reserves the funds and records the request. Actually sending it is a
+    // separate step, so a provider failure returns the money without having
+    // to unpick a half-written ledger.
+    fastify.post('/withdraw', {
+        preHandler: [fastify.authenticate],
+        config: {
+            rateLimit: {
+                max: 10,
+                timeWindow: '1 hour',
+                keyGenerator: (req: any) => `${req.user?.tenantId ?? req.ip}:withdraw`,
+            },
+        },
+    }, async (request) => {
+        requireOwner(request);
+        const tenantId = request.user.tenantId;
+
+        const body = z.object({
+            // Minor units, so no float ever reaches the ledger. The client
+            // converts, and the value must be a whole number of pesewas.
+            amountMinor: z.number().int().positive(),
+        }).parse(request.body);
+
+        try {
+            const created = await createWithdrawal({
+                prisma: fastify.prisma,
+                tenantId,
+                requestedByUserId: request.user.userId,
+                amountMinor: body.amountMinor,
+                logger: fastify.log,
+            });
+
+            await audit({
+                prisma: fastify.prisma,
+                action: 'money.withdrawal_requested',
+                actorType: 'USER',
+                actorId: request.user.userId,
+                tenantId,
+                metadata: { payoutId: created.payoutId, amountMinor: created.amountMinor },
+                ipAddress: request.ip,
+            });
+
+            return {
+                success: true,
+                payoutId: created.payoutId,
+                amountMinor: created.amountMinor,
+                currency: created.currency,
+                // Set expectations out loud: silence after a money action
+                // reads as theft.
+                message: 'On the way. Mobile Money usually arrives within a few minutes.',
+            };
+        } catch (err) {
+            if (err instanceof WithdrawalRefusedError) {
+                // A refusal is the owner's answer, not an error to swallow.
+                throw fastify.httpErrors.badRequest(err.message);
+            }
+            if (err instanceof WithdrawalConflictError) {
+                throw fastify.httpErrors.conflict(err.message);
+            }
+            fastify.log.error({ err, tenantId }, 'Withdrawal failed unexpectedly');
+            throw fastify.httpErrors.internalServerError(
+                'We could not start that withdrawal. Nothing has left your balance — please try again.',
+            );
+        }
     });
 };
 

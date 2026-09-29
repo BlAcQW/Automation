@@ -22,7 +22,7 @@ import {
     Boxes,
     Smartphone,
     FileText,
-    ChevronRight, Share2,
+    ChevronRight, Share2, Wallet
 } from 'lucide-react';
 
 const serviceNavigation = [
@@ -32,6 +32,7 @@ const serviceNavigation = [
     { name: 'Availability', href: '/availability', icon: Clock },
     { name: 'Conversations', href: '/conversations', icon: MessageCircle },
     { name: 'Channels', href: '/channels', icon: Share2 },
+    { name: 'Money', href: '/money', icon: Wallet },
     { name: 'Templates', href: '/templates', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -44,6 +45,7 @@ const productNavigation = [
     { name: 'Customers', href: '/customers', icon: Users },
     { name: 'Conversations', href: '/conversations', icon: MessageCircle },
     { name: 'Channels', href: '/channels', icon: Share2 },
+    { name: 'Money', href: '/money', icon: Wallet },
     { name: 'Templates', href: '/templates', icon: FileText },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];

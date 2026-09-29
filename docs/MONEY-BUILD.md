@@ -50,7 +50,7 @@ same reason.
       `transfer.failed` webhooks; failure returns funds to available.
 - [x] **8. SMS on Bookly's account** — platform Arkesel key with per-tenant
       metering, so one tenant cannot burn the budget.
-- [ ] **9. Money screen (web)** — what's ready, what's still clearing, where it
+- [x] **9. Money screen (web)** — what's ready, what's still clearing, where it
       goes, one withdraw action.
 - [ ] **10. Money screen (mobile)** — same, phone-first.
 - [ ] **11. Security review** — full money path: idempotency, concurrency,

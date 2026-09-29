@@ -4,6 +4,8 @@ import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
 import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
+import { selectWebhookSecretSource } from '../../services/paystack-webhook-secret.js';
+import { markPayoutFailed, markPayoutPaid } from '../../services/payout-transfer.js';
 import {
     initializeTransaction,
     verifyTransaction,
@@ -347,6 +349,45 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
 
         const event = (request.body ?? {}) as PaystackWebhookEvent;
+
+        // Paystack signs with the key of the account the event belongs to,
+        // and Bookly now has two. Transfers are always ours; a charge depends
+        // on where it was collected. Picking the wrong key rejects a genuine
+        // event — and a rejected charge means a customer paid and nobody was
+        // told.
+        const secretSource = selectWebhookSecretSource(
+            event.event,
+            event.data?.reference,
+            event.data?.metadata as { collectionRoute?: unknown } | undefined,
+        );
+
+        // ---- Transfers: payouts leaving Bookly's balance -------------------
+        if (event.event?.startsWith('transfer.')) {
+            const platformSecret = config.platformPaystack?.secretKey;
+            if (!platformSecret || !verifyWebhookSignature(rawBody, signature, platformSecret)) {
+                request.log.warn({ event: event.event }, 'Transfer webhook signature mismatch');
+                throw fastify.httpErrors.unauthorized('Invalid Paystack signature');
+            }
+
+            // Our payout id, set as the transfer reference when we started it.
+            const payoutId = (event.data as { reference?: string } | undefined)?.reference;
+            if (!payoutId) return reply.code(200).send({ ignored: 'missing_reference' });
+
+            if (event.event === 'transfer.success') {
+                await markPayoutPaid({ prisma: fastify.prisma, payoutId, logger: request.log });
+            } else {
+                // failed OR reversed — either way the money goes back so the
+                // owner can try again.
+                await markPayoutFailed({
+                    prisma: fastify.prisma,
+                    payoutId,
+                    failureReason: 'The transfer did not go through. Check your Mobile Money number and try again.',
+                    logger: request.log,
+                });
+            }
+            return reply.code(200).send({ ok: true });
+        }
+
         const tenantId = event.data?.metadata?.tenantId;
 
         // Always return 200 for unrecognised payloads — don't leak which
@@ -359,13 +400,26 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             where: { id: tenantId },
             select: { id: true, paystackSecretKey: true },
         });
-        if (!tenant?.paystackSecretKey) {
+        if (!tenant) {
             return reply.code(200).send({ ignored: 'unknown_tenant' });
         }
 
-        const secretKey = decrypt(tenant.paystackSecretKey);
+        // A tenant who never connected a gateway of their own is collected
+        // for by the platform, so there is no tenant key to verify against —
+        // which is exactly the case that was silently dropping payments.
+        const secretKey =
+            secretSource === 'PLATFORM'
+                ? config.platformPaystack?.secretKey
+                : tenant.paystackSecretKey
+                    ? decrypt(tenant.paystackSecretKey)
+                    : undefined;
+
+        if (!secretKey) {
+            return reply.code(200).send({ ignored: 'no_verifying_key' });
+        }
+
         if (!verifyWebhookSignature(rawBody, signature, secretKey)) {
-            request.log.warn({ tenantId, hasSignature: !!signature }, 'Paystack webhook signature mismatch');
+            request.log.warn({ tenantId, secretSource, hasSignature: !!signature }, 'Paystack webhook signature mismatch');
             throw fastify.httpErrors.unauthorized('Invalid Paystack signature');
         }
 

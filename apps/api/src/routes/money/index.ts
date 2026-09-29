@@ -6,6 +6,7 @@ import { audit } from '../../services/audit.js';
 import { maskPhone } from '../../services/contact-privacy.js';
 import { createNotification } from '../../services/notifications.js';
 import { deriveBalances, ensureWallet } from '../../services/ledger.js';
+import { initiateTransfer, markPayoutFailed } from '../../services/payout-transfer.js';
 import {
     createWithdrawal,
     WithdrawalConflictError,
@@ -274,6 +275,40 @@ const moneyRoutes: FastifyPluginAsync = async (fastify) => {
                 amountMinor: body.amountMinor,
                 logger: fastify.log,
             });
+
+            // Hand it to Paystack. A failure here returns the money rather
+            // than leaving it stranded in PAYOUT_PENDING with nothing moving.
+            try {
+                const destination = await fastify.prisma.payoutRecipient.findFirst({
+                    where: { tenantId, archivedAt: null },
+                    select: { providerCode: true },
+                });
+                if (!destination?.providerCode) throw new Error('destination has no provider code');
+
+                const transfer = await initiateTransfer({
+                    secretKey: platformKey(),
+                    recipientCode: destination.providerCode,
+                    amountMinor: created.amountMinor,
+                    // Our payout id, so the webhook finds the request again
+                    // without trusting anything the provider echoes back.
+                    reference: created.payoutId,
+                });
+                await fastify.prisma.payoutRequest.update({
+                    where: { id: created.payoutId },
+                    data: { status: 'PROCESSING', providerRef: transfer.transferCode },
+                });
+            } catch (err) {
+                fastify.log.error({ err, payoutId: created.payoutId }, 'Transfer could not be started');
+                await markPayoutFailed({
+                    prisma: fastify.prisma,
+                    payoutId: created.payoutId,
+                    failureReason: 'We could not start the transfer. Your money is back in your balance.',
+                    logger: fastify.log,
+                }).catch(() => undefined);
+                throw fastify.httpErrors.badGateway(
+                    'We could not send that right now. Your money is back in your balance — please try again.',
+                );
+            }
 
             await audit({
                 prisma: fastify.prisma,

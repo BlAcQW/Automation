@@ -46,7 +46,7 @@ same reason.
       transfer recipients. Cooling-off before a new destination can be paid to.
 - [x] **6. Request a withdrawal** — owner-only, balance re-derived inside a
       serializable transaction, no negative balances, velocity cap.
-- [ ] **7. Send the money** — Paystack Transfers plus `transfer.success` /
+- [x] **7. Send the money** — Paystack Transfers plus `transfer.success` /
       `transfer.failed` webhooks; failure returns funds to available.
 - [ ] **8. SMS on Bookly's account** — platform Arkesel key with per-tenant
       metering, so one tenant cannot burn the budget.

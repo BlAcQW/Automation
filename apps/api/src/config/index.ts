@@ -100,6 +100,10 @@ const envSchema = z.object({
     OUTLOOK_CLIENT_SECRET: z.string().optional(),
     OUTLOOK_REDIRECT_URI: z.string().optional(),
 
+    /// Bookly's cut of a customer payment, in BASIS POINTS (250 = 2.5%).
+    /// An integer so no float ever touches a fee. Absent or 0 = no fee.
+    PLATFORM_FEE_BPS: z.string().optional(),
+
     // Phase 6 — Bookly-hosted WhatsApp numbers. When these are set, tenants
     // can be onboarded onto Bookly's OWN WhatsApp Business Account, which
     // means Meta bills Bookly (not the tenant) for their messages. Optional:
@@ -177,6 +181,10 @@ export const config = {
         webhookVerifyToken: env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
         redirectUri: env.WHATSAPP_REDIRECT_URI,
     },
+
+    /// Percentage cut of each platform-collected payment, in basis points.
+    /// Defaults to 0 — no fee is taken until a rate is deliberately set.
+    platformFeeBps: env.PLATFORM_FEE_BPS ? parseInt(env.PLATFORM_FEE_BPS, 10) : 0,
 
     // Phase 6 — Bookly's own WABA, used to host tenant numbers so that Meta
     // bills Bookly rather than each tenant. Mirrors the platformPaystack

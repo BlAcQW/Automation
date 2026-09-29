@@ -35,6 +35,12 @@ export interface VerifyResult {
     reference: string;
     customerEmail: string;
     channel?: string;
+    /**
+     * Whatever we stamped at initialize time. Carries `collectionRoute`, which
+     * decides whether this money is in Bookly's balance and may credit a
+     * wallet.
+     */
+    metadata?: Record<string, unknown> | null;
 }
 
 interface PaystackEnvelope<T> {
@@ -133,6 +139,7 @@ export async function verifyTransaction(
         status: string;
         amount: number;
         currency: string;
+        metadata?: Record<string, unknown> | null;
         paid_at: string | null;
         reference: string;
         customer: { email: string };
@@ -162,6 +169,7 @@ export async function verifyTransaction(
         status,
         amountKobo: data.amount,
         currency: data.currency,
+        metadata: data.metadata ?? null,
         paidAt: data.paid_at ? new Date(data.paid_at) : null,
         reference: data.reference,
         customerEmail: data.customer.email,

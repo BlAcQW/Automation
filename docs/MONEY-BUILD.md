@@ -27,7 +27,7 @@ same reason.
 - [x] **1. Collect into Bookly's Paystack** — payment links fall back to the
       platform key when the tenant has none. A tenant with their own key keeps
       using it, so nothing breaks for anyone already live.
-- [ ] **2. Credit the ledger when a payment lands** — webhook → `DEPOSIT_RECEIVED`,
+- [x] **2. Credit the ledger when a payment lands** — webhook → `DEPOSIT_RECEIVED`,
       idempotent on the provider reference.
 - [ ] **3. Clear funds on completion** — marking a booking COMPLETED or NO_SHOW
       (an order DELIVERED) moves `TENANT_PENDING` → `TENANT_AVAILABLE`. Event

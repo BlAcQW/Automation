@@ -22,6 +22,7 @@ import { scheduleNotification, scheduleReminder } from './notification.js';
 import { createNotification } from './notifications.js';
 import { syncBookingToCalendar } from './calendar.js';
 import type { VerifyResult } from './paystack.js';
+import { creditDepositToWallet } from './wallet-credit.js';
 
 /** Minimal booking shape the fulfillment needs (matches the webhook select). */
 export interface FulfillableBooking {
@@ -164,6 +165,36 @@ export async function fulfillBookingCharge(opts: {
         logger.warn({ err, bookingId: booking.id }, 'Payment notification failed');
     });
 
+
+    // Credit the tenant's wallet. Only fires for money collected into
+    // Bookly's own Paystack — a payment into the tenant's own gateway never
+    // touched our balance, so crediting it would invent funds.
+    //
+    // Deliberately after the atomic claim and outside it: the claim is what
+    // guarantees this runs once per payment, and the movement's idempotency
+    // key means a retry after a failure here is safe rather than a double
+    // credit. A failure is logged loudly because it means money arrived that
+    // nobody has been credited for.
+    try {
+        const credit = await creditDepositToWallet({
+            prisma: fastify.prisma,
+            tenantId,
+            grossMinor: verified.amountKobo,
+            currency: verified.currency,
+            reference,
+            metadata: verified.metadata ?? null,
+            bookingId: booking.id,
+            logger,
+        });
+        if (credit.skippedReason === 'invalid_amount') {
+            logger.error({ reference }, 'Payment landed but the amount was unusable — wallet NOT credited');
+        }
+    } catch (err) {
+        logger.error(
+            { err, reference, tenantId },
+            'Payment landed but crediting the wallet FAILED — replay this reference',
+        );
+    }
     return { applied: true };
 }
 
@@ -233,5 +264,35 @@ export async function fulfillOrderCharge(opts: {
         fastify.log.warn({ err, orderId: order.id }, 'Payment notification failed');
     });
 
+
+    // Credit the tenant's wallet. Only fires for money collected into
+    // Bookly's own Paystack — a payment into the tenant's own gateway never
+    // touched our balance, so crediting it would invent funds.
+    //
+    // Deliberately after the atomic claim and outside it: the claim is what
+    // guarantees this runs once per payment, and the movement's idempotency
+    // key means a retry after a failure here is safe rather than a double
+    // credit. A failure is logged loudly because it means money arrived that
+    // nobody has been credited for.
+    try {
+        const credit = await creditDepositToWallet({
+            prisma: fastify.prisma,
+            tenantId,
+            grossMinor: verified.amountKobo,
+            currency: verified.currency,
+            reference,
+            metadata: verified.metadata ?? null,
+            orderId: order.id,
+            logger: fastify.log,
+        });
+        if (credit.skippedReason === 'invalid_amount') {
+            fastify.log.error({ reference }, 'Payment landed but the amount was unusable — wallet NOT credited');
+        }
+    } catch (err) {
+        fastify.log.error(
+            { err, reference, tenantId },
+            'Payment landed but crediting the wallet FAILED — replay this reference',
+        );
+    }
     return { applied: true };
 }

@@ -42,7 +42,7 @@ same reason.
       indefensible however the terms read — and the alternative to refunding is
       a chargeback that costs more. That refund is **automatic**: money never
       sits in a state with no owner and no exit.
-- [ ] **5. Payout destination** — add and verify a MoMo number via Paystack
+- [x] **5. Payout destination** — add and verify a MoMo number via Paystack
       transfer recipients. Cooling-off before a new destination can be paid to.
 - [ ] **6. Request a withdrawal** — owner-only, balance re-derived inside a
       serializable transaction, no negative balances, velocity cap.

@@ -24,7 +24,7 @@ same reason.
 
 - [x] **0. Ledger foundation** — wallet, append-only double-entry ledger, payout
       tables, movement builders, 25 tests. `a2c2913` / `5fac707`
-- [ ] **1. Collect into Bookly's Paystack** — payment links fall back to the
+- [x] **1. Collect into Bookly's Paystack** — payment links fall back to the
       platform key when the tenant has none. A tenant with their own key keeps
       using it, so nothing breaks for anyone already live.
 - [ ] **2. Credit the ledger when a payment lands** — webhook → `DEPOSIT_RECEIVED`,

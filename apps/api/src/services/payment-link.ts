@@ -15,6 +15,7 @@ import { config } from '../config/index.js';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { decrypt } from './crypto.js';
 import { initializeTransaction } from './paystack.js';
+import { resolveCollectionRoute } from './collection-route.js';
 import { scoped } from '../lib/logger.js';
 
 const log = scoped('payment-link');
@@ -33,10 +34,19 @@ export interface PaymentLinkArgs {
 }
 
 export async function createPaymentLink(args: PaymentLinkArgs): Promise<string | null> {
-    if (!args.paystackSecretKeyEncrypted) return null;
+    // Default to Bookly's own Paystack so a tenant never has to create a
+    // gateway account. Tenants who already connected their own keep using it.
+    const route = resolveCollectionRoute(
+        { tenantSecretKeyEncrypted: args.paystackSecretKeyEncrypted },
+        config.platformPaystack?.secretKey,
+    );
+    if (!route) {
+        log.warn({ tenantId: args.tenantId }, 'No Paystack account available to collect payment');
+        return null;
+    }
 
     try {
-        const secretKey = decrypt(args.paystackSecretKeyEncrypted);
+        const secretKey = route.secretKey;
         const digits = args.customerPhone.replace(/[^0-9]/g, '');
         const callbackUrl =
             config.paystack.callbackUrl ??
@@ -49,10 +59,15 @@ export async function createPaymentLink(args: PaymentLinkArgs): Promise<string |
             email: `${digits || 'customer'}@customer.bookingflow.app`,
             amountKobo: Math.round(args.amount * 100),
             currency: args.currency,
-            reference: `bf_${args.id}_${Date.now()}`,
+            // The route is carried on the reference AND the metadata. The
+            // webhook needs to know whether this money landed in our balance
+            // before it credits anyone's wallet, and metadata alone can be
+            // absent on some provider replays.
+            reference: `bf_${route.route === 'PLATFORM' ? 'p' : 'o'}_${args.id}_${Date.now()}`,
             callbackUrl,
             metadata: {
                 tenantId: args.tenantId,
+                collectionRoute: route.route,
                 ...(args.entity === 'order' ? { orderId: args.id } : { bookingId: args.id }),
                 customerPhone: args.customerPhone,
             },

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // No real Paystack call is ever made from this file.
 vi.mock('./paystack.js', () => ({ initializeTransaction: vi.fn() }));
 vi.mock('./crypto.js', () => ({ decrypt: (v: string) => `dec(${v})` }));
-vi.mock('../config/index.js', () => ({ config: { paystack: { callbackUrl: 'https://cb.example/paid' }, frontendUrl: 'https://app.example' } }));
+vi.mock('../config/index.js', () => ({ config: { paystack: { callbackUrl: 'https://cb.example/paid' }, frontendUrl: 'https://app.example', platformPaystack: { secretKey: 'sk_platform' } } }));
 
 import { initializeTransaction } from './paystack.js';
 import { createPaymentLink } from './payment-link.js';
@@ -35,9 +35,41 @@ describe('createPaymentLink', () => {
         });
     });
 
-    it('returns null without calling Paystack when the tenant has no key', async () => {
+    it('collects into the platform account when the tenant has no key of their own', async () => {
+        // The product promise: a salon owner never creates a Paystack account.
+        (initializeTransaction as any).mockResolvedValue({ authorizationUrl: 'https://pay/p', reference: 'bf_p_bk1_1', accessCode: 'ac' });
+
+        const url = await createPaymentLink({ ...base, paystackSecretKeyEncrypted: null });
+
+        expect(url).toBe('https://pay/p');
+        const call = (initializeTransaction as any).mock.calls[0][0];
+        expect(call.secretKey).toBe('sk_platform');
+        expect(call.metadata).toMatchObject({ collectionRoute: 'PLATFORM' });
+        // The reference carries the route, so the webhook can tell whether
+        // this money is in our balance before crediting any wallet.
+        expect(call.reference).toMatch(/^bf_p_/);
+    });
+
+    it('keeps using the tenant gateway when they already connected one', async () => {
+        // Money a tenant is already collecting must never silently start
+        // landing in someone else's account.
+        (initializeTransaction as any).mockResolvedValue({ authorizationUrl: 'https://pay/o', reference: 'bf_o_bk1_1', accessCode: 'ac' });
+
+        await createPaymentLink(base);
+
+        const call = (initializeTransaction as any).mock.calls[0][0];
+        expect(call.secretKey).toBe('dec(enc)');
+        expect(call.metadata).toMatchObject({ collectionRoute: 'OWN_GATEWAY' });
+        expect(call.reference).toMatch(/^bf_o_/);
+    });
+
+    it('returns null without calling Paystack when no account is available at all', async () => {
+        const { config } = await import('../config/index.js') as any;
+        const saved = config.platformPaystack.secretKey;
+        config.platformPaystack.secretKey = undefined;
         expect(await createPaymentLink({ ...base, paystackSecretKeyEncrypted: null })).toBeNull();
         expect(initializeTransaction).not.toHaveBeenCalled();
+        config.platformPaystack.secretKey = saved;
     });
 
     it('returns null instead of throwing when Paystack fails — the booking must survive', async () => {

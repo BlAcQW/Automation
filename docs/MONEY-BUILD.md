@@ -52,7 +52,7 @@ same reason.
       metering, so one tenant cannot burn the budget.
 - [x] **9. Money screen (web)** — what's ready, what's still clearing, where it
       goes, one withdraw action.
-- [ ] **10. Money screen (mobile)** — same, phone-first.
+- [x] **10. Money screen (mobile)** — same, phone-first.
 - [ ] **11. Security review** — full money path: idempotency, concurrency,
       authorisation, float safety, audit coverage.
 - [ ] **12. Structure & flow PDF** — architecture and money movement, for the

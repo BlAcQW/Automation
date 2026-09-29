@@ -384,6 +384,79 @@ export function useUpdateProfile() {
   });
 }
 
+// ---- Money ----
+
+export interface MoneyDestination {
+  id: string;
+  accountName: string;
+  accountNumberMasked: string;
+  provider: string;
+  usable: boolean;
+  usableFrom: string;
+}
+
+export interface MoneyPayout {
+  id: string;
+  amountMinor: number;
+  currency: string;
+  status: 'REQUESTED' | 'PROCESSING' | 'PAID' | 'FAILED' | 'CANCELLED';
+  failureReason: string | null;
+  createdAt: string;
+}
+
+export interface MoneyState {
+  currency: string;
+  readyToWithdrawMinor: number;
+  stillClearingMinor: number;
+  onTheWayMinor: number;
+  destination: MoneyDestination | null;
+  recentPayouts: MoneyPayout[];
+}
+
+export function useMoney() {
+  return useQuery({
+    queryKey: ['money'],
+    queryFn: async () => (await api.get('/money')).data as MoneyState,
+  });
+}
+
+export function useMomoProviders(enabled: boolean) {
+  return useQuery({
+    enabled,
+    queryKey: ['money', 'providers'],
+    queryFn: async () =>
+      (await api.get('/money/providers')).data.providers as Array<{ code: string; name: string }>,
+  });
+}
+
+/** Resolve whose account a number is, before anything is saved. */
+export function usePreviewDestination() {
+  return useMutation({
+    mutationFn: async (input: { accountNumber: string; provider: string }) =>
+      (await api.post('/money/destination/preview', input)).data as { accountName: string | null },
+  });
+}
+
+export function useSaveDestination() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { accountNumber: string; provider: string; accountName?: string }) =>
+      (await api.post('/money/destination', input)).data as {
+        coolingOffHours: number;
+      },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['money'] }),
+  });
+}
+
+export function useWithdraw() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { amountMinor: number }) =>
+      (await api.post('/money/withdraw', input)).data as { message: string },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['money'] }),
+  });
+}
+
 // ---- Products (PRODUCT mode) ----
 export function useProducts() {
   return useQuery({

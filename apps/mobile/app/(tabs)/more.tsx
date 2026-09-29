@@ -92,6 +92,7 @@ export default function MoreScreen() {
           trailing={unread && unread > 0 ? <Badge label={String(unread)} tone="primary" /> : undefined}
         />
         <Divider />
+        <Row icon="wallet-outline" label="Money" onPress={() => router.push('/money')} />
         <Row icon="time-outline" label="Availability" onPress={() => router.push('/availability')} />
         <Divider />
         <Row icon="document-text-outline" label="Message templates" onPress={() => router.push('/templates')} />

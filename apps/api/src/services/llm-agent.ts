@@ -22,6 +22,7 @@ import { createPaymentLink } from './payment-link.js';
 import type { Queue } from 'bullmq';
 import type { FastifyBaseLogger } from 'fastify';
 import { effectiveDeposit, HOLD_MINUTES } from './booking-deposit.js';
+import { normalizeCustomerPhone } from './customer-phone.js';
 import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from './booking-create.js';
 import { createNotification } from './notifications.js';
 
@@ -65,7 +66,15 @@ export interface AgentContext {
     depositRequired: boolean;
     defaultDepositAmount: { toString(): string } | number | string | null;
     conversationId: string;
+    /**
+     * The customer's number, or '' on Instagram/Messenger until they give one.
+     * Those channels expose no phone, so it is collected in conversation.
+     */
     customerPhone: string;
+    /** Which inbox this is. Drives whether a phone has to be asked for. */
+    channel?: 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
+    /** The tenant's own number in E.164 — used only to resolve a local "0…". */
+    businessPhone?: string | null;
     /** Notification/reminder queues, when Redis is configured. */
     queues?: { notifications: Queue | null; reminders: Queue | null } | null;
     log?: FastifyBaseLogger;
@@ -135,6 +144,24 @@ const TOOLS: ChatCompletionTool[] = [
                     reference: { type: 'string', description: 'optional booking reference (e.g. BK...)' },
                 },
                 required: [],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'save_customer_phone',
+            description:
+                'Store the phone number the customer just gave. Required before create_booking on ' +
+                'Instagram and Messenger, where no number is known. Pass exactly what they typed; ' +
+                'it is validated here. If it comes back invalid, ask again — do not correct it yourself.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    phone: { type: 'string', description: 'Exactly as the customer typed it' },
+                },
+                required: ['phone'],
                 additionalProperties: false,
             },
         },
@@ -330,6 +357,30 @@ async function runTool(
             };
         }
 
+        case 'save_customer_phone': {
+            const raw = String(args.phone ?? '');
+            const normalized = normalizeCustomerPhone(raw, ctx.businessPhone ?? null);
+            if (!normalized) {
+                return {
+                    result: {
+                        error:
+                            'That does not look like a complete phone number. Ask for it again, ' +
+                            'with the country code — for example +233 24 123 4567.',
+                    },
+                };
+            }
+
+            // Stored on the conversation so it survives the turn, and so a
+            // returning customer is never asked twice.
+            await ctx.prisma.conversation.update({
+                where: { id: ctx.conversationId },
+                data: { customerPhone: normalized },
+            });
+            ctx.customerPhone = normalized;
+
+            return { result: { saved: true, phone: normalized } };
+        }
+
         case 'create_booking': {
             const serviceId = String(args.serviceId ?? '');
             const dateStr = String(args.date ?? '');
@@ -341,6 +392,21 @@ async function runTool(
                 select: { id: true, name: true, durationMinutes: true, depositAmount: true },
             });
             if (!service) return { result: { error: 'Unknown service.' } };
+
+            // A booking must have a reachable number: the deposit link is sent
+            // to it, and on Instagram/Messenger the reminder can only go by SMS
+            // because Meta permits no message once the 24-hour window shuts.
+            // Enforced here rather than in the prompt so the model cannot talk
+            // its way past it.
+            if (!ctx.customerPhone) {
+                return {
+                    result: {
+                        error:
+                            'No phone number on file for this customer. Ask for their phone number, ' +
+                            'save it with save_customer_phone, then call create_booking again.',
+                    },
+                };
+            }
 
             // Wall-clock in the tenant's zone, not the server's.
             const start = zonedTimeToUtc(dateStr, time, safeZone(ctx.timezone));
@@ -530,6 +596,13 @@ function todayInZone(timeZone: string): string {
     }).format(new Date());
 }
 
+/** How to name the channel to the model, so it matches the customer's world. */
+function channelName(channel: AgentContext['channel']): string {
+    if (channel === 'INSTAGRAM') return 'Instagram';
+    if (channel === 'MESSENGER') return 'Facebook Messenger';
+    return 'WhatsApp';
+}
+
 function systemPrompt(ctx: AgentContext, input: PromptInput): string {
     const kind = ctx.businessType === 'PRODUCT' ? 'shop' : 'business';
 
@@ -538,7 +611,7 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
         : ['- (no services configured yet)'];
 
     const base = [
-        `You are the assistant for ${ctx.tenantName}, a ${kind}, replying to customers on WhatsApp.`,
+        `You are the assistant for ${ctx.tenantName}, a ${kind}, replying to customers on ${channelName(ctx.channel)}.`,
         '',
         `What ${ctx.tenantName} offers (this is the complete list — nothing else exists):`,
         ...serviceLines,
@@ -558,6 +631,13 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
         `- NEVER state a price, service or time that is not in the list above or a tool result. Always say prices with the currency (${ctx.currency}).`,
         '- Call check_availability before offering any time. If unsure, check again.',
         '- Confirm the exact service, date and time back to the customer before create_booking.',
+        ...(ctx.customerPhone
+            ? []
+            : [
+                '- You do NOT have this customer\'s phone number. Before booking, ask for it in its own',
+                '  message and save it with save_customer_phone. Say why plainly — it is where the payment',
+                '  link and the reminder go. Ask once you know what and when they want, not as an opener.',
+            ]),
         '- If you cannot help, call request_human rather than guessing.',
         '- Never mention tools, internal ids, or that you are an AI.',
         '',

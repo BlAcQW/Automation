@@ -34,6 +34,11 @@ export interface ResolvedConversation {
     id: string;
     state: string;
     customerName: string | null;
+    /**
+     * Known number, or null on Instagram/Messenger until the customer gives
+     * one. The agent needs it to decide whether it still has to ask.
+     */
+    customerPhone: string | null;
     /** Bot flow state — the message handler reads and advances this. */
     botContext: unknown;
     botFailureCount: number;
@@ -86,6 +91,7 @@ export async function resolveConversation(
                 id: true,
                 state: true,
                 customerName: true,
+                customerPhone: true,
                 botContext: true,
                 botFailureCount: true,
             },
@@ -108,6 +114,7 @@ export async function resolveConversation(
         id: existing.id,
         state: existing.state,
         customerName: patch.customerName ?? existing.customerName,
+        customerPhone: patch.customerPhone ?? existing.customerPhone,
         botContext: existing.botContext,
         botFailureCount: existing.botFailureCount,
         created: false,

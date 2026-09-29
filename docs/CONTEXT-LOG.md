@@ -61,6 +61,17 @@
 
 ## Session Log (newest first)
 
+### 2026-09-29 — Instagram/Messenger bookings can now collect a phone
+- **Closes the gap flagged when channels shipped.** A booking needs a number — the Paystack deposit link goes to it, and on IG/Messenger the reminder can only go by SMS because Meta permits nothing once the 24-hour window shuts. Those channels expose no phone, so an Instagram booking could not complete.
+- **The rule lives in code, not the prompt.** `create_booking` now refuses outright when `ctx.customerPhone` is empty and tells the model to ask. The prompt alone would have been talk-past-able.
+- **New tool `save_customer_phone`** — validates and persists to the conversation, so a returning customer is never asked twice. The agent now offers 7 tools.
+- **[services/customer-phone.ts](../apps/api/src/services/customer-phone.ts)** — `normalizeCustomerPhone()`. The important behaviour is **refusing**: a local "024…" is only completed when we know the business's country (derived from its own E.164 number), never guessed. A guessed country produces a number that looks fine and silently fails to deliver on the morning of the appointment. Also rejects too-short/too-long input, so a pasted order reference is not stored as a phone.
+- **Agent is channel-aware** — `AgentContext.channel` + `businessPhone`; the system prompt now names the real channel ("replying to customers on Instagram") and only carries the ask-for-a-phone rule when there is no number on file.
+- **Tests:** 12 new on phone normalisation. Suite **281 passing / 31 files**. API builds.
+- Still gated behind App Review for `pages_messaging` + `instagram_manage_messages`.
+
+
+
 ### 2026-09-27 (night) — Instagram + Messenger channels
 - **One webhook, three channels.** Meta posts all of them to the same verified URL and distinguishes by `object`. The gate at [whatsapp/index.ts](../apps/api/src/routes/whatsapp/index.ts) now routes `page`/`instagram` to `processMessagingWebhook` — an entirely different payload shape (`entry[].messaging[]`, scoped sender ids, no phone anywhere). Echoes are dropped or the bot replies to itself forever; duplicate deliveries are deduped on the provider message id because Meta retries.
 - **[services/channel-send.ts](../apps/api/src/services/channel-send.ts)** — one send path. WhatsApp keeps its own envelope; Messenger and Instagram share the Send API one. `buildTextRequest` is split out and unit-tested because these envelopes fail only at runtime. `supportsOutOfWindowMessaging()` encodes the trap: **only WhatsApp can message after the 24-hour window**, so reminders on IG/Messenger must fall back to SMS.

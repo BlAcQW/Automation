@@ -895,10 +895,10 @@ async function processChannelMessage(
             fastify,
             tenant,
             conversation,
-            // No phone on these channels until the bot asks for one; the agent
-            // uses this only to look up past bookings, which correctly finds
-            // none for a first-time Instagram customer.
-            '',
+            // Empty on a first contact — these channels expose no phone. The
+            // agent then asks for one and create_booking refuses until it has
+            // it. On later turns this is whatever the customer already gave.
+            conversation.customerPhone ?? '',
             input.text,
             input.channel,
             input.senderId,
@@ -1259,6 +1259,10 @@ async function handleWithAgent(
             defaultDepositAmount: tenant.defaultDepositAmount ?? 50,
             conversationId: conversation.id,
             customerPhone,
+            channel,
+            // Lets a customer who types "024…" have it completed to the
+            // business's own country rather than refused.
+            businessPhone: tenant.whatsappDisplayNumber ?? null,
             queues: fastify.queues,
             log: fastify.log,
         },

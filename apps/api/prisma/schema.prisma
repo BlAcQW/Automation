@@ -15,85 +15,85 @@ datasource db {
 // ============================================
 
 model Tenant {
-  id                    String       @id @default(cuid())
-  name                  String
-  businessType          BusinessType @default(SERVICE)
-  timezone              String       @default("UTC")
-  whatsappPhoneNumberId String?      @unique
-  whatsappAccountId     String?
-  whatsappAccessToken   String?      // Encrypted. NULL for hosted numbers — they use the platform token.
-  whatsappDisplayNumber String?
+  id                         String              @id @default(cuid())
+  name                       String
+  businessType               BusinessType        @default(SERVICE)
+  timezone                   String              @default("UTC")
+  whatsappPhoneNumberId      String?             @unique
+  whatsappAccountId          String?
+  whatsappAccessToken        String? // Encrypted. NULL for hosted numbers — they use the platform token.
+  whatsappDisplayNumber      String?
   // Phase 6 — Bookly-hosted numbers. TRUE means this number lives on Bookly's
   // OWN WABA, so Meta bills Bookly for it and Bookly rebills the tenant. FALSE
   // (the default) is the bring-your-own path via Embedded Signup, where the
   // tenant owns the WABA and pays Meta directly.
-  whatsappHosted        Boolean      @default(false)
+  whatsappHosted             Boolean             @default(false)
   // Onboarding progress for hosted numbers only: PENDING_CODE (added to our
   // WABA, OTP sent) → REGISTERED (verified + registered for Cloud API).
   // NULL for bring-your-own numbers, which are live the moment they connect.
-  whatsappNumberStatus  String?
+  whatsappNumberStatus       String?
   // Encrypted. Hosted numbers only — Meta's two-step verification PIN, set when
   // we register the number. Meta requires a re-register (with this same PIN)
   // after any display-name change, so it has to outlive onboarding.
-  whatsappRegistrationPin String?
-  paystackSecretKey     String?      // Encrypted (AES-GCM via crypto.ts)
-  paystackPublicKey     String?      // Public, plaintext OK
-  paymentCurrency       String       @default("NGN") // ISO 4217
+  whatsappRegistrationPin    String?
+  paystackSecretKey          String? // Encrypted (AES-GCM via crypto.ts)
+  paystackPublicKey          String? // Public, plaintext OK
+  paymentCurrency            String              @default("NGN") // ISO 4217
   // Phase 4a — SaaS plan id. Kept as String so the catalog (services/plans.ts)
   // can grow without a migration. Validated against the catalog at the API boundary.
-  planId                String       @default("free")
+  planId                     String              @default("free")
   // Phase 4b — Paystack subscription state. Null for tenants that predate 4b.
-  subscriptionStatus       SubscriptionStatus?
-  subscriptionRef          String?     // Paystack subscription_code (SUB_xxx)
-  subscriptionEmailToken   String?     // Paystack-issued token, required to disable
-  subscriptionCustomerCode String?     // Paystack customer_code (CUS_xxx)
-  currentPeriodEnd         DateTime?
-  trialEndsAt              DateTime?
+  subscriptionStatus         SubscriptionStatus?
+  subscriptionRef            String? // Paystack subscription_code (SUB_xxx)
+  subscriptionEmailToken     String? // Paystack-issued token, required to disable
+  subscriptionCustomerCode   String? // Paystack customer_code (CUS_xxx)
+  currentPeriodEnd           DateTime?
+  trialEndsAt                DateTime?
   // Phase 4c — per-tenant 30-day quota cycle anchor. Decouples quota refresh
   // from the calendar 1st: each tenant gets 5,000 messages every 30 days
   // counted from their signup, not from the start of the calendar month
   // (which double-counts mid-month subscribers). Nullable for back-compat —
   // null falls back to `createdAt` so legacy tenants behave the same.
-  quotaCycleStart          DateTime?
+  quotaCycleStart            DateTime?
   // Phase 5 — SMS fallback (Arkesel) + Email fallback (Gmail SMTP).
-  arkeselApiKey            String?    // Encrypted at rest via crypto.ts
-  arkeselSenderId          String?    // 1-11 chars, alphanumeric or phone
-  gmailUser                String?    // Tenant's Gmail address
-  gmailAppPassword         String?    // 16-char app password, encrypted
-  gmailFromName            String?    // Display name in From: header
+  arkeselApiKey              String? // Encrypted at rest via crypto.ts
+  arkeselSenderId            String? // 1-11 chars, alphanumeric or phone
+  gmailUser                  String? // Tenant's Gmail address
+  gmailAppPassword           String? // 16-char app password, encrypted
+  gmailFromName              String? // Display name in From: header
   // Master switch — when false, the worker skips all out-of-window messages
   // (BOOKING_REMINDER, ORDER_SHIPPED, ORDER_DELIVERED) to save messaging cost.
-  outOfWindowMessagesEnabled Boolean    @default(true)
+  outOfWindowMessagesEnabled Boolean             @default(true)
   // Deposits. When on, a booking is only confirmed once the customer has paid
   // the deposit; until then it is held for a short window. Per-service
   // `Service.depositAmount` overrides the default when it is set.
-  depositRequired          Boolean    @default(true)
-  defaultDepositAmount     Decimal    @default(50) @db.Decimal(10, 2)
+  depositRequired            Boolean             @default(true)
+  defaultDepositAmount       Decimal             @default(50) @db.Decimal(10, 2)
   // How many bookings the business can serve at the same time — chairs in a
   // salon, rooms in a clinic, bays in a workshop. Availability and booking
   // creation both allow up to this many overlapping bookings. Default 1 keeps
   // the old single-resource behaviour for every existing tenant.
-  bookingCapacity          Int        @default(1)
+  bookingCapacity            Int                 @default(1)
   // Hide most of each customer's phone/email from STAFF in the dashboard, so
   // a departing staff member cannot walk off with the customer book. The owner
   // is never masked. Staff who genuinely need a number use the audited,
   // rate-limited reveal endpoint.
-  maskCustomerContact      Boolean    @default(true)
+  maskCustomerContact        Boolean             @default(true)
   // Facebook Page + Instagram. One Page access token serves both, because
   // Instagram messaging is delivered through the Page the IG professional
   // account is linked to. Unlike WhatsApp, Meta charges nothing per message on
   // either channel and needs no payment method.
-  facebookPageId           String?    @unique
-  facebookPageName         String?
-  facebookPageToken        String?    // Encrypted
-  instagramUserId          String?    @unique
-  instagramUsername        String?
+  facebookPageId             String?             @unique
+  facebookPageName           String?
+  facebookPageToken          String? // Encrypted
+  instagramUserId            String?             @unique
+  instagramUsername          String?
   // The owner asked for the account to be deleted. A person confirms and
   // removes the tenant; this records the ask and shows it in Settings.
-  deletionRequestedAt      DateTime?
-  isActive              Boolean      @default(true)
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
+  deletionRequestedAt        DateTime?
+  isActive                   Boolean             @default(true)
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
 
   users                User[]
   services             Service[]
@@ -107,7 +107,8 @@ model Tenant {
   notifications        Notification[]
   messageTemplates     MessageTemplate[]
   tenantUsages         TenantUsage[]
-  promoRedemptions PromoRedemption[]
+  promoRedemptions     PromoRedemption[]
+  wallet               Wallet?
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -119,21 +120,21 @@ enum BusinessType {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  tenantId     String
-  email        String
-  passwordHash String
-  name         String
-  role         Role     @default(STAFF)
-  isActive     Boolean  @default(true)
+  id              String    @id @default(cuid())
+  tenantId        String
+  email           String
+  passwordHash    String
+  name            String
+  role            Role      @default(STAFF)
+  isActive        Boolean   @default(true)
   // When they ticked "I agree" at sign-up. Null for accounts created before
   // the checkbox existed.
   termsAcceptedAt DateTime?
   // Set by the link in the verification email. Null = unverified; the
   // dashboard nags, nothing is blocked.
   emailVerifiedAt DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   deviceTokens DeviceToken[]
@@ -189,25 +190,25 @@ model Admin {
 
 enum PromoKind {
   TRIAL_EXTENSION // adds `days` of trial on the tenant's current (or Pro) plan
-  PLAN_GRANT      // puts the tenant on `planId` for `days`, no card needed
+  PLAN_GRANT // puts the tenant on `planId` for `days`, no card needed
 }
 
 model PromoCode {
-  id              String     @id @default(cuid())
-  code            String     @unique // stored upper-case, no spaces
-  kind            PromoKind
-  days            Int
-  planId          String?    // PLAN_GRANT only
-  description     String?    // internal note: campaign, who it was for
-  maxRedemptions  Int?       // null = unlimited
-  redemptionCount Int        @default(0)
-  expiresAt       DateTime?  // null = never
-  isActive        Boolean    @default(true)
+  id               String    @id @default(cuid())
+  code             String    @unique // stored upper-case, no spaces
+  kind             PromoKind
+  days             Int
+  planId           String? // PLAN_GRANT only
+  description      String? // internal note: campaign, who it was for
+  maxRedemptions   Int? // null = unlimited
+  redemptionCount  Int       @default(0)
+  expiresAt        DateTime? // null = never
+  isActive         Boolean   @default(true)
   createdByAdminId String?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  createdBy   Admin?           @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdBy   Admin?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
   redemptions PromoRedemption[]
 
   @@index([isActive])
@@ -259,9 +260,9 @@ model Service {
 model WorkingHours {
   id        String  @id @default(cuid())
   tenantId  String
-  dayOfWeek Int     // 0=Sunday, 6=Saturday
-  startTime String  // "09:00" (24hr format)
-  endTime   String  // "17:00" (24hr format)
+  dayOfWeek Int // 0=Sunday, 6=Saturday
+  startTime String // "09:00" (24hr format)
+  endTime   String // "17:00" (24hr format)
   isActive  Boolean @default(true)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -292,7 +293,7 @@ model Booking {
   serviceId               String
   customerName            String
   customerPhone           String
-  customerEmail           String?      // Phase 5: enables email fallback when present
+  customerEmail           String? // Phase 5: enables email fallback when present
   startTime               DateTime
   endTime                 DateTime
   status                  BookingStatus @default(CONFIRMED)
@@ -332,7 +333,7 @@ enum BookingStatus {
 // ============================================
 
 model Conversation {
-  id              String            @id @default(cuid())
+  id              String              @id @default(cuid())
   tenantId        String
   // Which inbox this conversation lives in. WhatsApp is the default so every
   // existing row keeps its meaning without a backfill decision.
@@ -348,16 +349,16 @@ model Conversation {
   // @username, Instagram only. Display aid; never an addressing key.
   customerHandle  String?
   customerName    String?
-  state           ConversationState @default(BOT_ACTIVE)
-  botContext      Json?             // Current bot flow state
-  assignedUserId  String?           // Staff member assigned to this conversation
-  assignedAt      DateTime?         // When the conversation was assigned
-  takeoverReason  String?           // Reason for human takeover
-  botFailureCount Int               @default(0)  // Count of bot failures for auto-takeover
-  contextVersion  Int               @default(0)  // Optimistic-lock counter — incremented on every botContext write; concurrent updates that read a stale version are dropped
-  lastInboundAt   DateTime?         // Timestamp of last customer message — drives the WhatsApp 24-hour customer-service window check
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  state           ConversationState   @default(BOT_ACTIVE)
+  botContext      Json? // Current bot flow state
+  assignedUserId  String? // Staff member assigned to this conversation
+  assignedAt      DateTime? // When the conversation was assigned
+  takeoverReason  String? // Reason for human takeover
+  botFailureCount Int                 @default(0) // Count of bot failures for auto-takeover
+  contextVersion  Int                 @default(0) // Optimistic-lock counter — incremented on every botContext write; concurrent updates that read a stale version are dropped
+  lastInboundAt   DateTime? // Timestamp of last customer message — drives the WhatsApp 24-hour customer-service window check
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   messages Message[]
@@ -381,22 +382,22 @@ enum ConversationState {
 }
 
 model Message {
-  id             String      @id @default(cuid())
-  conversationId String
-  direction      Direction
-  content        String
-  messageType    MessageType @default(TEXT)
-  whatsappMsgId  String?
-  metadata       Json?
+  id              String         @id @default(cuid())
+  conversationId  String
+  direction       Direction
+  content         String
+  messageType     MessageType    @default(TEXT)
+  whatsappMsgId   String?
+  metadata        Json?
   /// Delivery state for OUTBOUND messages (null until the first status webhook).
-  status         MessageStatus?
+  status          MessageStatus?
   /// What Meta actually billed this message as — "service", "utility",
   /// "marketing", "authentication". Taken from the status webhook's pricing
   /// object rather than guessed, so billing mirrors Meta's own ledger.
   billingCategory String?
   /// False for messages inside a free allowance or free entry-point window.
-  billable       Boolean?
-  createdAt      DateTime    @default(now())
+  billable        Boolean?
+  createdAt       DateTime       @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -439,8 +440,8 @@ model CalendarIntegration {
   id           String           @id @default(cuid())
   tenantId     String
   provider     CalendarProvider
-  accessToken  String           // Encrypted
-  refreshToken String?          // Encrypted
+  accessToken  String // Encrypted
+  refreshToken String? // Encrypted
   expiresAt    DateTime?
   calendarId   String?
   isActive     Boolean          @default(true)
@@ -511,12 +512,12 @@ model Order {
   orderRef                String        @unique
   customerName            String
   customerPhone           String
-  customerEmail           String?      // Phase 5: enables email fallback when present
+  customerEmail           String? // Phase 5: enables email fallback when present
   totalAmount             Decimal       @db.Decimal(10, 2)
   status                  OrderStatus   @default(PENDING)
   paymentStatus           PaymentStatus @default(UNPAID)
   paymentReference        String?       @unique // Paystack tx reference
-  paymentAuthorizationUrl String?              // Paystack hosted-page URL
+  paymentAuthorizationUrl String? // Paystack hosted-page URL
   paidAt                  DateTime?
   deliveryAddress         String?
   notes                   String?
@@ -574,7 +575,7 @@ model Notification {
   title     String
   message   String
   isRead    Boolean          @default(false)
-  metadata  Json?            // e.g. { bookingId, conversationId }
+  metadata  Json? // e.g. { bookingId, conversationId }
   createdAt DateTime         @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -612,11 +613,11 @@ enum NotificationType {
 model MessageTemplate {
   id            String           @id @default(cuid())
   tenantId      String
-  name          String           // Exact Meta template name (e.g. "booking_confirmation_v1")
+  name          String // Exact Meta template name (e.g. "booking_confirmation_v1")
   language      String           @default("en_US")
   category      TemplateCategory
   purpose       TemplatePurpose
-  bodyPreview   String?          // Human preview for the dashboard
+  bodyPreview   String? // Human preview for the dashboard
   variableCount Int              @default(0)
   isApproved    Boolean          @default(false)
   createdAt     DateTime         @default(now())
@@ -655,11 +656,11 @@ enum TemplatePurpose {
 //
 model AuditLog {
   id         String    @id @default(cuid())
-  tenantId   String?   // null for platform-admin and system actions
+  tenantId   String? // null for platform-admin and system actions
   actorType  ActorType
-  actorId    String?   // userId, adminId, etc.
-  action     String    // e.g. "auth.login.success", "tenant.updated"
-  targetType String?   // e.g. "Booking", "Tenant"
+  actorId    String? // userId, adminId, etc.
+  action     String // e.g. "auth.login.success", "tenant.updated"
+  targetType String? // e.g. "Booking", "Tenant"
   targetId   String?
   metadata   Json?
   ipAddress  String?
@@ -699,7 +700,7 @@ enum SubscriptionStatus {
 model TenantUsage {
   id           String   @id @default(cuid())
   tenantId     String
-  month        String   // "YYYY-MM" UTC. Tenant-tz rollover is a Phase 8 polish.
+  month        String // "YYYY-MM" UTC. Tenant-tz rollover is a Phase 8 polish.
   messageCount Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -708,4 +709,182 @@ model TenantUsage {
 
   @@unique([tenantId, month])
   @@index([tenantId])
+}
+
+// ============================================
+// MONEY: WALLET, LEDGER, PAYOUTS
+// ============================================
+//
+// Customers pay into BOOKLY's Paystack account, not the tenant's, so a salon
+// owner never has to create a payment gateway account or paste an API key.
+// What they earn is credited to a wallet here and paid out to their Mobile
+// Money on request.
+//
+// The rule this schema exists to enforce: a balance is never a number anyone
+// edits. It is the sum of an append-only ledger. `Wallet` carries cached
+// figures for fast reads only, and a reconciliation job proves they still
+// equal the ledger.
+//
+// Amounts are INTEGER MINOR UNITS (pesewas) everywhere. Floats lose money to
+// rounding, and the loss is unrecoverable because nobody can say when it
+// happened.
+
+/// Accounts answer ONE question: who owns this money right now. They do not
+/// also track where it physically sits — mixing the two needs two-dimensional
+/// accounting and is how sign errors creep into a ledger.
+///
+/// Every movement sums to zero across these, so money is only ever moved and
+/// never created. EXTERNAL is the world outside Bookly (the customer's card,
+/// the tenant's MoMo wallet), which is what lets an inbound payment balance.
+enum LedgerAccount {
+  EXTERNAL // outside the system: money paid in, payouts leaving
+  TENANT_PENDING // theirs, still clearing (deposit before the appointment)
+  TENANT_AVAILABLE // theirs, withdrawable now
+  PAYOUT_PENDING // theirs, committed to a payout in flight
+  PLATFORM_FEE // Bookly's revenue
+}
+
+enum LedgerReason {
+  DEPOSIT_RECEIVED // customer paid; credited to the tenant as pending
+  FUNDS_CLEARED // pending -> available once the appointment has passed
+  REFUND_ISSUED // money returned to the customer
+  PAYOUT_REQUESTED // available -> payout pending
+  PAYOUT_SETTLED // payout confirmed sent by the provider
+  PAYOUT_REVERSED // payout failed; money returned to available
+  PLATFORM_FEE_TAKEN // Bookly's cut
+  ADJUSTMENT // manual correction; always audited, never routine
+}
+
+/// One wallet per tenant. Cached balances are an optimisation, NOT the truth.
+model Wallet {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  currency String @default("GHS")
+
+  /// Cached sums of the ledger, in minor units. Reconciled, never trusted for
+  /// a debit — a withdrawal re-derives the balance inside its transaction.
+  cachedAvailableMinor Int       @default(0)
+  cachedPendingMinor   Int       @default(0)
+  lastReconciledAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payouts PayoutRequest[]
+  entries LedgerEntry[]
+}
+
+/// One movement = one economic event, written as two or more entries that sum
+/// to zero. `idempotencyKey` is UNIQUE, which is what makes a replayed webhook
+/// or a double-tapped button a no-op at the database level rather than in an
+/// `if` statement that can lose a race.
+model LedgerMovement {
+  id             String       @id @default(cuid())
+  tenantId       String
+  reason         LedgerReason
+  idempotencyKey String       @unique
+  currency       String       @default("GHS")
+
+  bookingId String?
+  orderId   String?
+  payoutId  String?
+  /// Set only for ADJUSTMENT, naming the admin who made it.
+  note      String?
+
+  createdAt DateTime @default(now())
+
+  entries LedgerEntry[]
+
+  @@index([tenantId, createdAt])
+}
+
+/// A single signed posting. Immutable: there is no update path, and a mistake
+/// is corrected by writing a reversing movement, never by editing history.
+model LedgerEntry {
+  id          String        @id @default(cuid())
+  movementId  String
+  walletId    String
+  tenantId    String
+  account     LedgerAccount
+  /// Signed, in minor units. Credits positive, debits negative.
+  amountMinor Int
+  currency    String        @default("GHS")
+  createdAt   DateTime      @default(now())
+
+  movement LedgerMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  wallet   Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, account])
+  @@index([movementId])
+}
+
+enum PayoutStatus {
+  REQUESTED // money moved out of available, not yet sent
+  PROCESSING // handed to the provider
+  PAID
+  FAILED
+  CANCELLED
+}
+
+/// Where a tenant's money goes. Changing this is the classic account-takeover
+/// move, so a new destination cannot receive funds until `usableFrom` passes.
+model PayoutRecipient {
+  id       String @id @default(cuid())
+  tenantId String
+
+  /// 'mobile_money' or 'bank'
+  type                String
+  /// Name on the account, as the provider resolved it — shown back to the
+  /// owner so they can recognise it without decoding anything.
+  accountName         String
+  /// Encrypted. Never logged, never returned whole to a client.
+  accountNumberEnc    String
+  /// For display: "024 ••• 4567".
+  accountNumberMasked String
+  /// Telco code (MTN, VOD, ATL) or bank code.
+  bankCode            String
+
+  /// Paystack recipient_code once created.
+  providerCode String?
+
+  /// Cooling-off. A freshly added destination cannot be paid to before this.
+  usableFrom DateTime
+  isDefault  Boolean   @default(false)
+  archivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payouts PayoutRequest[]
+
+  @@index([tenantId])
+}
+
+model PayoutRequest {
+  id       String @id @default(cuid())
+  tenantId String
+  walletId String
+
+  amountMinor Int
+  currency    String       @default("GHS")
+  status      PayoutStatus @default(REQUESTED)
+
+  recipientId   String
+  /// Paystack transfer_code / reference.
+  providerRef   String? @unique
+  /// Plain-language reason shown to the owner when it fails.
+  failureReason String?
+
+  /// Owners only — staff must never move money out.
+  requestedByUserId String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  settledAt DateTime?
+
+  wallet    Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  recipient PayoutRecipient @relation(fields: [recipientId], references: [id])
+
+  @@index([tenantId, status])
 }

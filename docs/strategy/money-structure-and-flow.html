@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bookly Money: Structure &amp; Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  @page { size: A4; margin: 17mm 15mm; }
+  :root{
+    --ink:#10201C; --body:#2C3B36; --muted:#66776F; --hair:#DCE4E0;
+    --accent:#0F6E5C; --ochre:#9A7220; --red:#A8412B;
+    --wash:#F2F7F5; --ochrewash:#FBF5E8; --redwash:#FCF2EF;
+    --sans:"Archivo",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:var(--sans);color:var(--body);font-size:10.4pt;line-height:1.55;}
+  .eyebrow{font-family:var(--mono);font-size:8.5pt;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 8px;}
+  h1{font-size:30pt;line-height:1.03;letter-spacing:-.028em;color:var(--ink);margin:0 0 12px;font-weight:700;}
+  .stand{font-size:12pt;line-height:1.45;color:var(--muted);margin:0;max-width:36em;}
+  .meta{font-family:var(--mono);font-size:8.5pt;color:var(--muted);margin-top:14px;padding-top:10px;border-top:1px solid var(--hair);}
+  h2{font-size:15pt;letter-spacing:-.018em;color:var(--ink);margin:26px 0 4px;font-weight:600;}
+  h2 .num{font-family:var(--mono);font-size:8.5pt;color:var(--accent);display:block;letter-spacing:.14em;margin-bottom:4px;font-weight:500;}
+  p{margin:7px 0;} strong{color:var(--ink);font-weight:600;}
+  code{font-family:var(--mono);font-size:9pt;background:var(--wash);padding:1px 4px;border-radius:3px;}
+  .claim{border-left:3px solid var(--accent);background:var(--wash);padding:13px 17px;margin:14px 0;border-radius:0 8px 8px 0;}
+  .claim p{margin:0;font-size:11.5pt;line-height:1.4;color:var(--ink);font-weight:500;}
+  .claim .sub{font-size:9.6pt;color:var(--muted);margin-top:6px;font-weight:400;}
+  .flag{border:1px solid #E8CF9A;background:var(--ochrewash);padding:12px 16px;margin:12px 0;border-radius:8px;}
+  .flag.bad{border-color:#E2B7AA;background:var(--redwash);}
+  .flag .tag{font-family:var(--mono);font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase;color:var(--ochre);display:block;margin-bottom:4px;}
+  .flag.bad .tag{color:var(--red);}
+  .flag p{margin:0;}
+  table{border-collapse:collapse;width:100%;margin:10px 0;font-size:9.4pt;}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--hair);vertical-align:top;}
+  th{font-family:var(--mono);font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--ink);}
+  td.k{color:var(--ink);font-weight:600;white-space:nowrap;}
+  td.m{font-family:var(--mono);font-size:8.8pt;white-space:nowrap;}
+  figure{margin:14px 0;}
+  svg{display:block;width:100%;height:auto;}
+  figcaption{font-size:9pt;color:var(--muted);margin-top:8px;padding-top:7px;border-top:1px solid var(--hair);}
+  .foot{margin-top:24px;padding-top:11px;border-top:1px solid var(--hair);font-family:var(--mono);font-size:8pt;color:var(--muted);line-height:1.7;}
+  .pb{page-break-before:always;} .nobreak{page-break-inside:avoid;}
+  .n-name{font-family:var(--sans);font-size:11.5px;font-weight:600;fill:var(--ink);}
+  .n-sub{font-family:var(--mono);font-size:9px;fill:var(--muted);}
+  .a-lab{font-family:var(--sans);font-size:10.5px;font-weight:500;fill:var(--ink);}
+  .a-sub{font-family:var(--mono);font-size:8.5px;fill:var(--muted);}
+</style>
+</head>
+<body>
+
+<p class="eyebrow">Bookly · Technical brief</p>
+<h1>Money: structure &amp; flow</h1>
+<p class="stand">How a customer's payment reaches a salon owner's Mobile Money, what holds the money in between, and the specific ways that can go wrong.</p>
+<p class="meta">September 2026 · for the Bookly team and for Paystack · describes the code as built</p>
+
+<h2><span class="num">01</span>What changed, and why</h2>
+
+<div class="claim">
+  <p>Customers now pay into Bookly's Paystack account, not each salon's.</p>
+  <p class="sub">A salon owner never creates a payment gateway account or handles an API key. Text messages moved the same way, onto Bookly's Arkesel account.</p>
+</div>
+
+<p>The users are salon owners, barbers and nail technicians running a business from a phone. Asking them to open a Paystack account, find a secret key and paste it into a settings page is where they stop. So Bookly does it for them and settles up afterwards.</p>
+
+<p><strong>Why a wallet rather than Paystack's split payments.</strong> Splits would settle each salon's share directly and Bookly would hold nothing — simpler and lower risk. But splits are immutable and refunds come out of the platform balance with no clawback from the subaccount. Bookly sells <em>deposits</em>, which are conditional money, and chargebacks exist whatever the refund policy says. A wallet with a clearing step is the only shape that survives a customer disputing a charge after the salon has been paid.</p>
+
+<p>Tenants who already connected their own Paystack keep using it. Money they are already collecting must never silently start landing somewhere else, so the collection route is recorded per payment and both paths run side by side.</p>
+
+<h2><span class="num">02</span>The flow</h2>
+
+<figure>
+  <svg viewBox="0 0 880 300" role="img" aria-label="A customer pays into Bookly's Paystack account. Bookly credits the tenant's wallet as pending. When the job is marked done the money becomes available. The owner withdraws and Bookly transfers it to their Mobile Money.">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <polygon points="0,1 10,5 0,9" fill="#0F6E5C"></polygon>
+      </marker>
+      <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <polygon points="0,1 10,5 0,9" fill="#66776F"></polygon>
+      </marker>
+    </defs>
+
+    <rect x="18" y="40" width="150" height="50" rx="5" fill="#fff" stroke="#DCE4E0" stroke-width="1.5"></rect>
+    <text class="n-name" x="93" y="62" text-anchor="middle">Customer</text>
+    <text class="n-sub" x="93" y="77" text-anchor="middle">MoMo or card</text>
+
+    <rect x="248" y="40" width="170" height="50" rx="5" fill="#fff" stroke="#0F6E5C" stroke-width="2"></rect>
+    <text class="n-name" x="333" y="62" text-anchor="middle">Bookly · Paystack</text>
+    <text class="n-sub" x="333" y="77" text-anchor="middle">one merchant account</text>
+
+    <rect x="498" y="40" width="170" height="50" rx="5" fill="#fff" stroke="#0F6E5C" stroke-width="2"></rect>
+    <text class="n-name" x="583" y="62" text-anchor="middle">Wallet · pending</text>
+    <text class="n-sub" x="583" y="77" text-anchor="middle">theirs, not yet usable</text>
+
+    <rect x="498" y="180" width="170" height="50" rx="5" fill="#fff" stroke="#0F6E5C" stroke-width="2"></rect>
+    <text class="n-name" x="583" y="202" text-anchor="middle">Wallet · available</text>
+    <text class="n-sub" x="583" y="217" text-anchor="middle">ready to withdraw</text>
+
+    <rect x="228" y="180" width="190" height="50" rx="5" fill="#fff" stroke="#DCE4E0" stroke-width="1.5"></rect>
+    <text class="n-name" x="323" y="202" text-anchor="middle">Owner's Mobile Money</text>
+    <text class="n-sub" x="323" y="217" text-anchor="middle">their own number</text>
+
+    <line x1="170" y1="65" x2="242" y2="65" stroke="#0F6E5C" stroke-width="1.75" marker-end="url(#ar)"></line>
+    <text class="a-sub" x="206" y="55" text-anchor="middle">pays</text>
+
+    <line x1="420" y1="65" x2="492" y2="65" stroke="#0F6E5C" stroke-width="1.75" marker-end="url(#ar)"></line>
+    <text class="a-sub" x="456" y="55" text-anchor="middle">credited</text>
+
+    <line x1="583" y1="92" x2="583" y2="174" stroke="#0F6E5C" stroke-width="1.75" marker-end="url(#ar)"></line>
+    <text class="a-lab" x="595" y="125">job marked done</text>
+    <text class="a-sub" x="595" y="140">owner presses Completed</text>
+
+    <line x1="492" y1="205" x2="424" y2="205" stroke="#0F6E5C" stroke-width="1.75" marker-end="url(#ar)"></line>
+    <text class="a-sub" x="458" y="195" text-anchor="middle">withdraw</text>
+
+    <line x1="323" y1="178" x2="323" y2="95" stroke="#66776F" stroke-width="1.25" stroke-dasharray="4 4" marker-end="url(#ag)"></line>
+    <text class="a-sub" x="311" y="140" text-anchor="end">Paystack transfer</text>
+  </svg>
+  <figcaption>Money physically sits in one Paystack account throughout. The wallet records <strong>whose it is</strong>, which is a different question from where it sits.</figcaption>
+</figure>
+
+<h2><span class="num">03</span>The ledger</h2>
+
+<p>A balance is never a number anyone edits. It is the sum of an append-only log, and the cached columns exist only so a dashboard renders quickly — no withdrawal is ever authorised against them.</p>
+
+<p>Accounts answer <strong>one</strong> question: who owns this money right now. They deliberately do not also track where it physically sits. Tracking both needs two-dimensional accounting, and the half-finished version of that is where sign errors hide.</p>
+
+<table>
+  <tr><th>Account</th><th>Meaning</th></tr>
+  <tr><td class="k">EXTERNAL</td><td>Outside Bookly — the customer's card, the owner's MoMo wallet. Its existence is what lets an inbound payment sum to zero.</td></tr>
+  <tr><td class="k">TENANT_PENDING</td><td>Theirs, but the job is not done. Not withdrawable.</td></tr>
+  <tr><td class="k">TENANT_AVAILABLE</td><td>Theirs, withdrawable now.</td></tr>
+  <tr><td class="k">PAYOUT_PENDING</td><td>Committed to a transfer that has not confirmed.</td></tr>
+  <tr><td class="k">PLATFORM_FEE</td><td>Bookly's revenue. A percentage in basis points, currently set to zero.</td></tr>
+</table>
+
+<p>Every movement writes two or more rows that sum to zero, in one transaction. Money is moved, never created.</p>
+
+<table class="nobreak">
+  <tr><th>Event</th><th>Movement</th></tr>
+  <tr><td class="k">Customer pays GHS 50</td><td class="m">EXTERNAL −5000 · TENANT_PENDING +4900 · PLATFORM_FEE +100</td></tr>
+  <tr><td class="k">Job marked done</td><td class="m">TENANT_PENDING −4900 · TENANT_AVAILABLE +4900</td></tr>
+  <tr><td class="k">Withdrawal requested</td><td class="m">TENANT_AVAILABLE −4900 · PAYOUT_PENDING +4900</td></tr>
+  <tr><td class="k">Transfer confirmed</td><td class="m">PAYOUT_PENDING −4900 · EXTERNAL +4900</td></tr>
+  <tr><td class="k">Transfer failed</td><td class="m">PAYOUT_PENDING −4900 · TENANT_AVAILABLE +4900</td></tr>
+  <tr><td class="k">Salon cancels</td><td class="m">TENANT_PENDING −4900 · PLATFORM_FEE −100 · EXTERNAL +5000</td></tr>
+</table>
+
+<p>Amounts are integer minor units — pesewas — throughout. A float loses money to rounding and the loss is unrecoverable, because nobody can say when it happened.</p>
+
+<h2 class="pb"><span class="num">04</span>What happens to a deposit</h2>
+
+<p>Deposits are <strong>non-refundable</strong>. A customer who cannot make it reschedules, which keeps the same booking so their money simply travels with it — no ledger movement at all.</p>
+
+<table>
+  <tr><th>Outcome</th><th>Where the money goes</th></tr>
+  <tr><td class="k">Job completed</td><td>Released to the salon.</td></tr>
+  <tr><td class="k">Customer no-show</td><td>Released to the salon. This is the entire point of taking a deposit.</td></tr>
+  <tr><td class="k">Customer cancels</td><td>Forfeit to the salon. That is what makes holding the slot worth anything.</td></tr>
+  <tr><td class="k">Customer reschedules</td><td>Travels with the booking. Nothing moves.</td></tr>
+  <tr><td class="k"><strong>Salon cancels</strong></td><td><strong>Refunded to the customer, automatically.</strong></td></tr>
+</table>
+
+<div class="flag">
+  <span class="tag">Why the last row is not a policy choice</span>
+  <p>Keeping a customer's money for work nobody is going to do is indefensible however the terms are written — and the alternative to refunding is not "we keep it", it is a chargeback that costs the deposit plus a dispute fee plus standing with Paystack. Money held with no owner and no exit is a leak, so the refund is automatic rather than a balance waiting for someone to notice.</p>
+</div>
+
+<h2><span class="num">05</span>What stops it going wrong</h2>
+
+<table>
+  <tr><th>Risk</th><th>Control</th></tr>
+  <tr><td class="k">Two withdrawals at once</td><td>Balance re-derived from the ledger <em>inside</em> a serializable transaction. Postgres aborts one of a colliding pair. Only one payout may be in flight at a time.</td></tr>
+  <tr><td class="k">Overdrawing a balance</td><td>After every movement, balances are re-derived in the same transaction and a negative pot throws, rolling the write back. Conserving money per movement is not enough — two movements can each balance and still overdraw between them.</td></tr>
+  <tr><td class="k">Refund and release colliding</td><td>Both take an atomic claim on the deposit before any provider call. One wins, the other stops.</td></tr>
+  <tr><td class="k">Replayed webhooks</td><td>Every movement carries an idempotency key derived from the provider's reference, enforced by a unique index rather than an <code>if</code> that can lose a race.</td></tr>
+  <tr><td class="k">Crediting money we never received</td><td>The collection route is recorded server-side when the link is created, and is the only thing allowed to decide whether a wallet may be credited.</td></tr>
+  <tr><td class="k">Underpayment</td><td>A payment short of what was asked does not confirm the booking and does not credit.</td></tr>
+  <tr><td class="k">Paying twice on a timeout</td><td>Only a definitive rejection returns the funds. An uncertain outcome leaves the payout in flight for the webhook to settle.</td></tr>
+  <tr><td class="k">Account takeover</td><td>Changing the payout destination starts a 24-hour hold, is audited, and notifies the owner. Withdrawals are owner-only.</td></tr>
+  <tr><td class="k">Marking work done that never happened</td><td>Booking transitions are a state machine, and a job cannot be completed before its start time.</td></tr>
+</table>
+
+<div class="flag bad">
+  <span class="tag">Found by review, not by tests</span>
+  <p>An adversarial review of this path found a <strong>critical</strong> flaw: the collection route had been inferable from the transaction reference and the provider's metadata, both of which a tenant controls once they connect their own Paystack key. A tenant could have minted a payment in their own account and had Bookly credit and pay out real money. Every individual function behaved exactly as written, so no unit test would have caught it. It is fixed, and the inference path was deleted rather than patched.</p>
+</div>
+
+<h2><span class="num">06</span>Known limits</h2>
+
+<table>
+  <tr><th>Item</th><th>Position</th></tr>
+  <tr><td class="k">No hold before withdrawal</td><td>Funds clear the moment a job is marked done, by product decision. The state machine blocks instant fraud but not a patient version. A hold applied only to new tenants would close it without penalising established salons.</td></tr>
+  <tr><td class="k">Open MEDIUM findings</td><td>Six, including staff being able to trigger a refund, and currency not being validated. Tracked in the build checklist.</td></tr>
+  <tr><td class="k">Platform fee</td><td>Built as a percentage in basis points, set to zero until a rate is chosen.</td></tr>
+  <tr><td class="k">Nothing is live</td><td>No platform Paystack account is configured, so none of this moves real money yet.</td></tr>
+</table>
+
+<h2><span class="num">07</span>Before real money</h2>
+
+<p>Two of these are not engineering, and neither can be worked around in code.</p>
+
+<table>
+  <tr><th>Prerequisite</th><th>Why</th></tr>
+  <tr><td class="k">Written aggregator or marketplace approval from Paystack</td><td>Collecting on behalf of third parties without it risks the account being frozen — with tenant money inside it.</td></tr>
+  <tr><td class="k">Registered business status</td><td>Paystack Transfers, which every payout depends on, are gated on it.</td></tr>
+  <tr><td class="k">Close the open findings</td><td>Six MEDIUM and six LOW remain from the review.</td></tr>
+  <tr><td class="k">Decide the fee</td><td>The mechanism is built; the number is a business decision.</td></tr>
+</table>
+
+<p class="foot">
+Technical brief, September 2026. Describes the implementation as built, including the parts that are deliberately unfinished.<br>
+Holding funds on behalf of other businesses is regulated activity in Ghana under the Payment Systems and Services Act 2019. This document is not legal advice.
+</p>
+
+</body>
+</html>

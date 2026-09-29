@@ -59,8 +59,10 @@ same reason.
       data) and **4 HIGH**. All five fixed: `3bc67f9`, `269beb6`. Plus an
       underpayment hole found separately: `7cb09d1`.
       **Still open: 6 MEDIUM, 6 LOW** — see below.
-- [ ] **12. Structure & flow PDF** — architecture and money movement, for the
-      record and for Paystack.
+- [x] **12. Structure & flow PDF** — [money-structure-and-flow.pdf](strategy/money-structure-and-flow.pdf),
+      5 pages. Written for the team and for the Paystack aggregator
+      conversation: the flow, the ledger, what happens to a deposit, the
+      controls, and the limits — including the ones left open on purpose.
 
 ---
 

@@ -46,6 +46,21 @@ export interface LedgerLine {
  * whole number of minor units. Always a programming error, never a user error
  * — it must surface loudly rather than being clamped or rounded away.
  */
+/**
+ * Thrown when a movement would leave a tenant owing more than they hold.
+ *
+ * `assertBalanced` only proves a movement conserves money — two movements can
+ * each balance and still overdraw the same pot between them. This is the
+ * backstop that turns that race into a rolled-back transaction rather than a
+ * negative balance nobody notices.
+ */
+export class LedgerOverdrawError extends Error {
+    constructor(account: string, resulting: number) {
+        super(`ledger_overdraw: ${account} would become ${resulting}`);
+        this.name = 'LedgerOverdrawError';
+    }
+}
+
 export class LedgerImbalanceError extends Error {
     constructor(details: string) {
         super(`ledger_imbalance: ${details}`);
@@ -246,11 +261,39 @@ export interface PostMovementResult {
  * elsewhere (a payout row, a booking's payment status), so the ledger and that
  * state can never disagree after a crash.
  */
+/**
+ * Take an exclusive lock on the tenant's wallet row for the rest of the
+ * transaction.
+ *
+ * Two movements that can spend the same pot must serialise on something, and
+ * the wallet row is the natural choke point. Without it, a refund and a
+ * clearing read the same pending balance and both act on it.
+ *
+ * Raw because Prisma has no `FOR UPDATE`. Scoped by the wallet id the caller
+ * already resolved inside the tenant, so it grants no cross-tenant reach.
+ */
+export async function lockWallet(tx: AnyPrismaClient, walletId: string): Promise<void> {
+    await (tx as unknown as {
+        $queryRawUnsafe: (q: string, ...v: unknown[]) => Promise<unknown>;
+    }).$queryRawUnsafe('SELECT id FROM "Wallet" WHERE id = $1 FOR UPDATE', walletId);
+}
+
+/** Pots that may never go negative — money the tenant is owed or is owed from. */
+const NON_NEGATIVE_ACCOUNTS: LedgerAccount[] = [
+    'TENANT_PENDING',
+    'TENANT_AVAILABLE',
+    'PAYOUT_PENDING',
+];
+
 export async function postMovement(
     tx: AnyPrismaClient,
     args: PostMovementArgs,
 ): Promise<PostMovementResult> {
     assertBalanced(args.lines);
+
+    // Serialise every writer on this wallet before reading anything, so two
+    // movements cannot each see the same balance and both spend it.
+    await lockWallet(tx, args.walletId);
 
     const currency = args.currency ?? 'GHS';
 
@@ -279,6 +322,22 @@ export async function postMovement(
             },
             select: { id: true },
         });
+        // Re-derive AFTER writing, inside the same transaction. If this
+        // movement overdrew a pot, throwing rolls the whole thing back — the
+        // rows above included. A negative balance is always a bug, never
+        // something to clamp away.
+        const after = await deriveBalances(tx, args.tenantId);
+        const resulting: Record<string, number> = {
+            TENANT_PENDING: after.pendingMinor,
+            TENANT_AVAILABLE: after.availableMinor,
+            PAYOUT_PENDING: after.payoutPendingMinor,
+        };
+        for (const account of NON_NEGATIVE_ACCOUNTS) {
+            if (resulting[account] < 0) {
+                throw new LedgerOverdrawError(account, resulting[account]);
+            }
+        }
+
         return { movementId: movement.id, duplicate: false };
     } catch (err) {
         if (isUniqueViolation(err)) {

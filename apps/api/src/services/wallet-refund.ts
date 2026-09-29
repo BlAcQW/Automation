@@ -98,11 +98,29 @@ export async function refundDepositForBooking(
         return { refunded: false, reason: 'not_platform_collected' };
     }
 
+    // Claim the deposit BEFORE calling the provider. The refund takes about a
+    // second, and without this a clearing that lands in that window releases
+    // the same money to the salon — the customer gets refunded AND the salon
+    // keeps it, with pending driven negative.
+    const claimed = await prisma.booking.updateMany({
+        where: { id: bookingId, tenantId, depositState: null },
+        data: { depositState: 'REFUNDING' },
+    });
+    if (claimed.count === 0) {
+        return { refunded: false, reason: 'nothing_to_refund' };
+    }
+
     // Provider first: the ledger must never claim money went back while it is
     // still in our balance.
     try {
         await refundTransaction(route.secretKey, booking.paymentReference, pendingMinor + feeMinor);
     } catch (err) {
+        // Release the claim so a retry can pick it up. Leaving it REFUNDING
+        // would strand the deposit where neither path can touch it.
+        await prisma.booking.updateMany({
+            where: { id: bookingId, tenantId, depositState: 'REFUNDING' },
+            data: { depositState: null },
+        }).catch(() => undefined);
         logger?.error(
             { err, bookingId, reference: booking.paymentReference },
             'Salon cancelled a paid booking but the refund FAILED — customer is owed money',
@@ -134,6 +152,11 @@ export async function refundDepositForBooking(
         }
         return { duplicate: result.duplicate };
     });
+
+    await prisma.booking.updateMany({
+        where: { id: bookingId, tenantId },
+        data: { depositState: 'REFUNDED' },
+    }).catch(() => undefined);
 
     if (posted.duplicate) return { refunded: false, reason: 'already_refunded' };
     return { refunded: true, amountMinor: pendingMinor + feeMinor };

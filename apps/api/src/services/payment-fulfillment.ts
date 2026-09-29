@@ -73,6 +73,50 @@ export function isSufficientPayment(paidMinor: number, expected: unknown): boole
     return paidMinor >= expectedMinor - UNDERPAYMENT_TOLERANCE_MINOR;
 }
 
+
+/**
+ * Credit the tenant's wallet for a platform-collected payment.
+ *
+ * Fires only for money that reached Bookly's own account — a payment into the
+ * tenant's own gateway never touched our balance, so crediting it would invent
+ * funds. Safe to retry: the movement is keyed on the provider reference.
+ */
+async function creditForPlatformPayment(opts: {
+    fastify: FastifyInstance;
+    logger: FastifyBaseLogger;
+    tenantId: string;
+    verified: VerifyResult;
+    reference: string;
+    storedRoute: string | null;
+    bookingId?: string;
+    orderId?: string;
+}): Promise<void> {
+    try {
+        const credit = await creditDepositToWallet({
+            prisma: opts.fastify.prisma,
+            tenantId: opts.tenantId,
+            grossMinor: opts.verified.amountKobo,
+            currency: opts.verified.currency,
+            reference: opts.reference,
+            storedRoute: opts.storedRoute,
+            bookingId: opts.bookingId ?? null,
+            orderId: opts.orderId ?? null,
+            logger: opts.logger,
+        });
+        if (credit.skippedReason === 'invalid_amount') {
+            opts.logger.error({ reference: opts.reference }, 'Payment landed but the amount was unusable — wallet NOT credited');
+        }
+    } catch (err) {
+        // Loud, because money arrived that nobody has been credited for. The
+        // reconciliation path is: re-run with the same reference; the
+        // movement key makes that a no-op if it did in fact succeed.
+        opts.logger.error(
+            { err, reference: opts.reference, tenantId: opts.tenantId },
+            'Payment landed but crediting the wallet FAILED — replay this reference',
+        );
+    }
+}
+
 /** `applied` is true iff this call performed the UNPAID → PAID flip. */
 export interface FulfillResult {
     applied: boolean;
@@ -119,6 +163,21 @@ export async function fulfillBookingCharge(opts: {
     if (claimed.count === 0) {
         return { applied: false };
     }
+
+    // Credit the wallet IMMEDIATELY after the claim and before any queue work.
+    // The claim is what makes this run once, so anything that can throw
+    // between the two loses the credit permanently: on retry the row is
+    // already PAID, the webhook answers idempotent, and the customer's money
+    // sits in Bookly's account with nobody credited for it.
+    await creditForPlatformPayment({
+        fastify,
+        logger,
+        tenantId,
+        verified,
+        reference,
+        storedRoute: entityCollectionRoute,
+        bookingId: booking.id,
+    });
 
     // BOOKING_CONFIRMATION template (uses the existing purpose).
     const dateStr = booking.startTime.toLocaleDateString();
@@ -207,36 +266,6 @@ export async function fulfillBookingCharge(opts: {
         logger.warn({ err, bookingId: booking.id }, 'Payment notification failed');
     });
 
-
-    // Credit the tenant's wallet. Only fires for money collected into
-    // Bookly's own Paystack — a payment into the tenant's own gateway never
-    // touched our balance, so crediting it would invent funds.
-    //
-    // Deliberately after the atomic claim and outside it: the claim is what
-    // guarantees this runs once per payment, and the movement's idempotency
-    // key means a retry after a failure here is safe rather than a double
-    // credit. A failure is logged loudly because it means money arrived that
-    // nobody has been credited for.
-    try {
-        const credit = await creditDepositToWallet({
-            prisma: fastify.prisma,
-            tenantId,
-            grossMinor: verified.amountKobo,
-            currency: verified.currency,
-            reference,
-            storedRoute: entityCollectionRoute,
-            bookingId: booking.id,
-            logger,
-        });
-        if (credit.skippedReason === 'invalid_amount') {
-            logger.error({ reference }, 'Payment landed but the amount was unusable — wallet NOT credited');
-        }
-    } catch (err) {
-        logger.error(
-            { err, reference, tenantId },
-            'Payment landed but crediting the wallet FAILED — replay this reference',
-        );
-    }
     return { applied: true };
 }
 
@@ -275,6 +304,18 @@ export async function fulfillOrderCharge(opts: {
     if (claimed.count === 0) {
         return { applied: false };
     }
+
+    // Same ordering as the booking path: credit before any queue work, so a
+    // Redis blip cannot lose the credit behind an already-PAID row.
+    await creditForPlatformPayment({
+        fastify,
+        logger: fastify.log,
+        tenantId,
+        verified,
+        reference,
+        storedRoute: entityCollectionRoute,
+        orderId: order.id,
+    });
 
     await scheduleNotification({
         queue: fastify.queues.notifications,
@@ -316,35 +357,5 @@ export async function fulfillOrderCharge(opts: {
         fastify.log.warn({ err, orderId: order.id }, 'Payment notification failed');
     });
 
-
-    // Credit the tenant's wallet. Only fires for money collected into
-    // Bookly's own Paystack — a payment into the tenant's own gateway never
-    // touched our balance, so crediting it would invent funds.
-    //
-    // Deliberately after the atomic claim and outside it: the claim is what
-    // guarantees this runs once per payment, and the movement's idempotency
-    // key means a retry after a failure here is safe rather than a double
-    // credit. A failure is logged loudly because it means money arrived that
-    // nobody has been credited for.
-    try {
-        const credit = await creditDepositToWallet({
-            prisma: fastify.prisma,
-            tenantId,
-            grossMinor: verified.amountKobo,
-            currency: verified.currency,
-            reference,
-            storedRoute: entityCollectionRoute,
-            orderId: order.id,
-            logger: fastify.log,
-        });
-        if (credit.skippedReason === 'invalid_amount') {
-            fastify.log.error({ reference }, 'Payment landed but the amount was unusable — wallet NOT credited');
-        }
-    } catch (err) {
-        fastify.log.error(
-            { err, reference, tenantId },
-            'Payment landed but crediting the wallet FAILED — replay this reference',
-        );
-    }
     return { applied: true };
 }

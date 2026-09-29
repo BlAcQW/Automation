@@ -310,6 +310,11 @@ model Booking {
   /// could otherwise mint a payment in their own account and have it credited
   /// against Bookly's balance.
   collectionRoute         String?
+  /// Lifecycle of the deposit money, separate from the booking's own status.
+  /// NULL = still held. Advanced by an ATOMIC conditional update before any
+  /// provider call, so a clearing and a refund cannot both act on the same
+  /// deposit — one of them loses the claim and stops.
+  depositState            String?
   paidAt                  DateTime?
   depositAmount           Decimal?      @db.Decimal(10, 2) // snapshot at booking time
   publicToken             String?       @unique // non-guessable token for the SMS cancel link
@@ -528,6 +533,8 @@ model Order {
   /// could otherwise mint a payment in their own account and have it credited
   /// against Bookly's balance.
   collectionRoute         String?
+  /// See Booking.depositState.
+  depositState            String?
   paymentReference        String?       @unique // Paystack tx reference
   paymentAuthorizationUrl String? // Paystack hosted-page URL
   paidAt                  DateTime?

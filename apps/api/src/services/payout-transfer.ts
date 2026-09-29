@@ -29,6 +29,36 @@ import { createNotification } from './notifications.js';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
+/**
+ * Paystack definitively refused. The money did NOT leave, so returning it to
+ * the tenant's balance is correct.
+ */
+export class TransferRejectedError extends Error {
+    constructor(public readonly detail: string) {
+        super(detail);
+        this.name = 'TransferRejectedError';
+    }
+}
+
+/**
+ * We do not know whether Paystack accepted it — a timeout, a 5xx, or a reply
+ * we could not parse.
+ *
+ * This must NEVER reverse the payout. The transfer may well be on its way, and
+ * returning the funds as well would pay the tenant twice: once into their
+ * MoMo and once back into their balance. Leave it in flight and let the
+ * webhook or a reconciliation decide.
+ */
+export class TransferUncertainError extends Error {
+    constructor(public readonly detail: string) {
+        super(detail);
+        this.name = 'TransferUncertainError';
+    }
+}
+
+/** Give up on a hung connection rather than hanging the caller's request. */
+const TRANSFER_TIMEOUT_MS = 20_000;
+
 export interface InitiatedTransfer {
     transferCode: string;
     status: string;
@@ -62,17 +92,30 @@ export async function initiateTransfer(args: {
                 reference: args.reference,
                 reason: args.reason ?? 'Bookly payout',
             }),
+            signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
         });
     } catch (err) {
-        throw new PaystackError('config', `transfer_network_error: ${(err as Error).message}`);
+        // A network error or timeout tells us nothing about whether Paystack
+        // accepted the transfer. Uncertain, never rejected.
+        throw new TransferUncertainError(`network_error: ${(err as Error).message}`);
     }
 
-    const body = (await res.json().catch(() => null)) as
-        | { status?: boolean; message?: string; data?: { transfer_code?: string; status?: string } }
-        | null;
+    const raw = await res.text().catch(() => '');
+    let body: { status?: boolean; message?: string; data?: { transfer_code?: string; status?: string } } | null = null;
+    try {
+        body = raw ? JSON.parse(raw) : null;
+    } catch {
+        throw new TransferUncertainError(`unparseable_response_http_${res.status}`);
+    }
 
+    // A 4xx with an explicit status:false is Paystack saying no. Anything else
+    // that went wrong — 5xx, a missing body, a shape we did not expect — could
+    // still have been accepted.
+    if (res.status >= 400 && res.status < 500 && body?.status === false) {
+        throw new TransferRejectedError(body.message ?? `rejected_http_${res.status}`);
+    }
     if (!res.ok || !body?.status || !body.data?.transfer_code) {
-        throw new PaystackError('config', body?.message ?? `transfer_http_${res.status}`);
+        throw new TransferUncertainError(body?.message ?? `indeterminate_http_${res.status}`);
     }
 
     return { transferCode: body.data.transfer_code, status: body.data.status ?? 'pending' };

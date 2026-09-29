@@ -6,7 +6,11 @@ import { audit } from '../../services/audit.js';
 import { maskPhone } from '../../services/contact-privacy.js';
 import { createNotification } from '../../services/notifications.js';
 import { deriveBalances, ensureWallet } from '../../services/ledger.js';
-import { initiateTransfer, markPayoutFailed } from '../../services/payout-transfer.js';
+import {
+    initiateTransfer,
+    markPayoutFailed,
+    TransferRejectedError,
+} from '../../services/payout-transfer.js';
 import {
     createWithdrawal,
     WithdrawalConflictError,
@@ -298,15 +302,31 @@ const moneyRoutes: FastifyPluginAsync = async (fastify) => {
                     data: { status: 'PROCESSING', providerRef: transfer.transferCode },
                 });
             } catch (err) {
-                fastify.log.error({ err, payoutId: created.payoutId }, 'Transfer could not be started');
-                await markPayoutFailed({
-                    prisma: fastify.prisma,
-                    payoutId: created.payoutId,
-                    failureReason: 'We could not start the transfer. Your money is back in your balance.',
-                    logger: fastify.log,
-                }).catch(() => undefined);
-                throw fastify.httpErrors.badGateway(
-                    'We could not send that right now. Your money is back in your balance — please try again.',
+                // Only give the money back when Paystack definitively refused.
+                if (err instanceof TransferRejectedError) {
+                    fastify.log.warn({ err, payoutId: created.payoutId }, 'Transfer rejected by Paystack');
+                    await markPayoutFailed({
+                        prisma: fastify.prisma,
+                        payoutId: created.payoutId,
+                        failureReason: 'We could not send the transfer. Your money is back in your balance.',
+                        logger: fastify.log,
+                    }).catch(() => undefined);
+                    throw fastify.httpErrors.badGateway(
+                        'We could not send that right now. Your money is back in your balance — please try again.',
+                    );
+                }
+
+                // Anything else — a timeout, a 5xx, a reply we could not read
+                // — leaves it genuinely unknown whether the transfer was
+                // accepted. Returning the funds here would pay twice: once
+                // into their MoMo and once back into their balance. So the
+                // payout stays in flight and the webhook settles it.
+                fastify.log.error(
+                    { err, payoutId: created.payoutId },
+                    'Transfer outcome UNKNOWN — leaving payout in flight, do not reverse',
+                );
+                throw fastify.httpErrors.gatewayTimeout(
+                    'We could not confirm that transfer. We are checking with the network — do not try again yet, your withdrawal may still be on its way.',
                 );
             }
 

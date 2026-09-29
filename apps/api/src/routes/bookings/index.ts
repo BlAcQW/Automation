@@ -5,7 +5,12 @@ import { scheduleNotification, cancelReminder } from '../../services/notificatio
 import { cancelBooking } from '../../services/booking-cancel.js';
 import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from '../../services/booking-create.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
-import { bookingStatusClearsFunds, clearFundsForEntity } from '../../services/wallet-clearing.js';
+import {
+    bookingStatusClearsFunds,
+    canCompleteYet,
+    clearFundsForEntity,
+    isAllowedBookingTransition,
+} from '../../services/wallet-clearing.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 
 // Validation schemas
@@ -188,6 +193,25 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
 
         if (!existing) {
             throw fastify.httpErrors.notFound('Booking not found');
+        }
+
+        // Enforce the state machine before anything moves. Without this a
+        // booking could go straight from CANCELLED to COMPLETED and release
+        // money that was already refunded, or be marked done before the
+        // appointment had even happened.
+        if (body.status && !isAllowedBookingTransition(existing.status, body.status)) {
+            throw fastify.httpErrors.badRequest(
+                `A ${existing.status.toLowerCase().replace(/_/g, ' ')} booking cannot be changed to ${body.status.toLowerCase().replace(/_/g, ' ')}.`,
+            );
+        }
+        if (
+            body.status &&
+            bookingStatusClearsFunds(body.status) &&
+            !canCompleteYet(existing.startTime)
+        ) {
+            throw fastify.httpErrors.badRequest(
+                'You can mark this done once the appointment time has passed.',
+            );
         }
 
         const booking = await fastify.prisma.booking.update({

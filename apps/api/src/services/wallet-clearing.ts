@@ -70,6 +70,38 @@ export function depositOutcomeOnCancel(cancelledBy: CancelledBy): DepositOutcome
     return cancelledBy === 'BUSINESS' ? 'HOLD_FOR_REFUND' : 'FORFEIT_TO_BUSINESS';
 }
 
+/**
+ * Which booking states may legally become which.
+ *
+ * Without this, a PATCH could take a booking straight from CANCELLED to
+ * COMPLETED and release money that was refunded, or mark a job done before it
+ * was due.
+ */
+const ALLOWED_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
+    PENDING_PAYMENT: ['CONFIRMED', 'CANCELLED'],
+    CONFIRMED: ['COMPLETED', 'NO_SHOW', 'CANCELLED'],
+    COMPLETED: [],
+    NO_SHOW: [],
+    CANCELLED: [],
+};
+
+export function isAllowedBookingTransition(from: string, to: string): boolean {
+    if (from === to) return true;
+    return (ALLOWED_BOOKING_TRANSITIONS[from] ?? []).includes(to);
+}
+
+/**
+ * A job cannot be finished before it was due to start.
+ *
+ * The fraud this blocks: create a tenant, take a deposit on a stolen card,
+ * mark the booking done the same second, withdraw to Mobile Money, and leave
+ * the platform holding the chargeback. Requiring the appointment time to have
+ * passed removes the instant version of that.
+ */
+export function canCompleteYet(startTime: Date, now: Date = new Date()): boolean {
+    return startTime.getTime() <= now.getTime();
+}
+
 export interface ClearFundsArgs {
     prisma: ExtendedPrismaClient;
     tenantId: string;
@@ -95,6 +127,23 @@ export async function clearFundsForEntity(args: ClearFundsArgs): Promise<ClearFu
     if (!bookingId && !orderId) return { cleared: false, reason: 'nothing_pending' };
 
     const entityKey = bookingId ? `booking:${bookingId}` : `order:${orderId}`;
+
+    // Claim the deposit BEFORE doing anything else. A refund may be mid-flight
+    // at the provider with its ledger entry not yet written, so the ledger
+    // alone cannot tell us this money is still ours to release. Whoever wins
+    // this conditional update owns the deposit; the loser stops.
+    const claimed = bookingId
+        ? await prisma.booking.updateMany({
+            where: { id: bookingId, tenantId, depositState: null },
+            data: { depositState: 'CLEARED' },
+        })
+        : await prisma.order.updateMany({
+            where: { id: orderId!, tenantId, depositState: null },
+            data: { depositState: 'CLEARED' },
+        });
+    if (claimed.count === 0) {
+        return { cleared: false, reason: 'already_cleared' };
+    }
 
     return prisma.$transaction(async (tx) => {
         const client = tx as ExtendedPrismaClient;

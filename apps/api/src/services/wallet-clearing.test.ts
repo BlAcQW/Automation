@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   bookingStatusClearsFunds,
+  canCompleteYet,
+  isAllowedBookingTransition,
   depositOutcomeOnCancel,
   orderStatusClearsFunds,
   pendingFromEntries,
@@ -91,5 +93,50 @@ describe('depositOutcomeOnCancel', () => {
     // money for work nobody will do is indefensible however the terms read,
     // so it is held rather than released to the salon.
     expect(depositOutcomeOnCancel('BUSINESS')).toBe('HOLD_FOR_REFUND');
+  });
+});
+
+describe('isAllowedBookingTransition', () => {
+  it('allows the normal path', () => {
+    expect(isAllowedBookingTransition('CONFIRMED', 'COMPLETED')).toBe(true);
+    expect(isAllowedBookingTransition('CONFIRMED', 'NO_SHOW')).toBe(true);
+    expect(isAllowedBookingTransition('PENDING_PAYMENT', 'CONFIRMED')).toBe(true);
+  });
+
+  it('refuses resurrecting a cancelled booking', () => {
+    // Otherwise a refunded booking could be flipped to COMPLETED and the
+    // money released to the salon a second time.
+    expect(isAllowedBookingTransition('CANCELLED', 'COMPLETED')).toBe(false);
+    expect(isAllowedBookingTransition('CANCELLED', 'NO_SHOW')).toBe(false);
+  });
+
+  it('refuses changing a finished booking', () => {
+    expect(isAllowedBookingTransition('COMPLETED', 'CANCELLED')).toBe(false);
+    expect(isAllowedBookingTransition('NO_SHOW', 'COMPLETED')).toBe(false);
+  });
+
+  it('refuses skipping payment', () => {
+    expect(isAllowedBookingTransition('PENDING_PAYMENT', 'COMPLETED')).toBe(false);
+  });
+
+  it('treats a no-op as allowed', () => {
+    expect(isAllowedBookingTransition('CONFIRMED', 'CONFIRMED')).toBe(true);
+  });
+});
+
+describe('canCompleteYet', () => {
+  const now = new Date('2026-10-01T12:00:00Z');
+
+  it('allows completing a booking whose time has passed', () => {
+    expect(canCompleteYet(new Date('2026-10-01T11:00:00Z'), now)).toBe(true);
+  });
+
+  it('allows completing exactly at the start time', () => {
+    expect(canCompleteYet(now, now)).toBe(true);
+  });
+
+  it('refuses completing a booking that has not happened yet', () => {
+    // The instant-fraud path: deposit on a stolen card, mark done, withdraw.
+    expect(canCompleteYet(new Date('2026-10-01T13:00:00Z'), now)).toBe(false);
   });
 });

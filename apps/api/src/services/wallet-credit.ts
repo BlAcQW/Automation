@@ -22,30 +22,24 @@ import {
     splitFee,
 } from './ledger.js';
 
-/** What `createPaymentLink` stamps on the reference for each route. */
-const PLATFORM_PREFIX = 'bf_p_';
-const OWN_GATEWAY_PREFIX = 'bf_o_';
-
 /**
  * Did this money land in Bookly's account?
  *
- * Metadata is authoritative when present; the reference prefix is the fallback
- * for provider replays that arrive without it. Anything unrecognised — every
- * payment taken before this feature shipped — is treated as NOT ours, because
- * failing closed leaves money uncredited (fixable) while failing open credits
- * money we never received (not fixable).
+ * Read ONLY from the route recorded on the booking or order when the payment
+ * link was created. It deliberately does not look at the reference prefix or
+ * the provider's metadata.
+ *
+ * Both of those are attacker-controlled the moment a tenant connects their own
+ * Paystack key: they can mint a transaction in their OWN account carrying any
+ * reference and any metadata, have it verified against their own key, and —
+ * if the route were inferred — have Bookly credit a wallet for money that
+ * never arrived, then withdraw it from Bookly's real balance.
+ *
+ * Anything other than an explicit stored PLATFORM fails closed. Leaving money
+ * uncredited is recoverable; crediting money we never received is not.
  */
-export function isPlatformCollected(
-    reference: string,
-    metadata: { collectionRoute?: unknown } | null | undefined,
-): boolean {
-    const declared = metadata?.collectionRoute;
-    if (declared === 'PLATFORM') return true;
-    if (declared === 'OWN_GATEWAY') return false;
-
-    if (reference.startsWith(PLATFORM_PREFIX)) return true;
-    if (reference.startsWith(OWN_GATEWAY_PREFIX)) return false;
-    return false;
+export function isPlatformCollected(storedRoute: string | null | undefined): boolean {
+    return storedRoute === 'PLATFORM';
 }
 
 /**
@@ -69,7 +63,8 @@ export interface CreditDepositArgs {
     grossMinor: number;
     currency: string;
     reference: string;
-    metadata?: { collectionRoute?: unknown } | null;
+    /** The route stored on the entity when the link was created. */
+    storedRoute: string | null | undefined;
     bookingId?: string | null;
     orderId?: string | null;
     logger?: FastifyBaseLogger;
@@ -93,7 +88,7 @@ export interface CreditDepositResult {
 export async function creditDepositToWallet(
     args: CreditDepositArgs,
 ): Promise<CreditDepositResult> {
-    if (!isPlatformCollected(args.reference, args.metadata)) {
+    if (!isPlatformCollected(args.storedRoute)) {
         return { credited: false, skippedReason: 'not_platform_collected' };
     }
     if (!Number.isInteger(args.grossMinor) || args.grossMinor <= 0) {

@@ -73,7 +73,15 @@ export async function createPaymentLink(args: PaymentLinkArgs): Promise<string |
             },
         });
 
-        const data = { paymentReference: init.reference, paymentAuthorizationUrl: init.authorizationUrl };
+        // Record WHICH account collected this, server-side. The reference
+        // prefix and the provider metadata are both attacker-controlled once a
+        // tenant connects their own key, so neither may ever be the source of
+        // truth for whether money reached Bookly.
+        const data = {
+            paymentReference: init.reference,
+            paymentAuthorizationUrl: init.authorizationUrl,
+            collectionRoute: route.route,
+        };
         if (args.entity === 'order') {
             await args.prisma.order.update({ where: { id: args.id }, data });
         } else {

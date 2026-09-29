@@ -31,7 +31,14 @@ describe('createPaymentLink', () => {
         expect(call.metadata).toMatchObject({ tenantId: 't1', bookingId: 'bk1' });
         expect(prisma.booking.update).toHaveBeenCalledWith({
             where: { id: 'bk1' },
-            data: { paymentReference: 'bf_bk1_1', paymentAuthorizationUrl: 'https://pay/x' },
+            data: {
+                paymentReference: 'bf_bk1_1',
+                paymentAuthorizationUrl: 'https://pay/x',
+                // The security boundary: which account collected this is
+                // persisted server-side here, and is the ONLY thing allowed to
+                // decide later whether a wallet may be credited.
+                collectionRoute: 'OWN_GATEWAY',
+            },
         });
     });
 
@@ -45,6 +52,11 @@ describe('createPaymentLink', () => {
         const call = (initializeTransaction as any).mock.calls[0][0];
         expect(call.secretKey).toBe('sk_platform');
         expect(call.metadata).toMatchObject({ collectionRoute: 'PLATFORM' });
+        // Persisted, not merely stamped on the provider payload — metadata is
+        // attacker-controlled once a tenant connects their own key.
+        expect(prisma.booking.update).toHaveBeenCalledWith(
+            expect.objectContaining({ data: expect.objectContaining({ collectionRoute: 'PLATFORM' }) }),
+        );
         // The reference carries the route, so the webhook can tell whether
         // this money is in our balance before crediting any wallet.
         expect(call.reference).toMatch(/^bf_p_/);

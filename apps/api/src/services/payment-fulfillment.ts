@@ -30,6 +30,8 @@ export interface FulfillableBooking {
     bookingReference: string;
     /** What this booking asked for. Compared against what actually arrived. */
     depositAmount?: unknown;
+    /** Which account collected this, recorded when the link was created. */
+    collectionRoute?: string | null;
     customerName: string;
     customerPhone: string;
     startTime: Date;
@@ -44,6 +46,8 @@ export interface FulfillableOrder {
     customerPhone: string;
     /** What this order asked for. Compared against what actually arrived. */
     totalAmount: unknown; // Prisma Decimal — coerced via Number()
+    /** Which account collected this, recorded when the link was created. */
+    collectionRoute?: string | null;
 }
 
 
@@ -88,6 +92,8 @@ export async function fulfillBookingCharge(opts: {
     reference: string;
 }): Promise<FulfillResult> {
     const { fastify, logger, tenantId, booking, verified, reference } = opts;
+
+    const entityCollectionRoute = booking.collectionRoute ?? null;
 
     // Refuse to confirm a booking that was underpaid. Marking it PAID would
     // hold the slot and credit the salon for money that never arrived.
@@ -218,7 +224,7 @@ export async function fulfillBookingCharge(opts: {
             grossMinor: verified.amountKobo,
             currency: verified.currency,
             reference,
-            metadata: verified.metadata ?? null,
+            storedRoute: entityCollectionRoute,
             bookingId: booking.id,
             logger,
         });
@@ -246,6 +252,8 @@ export async function fulfillOrderCharge(opts: {
     reference: string;
 }): Promise<FulfillResult> {
     const { fastify, tenantId, order, verified, reference } = opts;
+
+    const entityCollectionRoute = order.collectionRoute ?? null;
 
     if (!isSufficientPayment(verified.amountKobo, order.totalAmount)) {
         fastify.log.error(
@@ -325,7 +333,7 @@ export async function fulfillOrderCharge(opts: {
             grossMinor: verified.amountKobo,
             currency: verified.currency,
             reference,
-            metadata: verified.metadata ?? null,
+            storedRoute: entityCollectionRoute,
             orderId: order.id,
             logger: fastify.log,
         });

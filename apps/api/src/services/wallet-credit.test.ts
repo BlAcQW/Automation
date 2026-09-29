@@ -2,33 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { isPlatformCollected, depositIdempotencyKey } from './wallet-credit.js';
 
 describe('isPlatformCollected', () => {
-  it('recognises a platform reference', () => {
-    expect(isPlatformCollected('bf_p_bk1_1790000000', undefined)).toBe(true);
+  it('is true only for an explicit stored PLATFORM route', () => {
+    expect(isPlatformCollected('PLATFORM')).toBe(true);
   });
 
-  it('recognises an own-gateway reference', () => {
-    expect(isPlatformCollected('bf_o_bk1_1790000000', undefined)).toBe(false);
+  it('is false for an own-gateway payment', () => {
+    // That money went into the tenant's own Paystack and never reached us.
+    expect(isPlatformCollected('OWN_GATEWAY')).toBe(false);
   });
 
-  it('trusts explicit metadata over the reference', () => {
-    // Metadata is the authoritative signal when present; the prefix is a
-    // fallback for replays that arrive without it.
-    expect(isPlatformCollected('bf_o_bk1_1', { collectionRoute: 'PLATFORM' })).toBe(true);
-    expect(isPlatformCollected('bf_p_bk1_1', { collectionRoute: 'OWN_GATEWAY' })).toBe(false);
-  });
-
-  it('treats an unmarked legacy reference as NOT platform-collected', () => {
-    // Every payment taken before this feature existed went into the tenant's
-    // own Paystack. Crediting a wallet for those would invent money we never
-    // received — fail closed.
-    expect(isPlatformCollected('bf_bk1_1790000000', undefined)).toBe(false);
-    expect(isPlatformCollected('', undefined)).toBe(false);
-    expect(isPlatformCollected('some-other-psp-ref', undefined)).toBe(false);
-  });
-
-  it('ignores unrecognised metadata values and falls back to the prefix', () => {
-    expect(isPlatformCollected('bf_p_bk1_1', { collectionRoute: 'NONSENSE' })).toBe(true);
-    expect(isPlatformCollected('bf_bk1_1', { collectionRoute: 'NONSENSE' })).toBe(false);
+  it('fails closed on anything unrecognised', () => {
+    // Legacy rows predating the column, and any value we did not write.
+    // Leaving money uncredited is recoverable; crediting money we never
+    // received is not.
+    expect(isPlatformCollected(null)).toBe(false);
+    expect(isPlatformCollected(undefined)).toBe(false);
+    expect(isPlatformCollected('')).toBe(false);
+    expect(isPlatformCollected('platform')).toBe(false);
+    expect(isPlatformCollected('SOMETHING_ELSE')).toBe(false);
   });
 });
 

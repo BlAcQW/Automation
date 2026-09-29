@@ -304,6 +304,12 @@ model Booking {
   paymentStatus           PaymentStatus @default(UNPAID)
   paymentReference        String?       @unique
   paymentAuthorizationUrl String?
+  /// Which Paystack account this payment was created on, recorded SERVER-SIDE
+  /// when the link was made. Never inferred from the reference or from
+  /// provider metadata: a tenant who connects their own key controls both, and
+  /// could otherwise mint a payment in their own account and have it credited
+  /// against Bookly's balance.
+  collectionRoute         String?
   paidAt                  DateTime?
   depositAmount           Decimal?      @db.Decimal(10, 2) // snapshot at booking time
   publicToken             String?       @unique // non-guessable token for the SMS cancel link
@@ -516,6 +522,12 @@ model Order {
   totalAmount             Decimal       @db.Decimal(10, 2)
   status                  OrderStatus   @default(PENDING)
   paymentStatus           PaymentStatus @default(UNPAID)
+  /// Which Paystack account this payment was created on, recorded SERVER-SIDE
+  /// when the link was made. Never inferred from the reference or from
+  /// provider metadata: a tenant who connects their own key controls both, and
+  /// could otherwise mint a payment in their own account and have it credited
+  /// against Bookly's balance.
+  collectionRoute         String?
   paymentReference        String?       @unique // Paystack tx reference
   paymentAuthorizationUrl String? // Paystack hosted-page URL
   paidAt                  DateTime?
@@ -698,16 +710,16 @@ enum SubscriptionStatus {
 // updated atomically via upsert so concurrent sends are safe.
 //
 model TenantUsage {
-  id           String   @id @default(cuid())
-  tenantId     String
-  month        String // "YYYY-MM" UTC. Tenant-tz rollover is a Phase 8 polish.
-  messageCount Int      @default(0)
+  id               String   @id @default(cuid())
+  tenantId         String
+  month            String // "YYYY-MM" UTC. Tenant-tz rollover is a Phase 8 polish.
+  messageCount     Int      @default(0)
   /// SMS sent on BOOKLY's Arkesel account this cycle. Counted separately from
   /// messageCount because it is Bookly's money, not the tenant's allowance —
   /// without a per-tenant cap one busy tenant spends the whole budget.
-  platformSmsCount Int  @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  platformSmsCount Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

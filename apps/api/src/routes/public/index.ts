@@ -18,6 +18,7 @@ import { audit } from '../../services/audit.js';
 import { decrypt } from '../../services/crypto.js';
 import { verifyTransaction, PaystackError } from '../../services/paystack.js';
 import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
+import { config } from '../../config/index.js';
 
 const ipRateLimit = {
     rateLimit: {
@@ -42,6 +43,7 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
                 orderRef: true,
                 status: true,
                 paymentStatus: true,
+                collectionRoute: true,
                 totalAmount: true,
                 createdAt: true,
                 updatedAt: true,
@@ -185,6 +187,7 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
                 customerPhone: true,
                 totalAmount: true,
                 paymentStatus: true,
+                collectionRoute: true,
                 publicToken: true,
                 tenant: {
                     select: { name: true, paystackSecretKey: true, paymentCurrency: true },
@@ -206,6 +209,7 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
                       serviceId: true,
                       depositAmount: true,
                       paymentStatus: true,
+                collectionRoute: true,
                       service: { select: { name: true } },
                       tenant: {
                           select: { name: true, paystackSecretKey: true, paymentCurrency: true },
@@ -218,7 +222,28 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const tenant = (order ?? booking)!.tenant;
-        if (!tenant.paystackSecretKey) {
+
+        // WHICH ACCOUNT COLLECTED THIS decides which key proves it, and it is
+        // read from our own row — never from the reference, which the caller
+        // supplies.
+        //
+        // This endpoint is deliberately unauthenticated: verifying directly
+        // with Paystack IS the proof of payment. That holds only while the
+        // verifying key belongs to the account the money was actually sent
+        // to. A tenant who connects their own key could otherwise mint a
+        // transaction in their own Paystack using a platform-looking
+        // reference, have it verified against their own key, and have Bookly
+        // credit a wallet for money that never arrived.
+        const storedRoute = (order ?? booking)!.collectionRoute ?? null;
+
+        const secretKey =
+            storedRoute === 'PLATFORM'
+                ? config.platformPaystack?.secretKey
+                : tenant.paystackSecretKey
+                    ? decrypt(tenant.paystackSecretKey)
+                    : undefined;
+
+        if (!secretKey) {
             return reply.code(409).send({ error: 'payments_not_configured' });
         }
 
@@ -248,7 +273,7 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
 
         let verified;
         try {
-            verified = await verifyTransaction(decrypt(tenant.paystackSecretKey), reference);
+            verified = await verifyTransaction(secretKey, reference);
         } catch (err) {
             request.log.error({ err, reference }, 'Paystack verify failed (public verify)');
             if (err instanceof PaystackError) {

@@ -4,7 +4,6 @@ import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
 import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
-import { selectWebhookSecretSource } from '../../services/paystack-webhook-secret.js';
 import { markPayoutFailed, markPayoutPaid } from '../../services/payout-transfer.js';
 import {
     initializeTransaction,
@@ -220,6 +219,10 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             data: {
                 paymentReference: result.reference,
                 paymentAuthorizationUrl: result.authorizationUrl,
+                // This handler always initialises on the TENANT's own key, so
+                // the money never reaches Bookly's balance and must never
+                // credit a wallet.
+                collectionRoute: 'OWN_GATEWAY',
             },
         });
 
@@ -320,6 +323,10 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             data: {
                 paymentReference: result.reference,
                 paymentAuthorizationUrl: result.authorizationUrl,
+                // This handler always initialises on the TENANT's own key, so
+                // the money never reaches Bookly's balance and must never
+                // credit a wallet.
+                collectionRoute: 'OWN_GATEWAY',
             },
         });
 
@@ -355,11 +362,11 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         // on where it was collected. Picking the wrong key rejects a genuine
         // event — and a rejected charge means a customer paid and nobody was
         // told.
-        const secretSource = selectWebhookSecretSource(
-            event.event,
-            event.data?.reference,
-            event.data?.metadata as { collectionRoute?: unknown } | undefined,
-        );
+        // NOTE: the route is read from the DB row below, never from the body.
+        // A tenant with their own Paystack key controls the reference and the
+        // metadata, so letting either choose the verifying key would let them
+        // sign a fabricated payment with their own key and have Bookly credit
+        // it.
 
         // ---- Transfers: payouts leaving Bookly's balance -------------------
         if (event.event?.startsWith('transfer.')) {
@@ -404,11 +411,24 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(200).send({ ignored: 'unknown_tenant' });
         }
 
-        // A tenant who never connected a gateway of their own is collected
-        // for by the platform, so there is no tenant key to verify against —
-        // which is exactly the case that was silently dropping payments.
+        // Which account collected this, as recorded when the link was made.
+        // Read-only lookup before any verification, so the key is chosen by
+        // our own data rather than by the sender.
+        const reference0 = event.data.reference;
+        const [bookingRow, orderRow] = await Promise.all([
+            fastify.prisma.booking.findFirst({
+                where: { tenantId, paymentReference: reference0 },
+                select: { collectionRoute: true },
+            }),
+            fastify.prisma.order.findFirst({
+                where: { tenantId, paymentReference: reference0 },
+                select: { collectionRoute: true },
+            }),
+        ]);
+        const storedRoute = bookingRow?.collectionRoute ?? orderRow?.collectionRoute ?? null;
+
         const secretKey =
-            secretSource === 'PLATFORM'
+            storedRoute === 'PLATFORM'
                 ? config.platformPaystack?.secretKey
                 : tenant.paystackSecretKey
                     ? decrypt(tenant.paystackSecretKey)
@@ -419,7 +439,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         if (!verifyWebhookSignature(rawBody, signature, secretKey)) {
-            request.log.warn({ tenantId, secretSource, hasSignature: !!signature }, 'Paystack webhook signature mismatch');
+            request.log.warn({ tenantId, storedRoute, hasSignature: !!signature }, 'Paystack webhook signature mismatch');
             throw fastify.httpErrors.unauthorized('Invalid Paystack signature');
         }
 
@@ -448,6 +468,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                     // Needed to check the customer actually paid what was
                     // asked before the slot is confirmed and the salon credited.
                     depositAmount: true,
+                    collectionRoute: true,
                     service: { select: { name: true } },
                 },
             });

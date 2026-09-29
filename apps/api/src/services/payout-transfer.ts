@@ -85,6 +85,24 @@ export interface SettleArgs {
 }
 
 /**
+ * CALLER INVARIANT — read before using the two functions below.
+ *
+ * They resolve a payout by id ALONE, with no tenant scope, because the only
+ * caller is the Paystack webhook, which learns the tenant FROM the payout and
+ * so has nothing to scope by.
+ *
+ * That is safe for exactly two reasons, both of which must keep holding:
+ *   1. the webhook verifies the signature against the PLATFORM key before
+ *      calling either, so the payout id cannot be attacker-supplied; and
+ *   2. payout ids are cuids, so they cannot be guessed.
+ *
+ * They are therefore safe because of WHERE they are called from, not because
+ * of what they check. Calling either from an authenticated route would be a
+ * cross-tenant hole: tenant A could settle or reverse tenant B's payout by id.
+ * If you need that, add a tenantId argument and filter on it.
+ */
+
+/**
  * The provider confirmed the money left. Close the ledger entry that has been
  * sitting in PAYOUT_PENDING since the request.
  */

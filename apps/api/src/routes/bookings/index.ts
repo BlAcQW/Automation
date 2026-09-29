@@ -5,6 +5,7 @@ import { scheduleNotification, cancelReminder } from '../../services/notificatio
 import { cancelBooking } from '../../services/booking-cancel.js';
 import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from '../../services/booking-create.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
+import { bookingStatusClearsFunds, clearFundsForEntity } from '../../services/wallet-clearing.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 
 // Validation schemas
@@ -194,6 +195,21 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             data: body,
             include: { service: true },
         });
+
+        // Marking the job done releases the deposit to the owner's wallet.
+        // Idempotent, so re-saving a completed booking cannot pay them twice.
+        if (body.status && bookingStatusClearsFunds(body.status)) {
+            await clearFundsForEntity({
+                prisma: fastify.prisma,
+                tenantId: request.user.tenantId,
+                bookingId: booking.id,
+                logger: fastify.log,
+            }).catch((err: unknown) =>
+                // Never block the status change on the ledger: the booking is
+                // genuinely done. Replaying the clear is safe.
+                fastify.log.error({ err, bookingId: booking.id }, 'Failed to release funds'),
+            );
+        }
 
         // If cancelled, send cancellation template + drop any pending reminder.
         if (body.status === 'CANCELLED') {

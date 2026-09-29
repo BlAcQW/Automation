@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { generatePublicToken } from '../../lib/public-token.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
+import { orderStatusClearsFunds, clearFundsForEntity } from '../../services/wallet-clearing.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 
 // Validation schemas
@@ -271,6 +272,18 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                 },
             },
         });
+
+        // Delivered means the work is done, so the money is theirs.
+        if (body.status && orderStatusClearsFunds(body.status)) {
+            await clearFundsForEntity({
+                prisma: fastify.prisma,
+                tenantId: request.user.tenantId,
+                orderId: order.id,
+                logger: fastify.log,
+            }).catch((err: unknown) =>
+                fastify.log.error({ err, orderId: order.id }, 'Failed to release funds'),
+            );
+        }
 
         const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
         return maskContact(order, mask);

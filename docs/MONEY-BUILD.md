@@ -29,7 +29,7 @@ same reason.
       using it, so nothing breaks for anyone already live.
 - [x] **2. Credit the ledger when a payment lands** — webhook → `DEPOSIT_RECEIVED`,
       idempotent on the provider reference.
-- [ ] **3. Clear funds on completion** — marking a booking COMPLETED or NO_SHOW
+- [x] **3. Clear funds on completion** — marking a booking COMPLETED or NO_SHOW
       (an order DELIVERED) moves `TENANT_PENDING` → `TENANT_AVAILABLE`. Event
       driven, so no scheduled job and no waiting: they finish the job, the
       money is theirs.

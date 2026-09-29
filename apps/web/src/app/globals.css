@@ -393,29 +393,30 @@ body {
 }
 
 /* ------------------------------------------------------------------
-   Sage Cream — the marketing site's theme, from 21st.dev.
-   Scoped to `.theme-sage` rather than :root on purpose: the dashboard
-   keeps its own emerald palette, so restyling the landing page cannot
-   change what a logged-in owner sees.
+   Sunset Luxury Bronze — the marketing site's theme, from 21st.dev
+   (sh20raj). Dark, warm and high-contrast: it reads as a salon that
+   charges well, and amber on near-black stays legible on a cheap phone
+   in bright sun.
+
+   Scoped to `.theme-bronze`, never :root — the dashboard keeps its own
+   palette, so restyling marketing cannot change what an owner sees.
    ------------------------------------------------------------------ */
-.theme-sage {
-    --background: #fffcf0;
-    --foreground: #19191a;
-    --card: #fffcf0;
-    --card-foreground: #19191a;
-    --primary: #2f8f6f;
-    --primary-foreground: #ffffff;
-    --secondary: #f9efe2;
-    --secondary-foreground: #19191a;
-    --muted: #f7f4e9;
-    --muted-foreground: #737373;
-    --accent: #f5f5f5;
-    --accent-foreground: #19191a;
-    --destructive: #cf001c;
-    --border: #e5e5e5;
-    --input: #e5e5e5;
-    --ring: #2f8f6f;
-    --radius: 0.5rem;
+.theme-bronze {
+    --background: #0c0a09;
+    --foreground: #fafaf9;
+    --card: #1c1917;
+    --card-foreground: #fafaf9;
+    --primary: #f59e0b;
+    --primary-foreground: #451a03;
+    --secondary: #451a03;
+    --secondary-foreground: #fde68a;
+    --muted: #292524;
+    --muted-foreground: #a8a29e;
+    --accent: #f43f5e;
+    --accent-foreground: #ffffff;
+    --border: #44403c;
+    --ring: #f59e0b;
+    --radius: 0.75rem;
     --sage-sans: 'Albert Sans', ui-sans-serif, system-ui, sans-serif;
     --sage-serif: 'DM Serif Display', ui-serif, Georgia, serif;
 
@@ -424,14 +425,23 @@ body {
     font-family: var(--sage-sans);
 }
 
-.theme-sage .font-display {
+.theme-bronze .font-display {
     font-family: var(--sage-serif);
     font-weight: 400;
     letter-spacing: -0.015em;
 }
 
-/* Paper grain. Warm cream reads flat on a cheap phone screen without it. */
-.theme-sage .grain::before {
+/* Warm glow behind the hero. Flat near-black looks dead on a phone. */
+.theme-bronze .glow::before {
+    content: '';
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 70%;
+    pointer-events: none;
+    background: radial-gradient(60% 60% at 50% 0%, rgba(245, 158, 11, 0.16), transparent 70%);
+}
+
+.theme-bronze .grain::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -441,7 +451,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .theme-sage *, .theme-sage *::before, .theme-sage *::after {
+    .theme-bronze *, .theme-bronze *::before, .theme-bronze *::after {
         animation-duration: 0.01ms !important;
         transition-duration: 0.01ms !important;
     }
@@ -458,61 +468,61 @@ body {
    empty one.
    ------------------------------------------------------------------ */
 
-@keyframes sage-rise {
+@keyframes bronze-rise {
     from { opacity: 0; transform: translateY(14px); }
     to   { opacity: 1; transform: none; }
 }
 
-@keyframes sage-bubble {
+@keyframes bronze-bubble {
     from { opacity: 0; transform: translateY(8px) scale(0.97); }
     to   { opacity: 1; transform: none; }
 }
 
-@keyframes sage-blur-in {
+@keyframes bronze-blur-in {
     from { opacity: 0; transform: translateY(12px); filter: blur(6px); }
     to   { opacity: 1; transform: none; filter: blur(0); }
 }
 
-@keyframes sage-dot {
+@keyframes bronze-dot {
     0%, 100% { opacity: 0.3; }
     50%      { opacity: 1; }
 }
 
 /* Hero: runs on load, since it is already on screen. */
-.theme-sage .sage-enter {
-    animation: sage-blur-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+.theme-bronze .bronze-enter {
+    animation: bronze-blur-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* Below the fold: visible by default, animated only once revealed. */
-.theme-sage .sage-reveal > * {
+.theme-bronze .bronze-reveal > * {
     opacity: 1;
 }
-.theme-sage .sage-reveal.is-armed > * {
+.theme-bronze .bronze-reveal.is-armed > * {
     opacity: 0;
 }
-.theme-sage .sage-reveal.is-in > * {
-    animation: sage-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+.theme-bronze .bronze-reveal.is-in > * {
+    animation: bronze-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.theme-sage .sage-reveal.is-in > *:nth-child(2) { animation-delay: 0.07s; }
-.theme-sage .sage-reveal.is-in > *:nth-child(3) { animation-delay: 0.14s; }
-.theme-sage .sage-reveal.is-in > *:nth-child(4) { animation-delay: 0.21s; }
-.theme-sage .sage-reveal.is-in > *:nth-child(5) { animation-delay: 0.28s; }
-.theme-sage .sage-reveal.is-in > *:nth-child(6) { animation-delay: 0.35s; }
-.theme-sage .sage-reveal.is-in > *:nth-child(n + 7) { animation-delay: 0.42s; }
+.theme-bronze .bronze-reveal.is-in > *:nth-child(2) { animation-delay: 0.07s; }
+.theme-bronze .bronze-reveal.is-in > *:nth-child(3) { animation-delay: 0.14s; }
+.theme-bronze .bronze-reveal.is-in > *:nth-child(4) { animation-delay: 0.21s; }
+.theme-bronze .bronze-reveal.is-in > *:nth-child(5) { animation-delay: 0.28s; }
+.theme-bronze .bronze-reveal.is-in > *:nth-child(6) { animation-delay: 0.35s; }
+.theme-bronze .bronze-reveal.is-in > *:nth-child(n + 7) { animation-delay: 0.42s; }
 
-.theme-sage .sage-bubble { animation: sage-bubble 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.theme-sage .sage-dot { animation: sage-dot 1s ease-in-out infinite; }
-.theme-sage .sage-dot:nth-child(2) { animation-delay: 0.16s; }
-.theme-sage .sage-dot:nth-child(3) { animation-delay: 0.32s; }
+.theme-bronze .bronze-bubble { animation: bronze-bubble 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.theme-bronze .bronze-dot { animation: bronze-dot 1s ease-in-out infinite; }
+.theme-bronze .bronze-dot:nth-child(2) { animation-delay: 0.16s; }
+.theme-bronze .bronze-dot:nth-child(3) { animation-delay: 0.32s; }
 
-.theme-sage .sage-lift { transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
-.theme-sage .sage-lift:hover { transform: translateY(-3px); }
+.theme-bronze .bronze-lift { transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+.theme-bronze .bronze-lift:hover { transform: translateY(-3px); }
 
 @media (prefers-reduced-motion: reduce) {
-    .theme-sage .sage-enter,
-    .theme-sage .sage-reveal.is-in > *,
-    .theme-sage .sage-bubble,
-    .theme-sage .sage-dot { animation: none !important; }
-    .theme-sage .sage-reveal.is-armed > * { opacity: 1 !important; }
-    .theme-sage .sage-lift:hover { transform: none; }
+    .theme-bronze .bronze-enter,
+    .theme-bronze .bronze-reveal.is-in > *,
+    .theme-bronze .bronze-bubble,
+    .theme-bronze .bronze-dot { animation: none !important; }
+    .theme-bronze .bronze-reveal.is-armed > * { opacity: 1 !important; }
+    .theme-bronze .bronze-lift:hover { transform: none; }
 }

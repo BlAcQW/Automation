@@ -1,27 +1,42 @@
-import { MarketingNav } from '@/components/marketing/marketing-nav';
-import { Hero } from '@/components/marketing/hero';
-import { FeatureBento } from '@/components/marketing/feature-bento';
-import { HowItWorks } from '@/components/marketing/how-it-works';
-import { WhoItsFor } from '@/components/marketing/social-proof';
-import { PricingSection } from '@/components/marketing/pricing-section';
-import { FinalCTA } from '@/components/marketing/final-cta';
-import { CinematicFooter } from '@/components/marketing/cinematic-footer';
+import { Nav, Hero, Pricing, Footer } from '@/components/marketing/sage/shell';
+import {
+    TheProblem,
+    WhatItDoes,
+    NoSetup,
+    Channels,
+    HowItWorks,
+    WhoItsFor,
+    FAQ,
+    FinalCTA,
+} from '@/components/marketing/sage/sections';
 
 /**
- * Landing page. Hero with the assistant conversation, what it does, how
- * setup goes, who it is for, pricing, one closing call to action.
+ * Landing page, built from the positioning brief
+ * (docs/strategy/what-bookly-sells.pdf) on the Sage Cream theme.
+ *
+ * Section order follows the brief's argument rather than a template: name the
+ * money the owner is losing, show the assistant doing the job, then give the
+ * two things no competitor does — payments and texts with nothing to set up —
+ * a section of their own instead of a line in a feature grid.
+ *
+ * `theme-sage` scopes the palette here. The dashboard keeps its emerald
+ * tokens, so this cannot change what a logged-in owner sees.
  */
 export default function LandingPage() {
     return (
-        <main id="main" className="relative bg-ink-950 text-ink-50 min-h-screen">
-            <MarketingNav />
+        <main id="main" className="theme-sage min-h-screen">
+            <Nav />
             <Hero />
-            <FeatureBento />
+            <TheProblem />
+            <WhatItDoes />
+            <NoSetup />
+            <Channels />
             <HowItWorks />
             <WhoItsFor />
-            <PricingSection />
+            <Pricing />
+            <FAQ />
             <FinalCTA />
-            <CinematicFooter />
+            <Footer />
         </main>
     );
 }

@@ -414,6 +414,13 @@ model Message {
 
   @@index([conversationId])
   @@index([createdAt])
+  /// Meta retries webhooks, so the same inbound wamid can arrive more than
+  /// once. This makes a second insert fail with P2002 instead of storing (and
+  /// replying to) a duplicate. whatsappMsgId is nullable: Postgres treats NULLs
+  /// as distinct in a unique index (default NULLS DISTINCT), so rows with a
+  /// null id (outbound rows before the send returns, SMS/email) never collide.
+  /// Index name: Message_conversationId_whatsappMsgId_key.
+  @@unique([conversationId, whatsappMsgId])
 }
 
 enum Direction {

@@ -10,21 +10,44 @@ declare module 'fastify' {
 }
 
 // Tenant-scoped models. Operations on these models that omit a tenantId
-// filter — while a tenant context is active — trigger a warning.
-const TENANT_SCOPED_MODELS = new Set([
+// filter — while a tenant context is active — trigger a warning (warn-only;
+// blocking is a later, staged change).
+//
+// INVARIANT: this set must equal every model with a `tenantId` field in
+// schema.prisma. prisma.test.ts enforces that via Prisma.dmmf, so adding a
+// tenant-bearing model without registering it fails the test.
+//
+// Not registered on purpose: Message, OrderItem, CalendarEvent. They have no
+// tenantId column and are scoped through their parent relation
+// (Conversation, Order, CalendarIntegration). Guarding them would warn on
+// every call.
+//
+// AuditLog.tenantId is nullable (null = platform-admin / system rows). It is
+// still registered: those null-tenant rows are only reachable from admin
+// context, which the guard skips, and writes (create) are not guarded. A
+// tenant-context read of AuditLog without a tenantId filter would leak
+// platform rows or other tenants' rows, so it should warn.
+export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
+    'User',
+    'DeviceToken',
     'Booking',
     'Service',
     'Product',
     'Order',
-    'OrderItem',
     'Conversation',
-    'Message',
     'WorkingHours',
     'BlackoutDate',
     'CalendarIntegration',
-    'CalendarEvent',
     'Notification',
     'MessageTemplate',
+    'PromoRedemption',
+    'AuditLog',
+    'TenantUsage',
+    'Wallet',
+    'LedgerMovement',
+    'LedgerEntry',
+    'PayoutRecipient',
+    'PayoutRequest',
 ]);
 
 const GUARDED_OPERATIONS = new Set([
@@ -46,7 +69,7 @@ const GUARDED_OPERATIONS = new Set([
  * Returns true if the `where` clause includes a tenantId filter, either at
  * the top level or via a `tenantId_*` compound unique key.
  */
-function hasTenantFilter(where: unknown): boolean {
+export function hasTenantFilter(where: unknown): boolean {
     if (!where || typeof where !== 'object') return false;
     const w = where as Record<string, unknown>;
     if (typeof w.tenantId === 'string' || (w.tenantId && typeof w.tenantId === 'object')) {

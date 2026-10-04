@@ -20,10 +20,79 @@ const connectSchema = z.object({
     currency: z.enum(SUPPORTED_CURRENCIES).default('NGN'),
 });
 
+export type KeyValidation =
+    | { ok: true; secretKey: string; publicKey: string }
+    | { ok: false; message: string };
+
+const LIVE_SECRET_KEY = /^sk_live_[A-Za-z0-9]+$/;
+const LIVE_PUBLIC_KEY = /^pk_live_[A-Za-z0-9]+$/;
+
+/**
+ * Live-money guard. In production a key pair must positively look live — an
+ * allowlist, not a denylist, so restricted test keys (rk_test_), odd casing
+ * and malformed strings cannot slip through. A test key would otherwise let
+ * Paystack test cards "pay" for real bookings.
+ *
+ * Returns the keys trimmed, so what is stored is exactly what was checked.
+ */
+export function validatePaystackKeysForEnv(
+    secretKeyRaw: string,
+    publicKeyRaw: string,
+    nodeEnv: string | undefined,
+): KeyValidation {
+    const secretKey = secretKeyRaw.trim();
+    const publicKey = publicKeyRaw.trim();
+    if (nodeEnv === 'production') {
+        if (!LIVE_SECRET_KEY.test(secretKey)) {
+            return {
+                ok: false,
+                message: secretKey.toLowerCase().includes('test')
+                    ? 'This is a Paystack TEST secret key. Use your LIVE secret key (sk_live_...) to accept real payments.'
+                    : 'That does not look like a Paystack live secret key. It should start with sk_live_.',
+            };
+        }
+        if (!LIVE_PUBLIC_KEY.test(publicKey)) {
+            return {
+                ok: false,
+                message: 'Use your LIVE public key (pk_live_...) together with the live secret key.',
+            };
+        }
+    }
+    return { ok: true, secretKey, publicKey };
+}
+
+export interface UnattributedChargeInput {
+    reference: string;
+    tenantId: string;
+    amount?: number | null;
+    currency?: string | null;
+}
+
+/**
+ * Real Paystack references are short; a tenant holding its own key can sign a
+ * webhook with any reference it likes, so bound what reaches logs and audit.
+ */
+export const MAX_LOGGED_REFERENCE_LENGTH = 100;
+const MAX_LOGGED_CURRENCY_LENGTH = 8;
+
+/** Shape the log line and audit entry for a verified charge we could not attribute. */
+export function buildUnattributedChargeReport(reason: string, input: UnattributedChargeInput) {
+    const amountMinor =
+        typeof input.amount === 'number' && Number.isFinite(input.amount) ? input.amount : null;
+    const currency =
+        typeof input.currency === 'string' ? input.currency.slice(0, MAX_LOGGED_CURRENCY_LENGTH) : null;
+    const reference = String(input.reference).slice(0, MAX_LOGGED_REFERENCE_LENGTH);
+    const base = { reference, tenantId: input.tenantId, amountMinor, currency, reason };
+    return { auditAction: 'payment.unattributed', targetId: reference, log: base, metadata: base };
+}
+
 interface PaystackWebhookEvent {
     event?: string;
     data?: {
         reference?: string;
+        /** Minor units, as Paystack reports them. */
+        amount?: number;
+        currency?: string;
         metadata?: {
             tenantId?: string;
             orderId?: string;
@@ -51,6 +120,29 @@ function syntheticCustomerEmail(customerPhone: string): string {
 }
 
 const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
+    /**
+     * A signature-verified charge that matches nothing of ours: money arrived
+     * and nothing is attributed. Still 200 (Paystack must not retry forever),
+     * but loud — error log plus an audit row a human can find.
+     */
+    async function reportUnattributed(
+        log: { error: (obj: object, msg: string) => void },
+        reason: string,
+        input: UnattributedChargeInput,
+    ): Promise<void> {
+        const report = buildUnattributedChargeReport(reason, input);
+        log.error(report.log, 'Verified Paystack charge could not be attributed to a booking or order');
+        await audit({
+            prisma: fastify.prisma,
+            action: report.auditAction,
+            actorType: 'SYSTEM',
+            tenantId: input.tenantId,
+            targetType: 'PaystackCharge',
+            targetId: report.targetId,
+            metadata: report.metadata,
+        });
+    }
+
     // POST /payments/connect — owner-only, validates the secret against
     // Paystack with a cheap verify call before storing it (encrypted).
     fastify.post('/connect', {
@@ -68,11 +160,17 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const body = connectSchema.parse(request.body);
 
+        const keyCheck = validatePaystackKeysForEnv(body.secretKey, body.publicKey, config.nodeEnv);
+        if (!keyCheck.ok) {
+            throw fastify.httpErrors.badRequest(keyCheck.message);
+        }
+        const { secretKey, publicKey } = keyCheck;
+
         // Probe the key — Paystack accepts any string in Authorization but
         // returns 401 from /transaction/totals on an invalid key.
         try {
             const probeRes = await fetch('https://api.paystack.co/transaction/totals', {
-                headers: { Authorization: `Bearer ${body.secretKey}` },
+                headers: { Authorization: `Bearer ${secretKey}` },
             });
             if (probeRes.status === 401) {
                 throw fastify.httpErrors.badRequest('Paystack rejected the secret key (401)');
@@ -86,8 +184,8 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         await fastify.prisma.tenant.update({
             where: { id: request.user.tenantId },
             data: {
-                paystackPublicKey: body.publicKey,
-                paystackSecretKey: encrypt(body.secretKey),
+                paystackPublicKey: publicKey,
+                paystackSecretKey: encrypt(secretKey),
                 paymentCurrency: body.currency,
             },
         });
@@ -98,7 +196,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             actorType: 'USER',
             actorId: request.user.userId,
             tenantId: request.user.tenantId,
-            metadata: { currency: body.currency, publicKeyPrefix: body.publicKey.slice(0, 12) },
+            metadata: { currency: body.currency, publicKeyPrefix: publicKey.slice(0, 12) },
             ipAddress: request.ip,
         });
 
@@ -473,6 +571,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                 },
             });
             if (!booking) {
+                await reportUnattributed(request.log, 'booking_not_found', { reference, tenantId, amount: event.data.amount, currency: event.data.currency });
                 return reply.code(200).send({ ignored: 'booking_not_found' });
             }
             if (booking.paymentStatus === 'PAID') {
@@ -509,6 +608,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Default path: order. Preserves Phase 3c behaviour exactly.
         if (!metaOrderId) {
+            await reportUnattributed(request.log, 'no_entity_metadata', { reference, tenantId, amount: event.data.amount, currency: event.data.currency });
             return reply.code(200).send({ ignored: 'no_entity_metadata' });
         }
 
@@ -526,6 +626,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
         if (!order) {
+            await reportUnattributed(request.log, 'order_not_found', { reference, tenantId, amount: event.data.amount, currency: event.data.currency });
             return reply.code(200).send({ ignored: 'order_not_found' });
         }
         if (order.paymentStatus === 'PAID') {

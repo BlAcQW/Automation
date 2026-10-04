@@ -31,6 +31,7 @@
 
 import type { LedgerAccount, LedgerReason, PrismaClient } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
+import { scoped } from '../lib/logger.js';
 
 export type AnyPrismaClient = PrismaClient | ExtendedPrismaClient;
 
@@ -411,21 +412,59 @@ export async function refreshCachedBalances(
     return balances;
 }
 
-/** Get the tenant's wallet, creating it on first use. */
+const log = scoped('ledger');
+const FALLBACK_CURRENCY = 'GHS';
+
+/**
+ * Read-only: what currency a tenant's money screen should show. Never creates
+ * a wallet — a GET must not write. With no wallet yet, the tenant's own
+ * payment currency is the honest answer.
+ */
+export async function readWalletCurrency(
+    tx: AnyPrismaClient,
+    tenantId: string,
+): Promise<{ walletExists: boolean; currency: string }> {
+    const wallet = await tx.wallet.findUnique({ where: { tenantId }, select: { currency: true } });
+    if (wallet) return { walletExists: true, currency: wallet.currency };
+    const tenant = await tx.tenant.findUnique({
+        where: { id: tenantId },
+        select: { paymentCurrency: true },
+    });
+    return { walletExists: false, currency: tenant?.paymentCurrency ?? FALLBACK_CURRENCY };
+}
+
+/**
+ * Get the tenant's wallet, creating it on first use (credit paths only).
+ *
+ * A new wallet takes `currency` if given, else the tenant's paymentCurrency.
+ * An existing wallet's currency is never changed; a request for a different
+ * currency is logged at error so the mismatch is visible, and the existing
+ * wallet is returned unchanged.
+ */
 export async function ensureWallet(
     tx: AnyPrismaClient,
     tenantId: string,
-    currency = 'GHS',
+    currency?: string,
 ): Promise<{ id: string; currency: string }> {
     const existing = await tx.wallet.findUnique({
         where: { tenantId },
         select: { id: true, currency: true },
     });
-    if (existing) return existing;
+    if (existing) {
+        if (currency && currency !== existing.currency) {
+            log.error(
+                { tenantId, walletId: existing.id, walletCurrency: existing.currency, requestedCurrency: currency },
+                'Wallet currency mismatch: keeping the existing wallet currency',
+            );
+        }
+        return existing;
+    }
+
+    const newCurrency = currency ?? (await readWalletCurrency(tx, tenantId)).currency;
 
     try {
         return await tx.wallet.create({
-            data: { tenantId, currency },
+            data: { tenantId, currency: newCurrency },
             select: { id: true, currency: true },
         });
     } catch (err) {
@@ -435,7 +474,15 @@ export async function ensureWallet(
                 where: { tenantId },
                 select: { id: true, currency: true },
             });
-            if (w) return w;
+            if (w) {
+                if (w.currency !== newCurrency) {
+                    log.error(
+                        { tenantId, walletId: w.id, walletCurrency: w.currency, requestedCurrency: newCurrency },
+                        'Wallet currency mismatch: keeping the existing wallet currency',
+                    );
+                }
+                return w;
+            }
         }
         throw err;
     }

@@ -5,7 +5,7 @@ import { encrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
 import { maskPhone } from '../../services/contact-privacy.js';
 import { createNotification } from '../../services/notifications.js';
-import { deriveBalances, ensureWallet } from '../../services/ledger.js';
+import { deriveBalances, readWalletCurrency } from '../../services/ledger.js';
 import {
     initiateTransfer,
     markPayoutFailed,
@@ -54,7 +54,9 @@ const moneyRoutes: FastifyPluginAsync = async (fastify) => {
         requireOwner(request);
         const tenantId = request.user.tenantId;
 
-        const wallet = await ensureWallet(fastify.prisma, tenantId);
+        // Read-only: a GET never creates a wallet. No wallet yet means zero
+        // balances (deriveBalances sums an empty ledger) in the tenant's currency.
+        const wallet = await readWalletCurrency(fastify.prisma, tenantId);
         const balances = await deriveBalances(fastify.prisma, tenantId);
 
         const destination = await fastify.prisma.payoutRecipient.findFirst({

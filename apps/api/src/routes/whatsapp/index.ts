@@ -27,6 +27,12 @@ import {
 import { resolveConversation } from '../../services/conversation-resolver.js';
 import { sendChannelText, resolveChannelCredentials } from '../../services/channel-send.js';
 import { publish } from '../../services/realtime.js';
+import {
+    planAssistantFallback,
+    isDuplicateMessageError,
+    HOLDING_MESSAGE_COOLDOWN_MS,
+} from '../../services/assistant-fallback.js';
+import { Prisma } from '@prisma/client';
 
 /**
  * Meta caps a business portfolio at 20 registered business phone numbers, so
@@ -858,16 +864,26 @@ async function processChannelMessage(
         if (seen) return;
     }
 
-    await fastify.prisma.message.create({
-        data: {
-            conversationId: conversation.id,
-            direction: 'INBOUND',
-            content: input.text,
-            messageType: 'TEXT',
-            whatsappMsgId: input.providerMessageId ?? null,
-            metadata: { channel: input.channel },
-        },
-    });
+    try {
+        await fastify.prisma.message.create({
+            data: {
+                conversationId: conversation.id,
+                direction: 'INBOUND',
+                content: input.text,
+                messageType: 'TEXT',
+                whatsappMsgId: input.providerMessageId ?? null,
+                metadata: { channel: input.channel },
+            },
+        });
+    } catch (err) {
+        // Two redeliveries raced past the findFirst above; the unique
+        // constraint caught the loser.
+        if (isDuplicateMessageError(err)) {
+            fastify.log.debug({ providerMessageId: input.providerMessageId }, 'Skipping duplicate inbound message');
+            return;
+        }
+        throw err;
+    }
 
     // Opens the 24-hour reply window. It applies on these channels too, but
     // without a template escape hatch once it closes.
@@ -882,30 +898,48 @@ async function processChannelMessage(
     if (conversation.state === 'HUMAN_ACTIVE') return;
 
     const { isLlmEnabled } = await import('../../services/llm-agent.js');
-    if (!isLlmEnabled()) {
-        fastify.log.warn(
-            { channel: input.channel },
-            'No LLM configured — Instagram/Messenger have no menu-bot fallback',
-        );
-        return;
+    const llmEnabled = isLlmEnabled();
+    let agentThrew = false;
+    const progress: AgentProgress = { replySent: false };
+
+    if (llmEnabled) {
+        try {
+            await handleWithAgent(
+                fastify,
+                tenant,
+                conversation,
+                // Empty on a first contact — these channels expose no phone. The
+                // agent then asks for one and create_booking refuses until it has
+                // it. On later turns this is whatever the customer already gave.
+                conversation.customerPhone ?? '',
+                input.text,
+                input.channel,
+                input.senderId,
+                progress,
+            );
+            if ((conversation.botFailureCount || 0) > 0) {
+                await fastify.prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { botFailureCount: 0 },
+                });
+            }
+            return;
+        } catch (err) {
+            agentThrew = true;
+            fastify.log.error(
+                { err, channel: input.channel, replySent: progress.replySent },
+                'Agent failed on messaging channel',
+            );
+        }
     }
 
-    try {
-        await handleWithAgent(
-            fastify,
-            tenant,
-            conversation,
-            // Empty on a first contact — these channels expose no phone. The
-            // agent then asks for one and create_booking refuses until it has
-            // it. On later turns this is whatever the customer already gave.
-            conversation.customerPhone ?? '',
-            input.text,
-            input.channel,
-            input.senderId,
-        );
-    } catch (err) {
-        fastify.log.error({ err, channel: input.channel }, 'Agent failed on messaging channel');
-    }
+    await runAssistantFallback(fastify, tenant, conversation, {
+        llmEnabled,
+        agentThrew,
+        replySent: progress.replySent,
+        channel: input.channel,
+        recipientId: input.senderId,
+    });
 }
 
 // Process incoming webhook
@@ -1031,19 +1065,6 @@ async function processMessage(
     const customerPhone = message.from;
     const customerName = contact?.profile?.name;
 
-    // Acknowledge immediately: blue ticks, plus "typing…" so the customer can
-    // see the business is on it. Fire-and-forget — a presence failure must not
-    // delay or block the actual reply.
-    const presenceCreds = resolveCredentials(selectCredentialSource(tenant));
-    if (presenceCreds && message.id) {
-        void markReadAndTyping({
-            phoneNumberId: presenceCreds.phoneNumberId,
-            accessToken: presenceCreds.accessToken,
-            messageId: message.id,
-            logger: fastify.log,
-        });
-    }
-
     // Find or create conversation. On WhatsApp the phone IS the channel
     // identity, so it is both externalId and the stored phone.
     const conversation = await resolveConversation(fastify.prisma, {
@@ -1067,6 +1088,20 @@ async function processMessage(
             fastify.log.debug({ msgId: message.id }, 'Skipping duplicate inbound message');
             return;
         }
+    }
+
+    // Acknowledge once the message is known to be new (a redelivery must not
+    // flash a second typing bubble): blue ticks, plus "typing…" so the customer can
+    // see the business is on it. Fire-and-forget — a presence failure must not
+    // delay or block the actual reply.
+    const presenceCreds = resolveCredentials(selectCredentialSource(tenant));
+    if (presenceCreds && message.id) {
+        void markReadAndTyping({
+            phoneNumberId: presenceCreds.phoneNumberId,
+            accessToken: presenceCreds.accessToken,
+            messageId: message.id,
+            logger: fastify.log,
+        });
     }
 
     // Extract message content. `content` is the human-readable form every
@@ -1113,17 +1148,27 @@ async function processMessage(
         };
     }
 
-    // Store message
-    await fastify.prisma.message.create({
-        data: {
-            conversationId: conversation.id,
-            direction: 'INBOUND',
-            content,
-            messageType,
-            whatsappMsgId: message.id,
-            ...(meta ? { metadata: meta as object } : {}),
-        },
-    });
+    // Store message. The unique (conversationId, whatsappMsgId) constraint
+    // closes the race the findFirst above can't: a concurrent redelivery that
+    // passed the check loses here and is treated as a duplicate.
+    try {
+        await fastify.prisma.message.create({
+            data: {
+                conversationId: conversation.id,
+                direction: 'INBOUND',
+                content,
+                messageType,
+                whatsappMsgId: message.id,
+                ...(meta ? { metadata: meta as object } : {}),
+            },
+        });
+    } catch (err) {
+        if (isDuplicateMessageError(err)) {
+            fastify.log.debug({ msgId: message.id }, 'Skipping duplicate inbound message');
+            return;
+        }
+        throw err;
+    }
 
     // Update conversation timestamps. lastInboundAt powers the WhatsApp
     // 24-hour customer-service window check on staff replies.
@@ -1138,12 +1183,21 @@ async function processMessage(
 
     // Human takeover handling. While HUMAN_ACTIVE, the bot is silent — except
     // if the customer types one of the escape keywords, in which case we
-    // resume the bot from a fresh WELCOME state. This prevents the
+    // hand the conversation back to the assistant. This prevents the
     // "ask for support → silent void" dead-end.
     if (conversation.state === 'HUMAN_ACTIVE') {
         const cmd = content.trim().toLowerCase();
         const RESUME_BOT_KEYWORDS = new Set(['menu', 'bot', 'start']);
-        if (RESUME_BOT_KEYWORDS.has(cmd)) {
+        // A conversation a staff member has claimed stays with them: the
+        // customer must not be able to pull it back (and clear the
+        // assignment) by typing a keyword.
+        const owner = RESUME_BOT_KEYWORDS.has(cmd)
+            ? await fastify.prisma.conversation.findUnique({
+                  where: { id: conversation.id },
+                  select: { assignedUserId: true },
+              })
+            : null;
+        if (RESUME_BOT_KEYWORDS.has(cmd) && !owner?.assignedUserId) {
             fastify.log.info(
                 { conversationId: conversation.id, cmd },
                 'Customer requested bot resume — exiting human takeover',
@@ -1152,15 +1206,16 @@ async function processMessage(
                 where: { id: conversation.id },
                 data: {
                     state: 'BOT_ACTIVE',
-                    botContext: { state: 'WELCOME' },
+                    botContext: Prisma.JsonNull,
+                    botFailureCount: 0,
                     takeoverReason: null,
                     assignedUserId: null,
                     assignedAt: null,
                 },
             });
-            // Refresh local copy so the bot processor sees the new state.
+            // Refresh local copy so the checks below see the new state.
             conversation.state = 'BOT_ACTIVE';
-            conversation.botContext = { state: 'WELCOME' };
+            conversation.botFailureCount = 0;
         } else {
             fastify.log.debug({ conversationId: conversation.id }, 'Human takeover active, skipping bot');
             return;
@@ -1169,14 +1224,10 @@ async function processMessage(
 
     // Check for automatic takeover triggers
     const { detectTakeover, triggerTakeover } = await import('../../services/human-takeover.js');
-    // botContext is stored as Prisma Json — already deserialized.
-    const botContext = (conversation.botContext as { state?: string } | null) ?? { state: 'WELCOME' };
-
     const takeoverResult = detectTakeover({
         messageContent: content,
         recentMessages: [],
         botFailureCount: conversation.botFailureCount || 0,
-        state: botContext.state ?? 'WELCOME',
     });
 
     if (takeoverResult.shouldTakeover) {
@@ -1195,36 +1246,193 @@ async function processMessage(
         return;
     }
 
-    // Conversational layer. When OPENAI_API_KEY is set the LLM agent answers,
-    // calling the same availability/booking services the menu bot uses; without
-    // it we fall through to the state machine unchanged. That env var is the
-    // entire rollout switch — and the fallback below means an OpenAI outage
-    // degrades to the old bot rather than dropping the customer.
+    // Conversational layer. When OPENAI_API_KEY is set the LLM agent answers.
+    // There is no scripted fallback: if the assistant is unavailable or throws,
+    // the conversation is handed to a human and the customer gets one neutral
+    // holding message.
     const { isLlmEnabled } = await import('../../services/llm-agent.js');
 
-    if (isLlmEnabled()) {
+    let agentThrew = false;
+    const progress: AgentProgress = { replySent: false };
+    const llmEnabled = isLlmEnabled();
+    if (llmEnabled) {
         try {
-            await handleWithAgent(fastify, tenant, conversation, customerPhone, content);
+            await handleWithAgent(fastify, tenant, conversation, customerPhone, content, 'WHATSAPP', undefined, progress);
+            // The assistant coped, so any earlier failures no longer count
+            // against this conversation.
+            if ((conversation.botFailureCount || 0) > 0) {
+                await fastify.prisma.conversation.update({
+                    where: { id: conversation.id },
+                    data: { botFailureCount: 0 },
+                });
+            }
             return;
         } catch (err) {
-            fastify.log.error({ err, conversationId: conversation.id }, 'LLM agent failed — falling back to menu bot');
+            agentThrew = true;
+            fastify.log.error({ err, conversationId: conversation.id, replySent: progress.replySent }, 'LLM agent failed');
         }
     }
 
-    // Process with bot engine. Pass the BullMQ queues so cancel/reschedule
-    // flows can enqueue customer-facing notifications.
-    const { WhatsAppBotEngine } = await import('../../services/whatsapp-bot.js');
-    const bot = new WhatsAppBotEngine(fastify.prisma, tenant, {
-        notifications: fastify.queues.notifications,
-        reminders: fastify.queues.reminders,
+    await runAssistantFallback(fastify, tenant, conversation, {
+        llmEnabled,
+        agentThrew,
+        replySent: progress.replySent,
+        channel: 'WHATSAPP',
+        recipientId: customerPhone,
     });
-    await bot.processMessage(conversation.id, customerPhone, content);
+}
+
+type ChannelKind = 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
+
+/** Mutated by handleWithAgent so a failure handler knows the reply went out. */
+interface AgentProgress {
+    replySent: boolean;
+}
+
+/**
+ * Decide and carry out what happens when the assistant could not answer.
+ * Shared by WhatsApp and Instagram/Messenger so the two cannot drift.
+ */
+async function runAssistantFallback(
+    fastify: any,
+    tenant: any,
+    conversation: { id: string; botFailureCount?: number | null },
+    input: {
+        llmEnabled: boolean;
+        agentThrew: boolean;
+        replySent: boolean;
+        channel: ChannelKind;
+        recipientId: string;
+    },
+): Promise<void> {
+    const plan = planAssistantFallback({
+        llmEnabled: input.llmEnabled,
+        agentThrew: input.agentThrew,
+        replySent: input.replySent,
+        priorFailures: conversation.botFailureCount || 0,
+        holdingSentRecently: await holdingSentRecently(fastify.prisma, conversation.id),
+    });
+
+    if (plan.action === 'retry_later') {
+        await fastify.prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { botFailureCount: { increment: 1 } },
+        });
+        await sendSystemMessage(fastify, tenant, conversation.id, {
+            channel: input.channel,
+            recipientId: input.recipientId,
+            text: plan.message,
+            kind: 'retry',
+        });
+        return;
+    }
+
+    if (plan.action === 'handoff') {
+        const { triggerTakeover } = await import('../../services/human-takeover.js');
+        // Takeover goes first and is the load-bearing part: once HUMAN_ACTIVE,
+        // later inbound messages are silent. If it fails, send nothing — a
+        // holding message with the bot still active would repeat every turn.
+        try {
+            await triggerTakeover(fastify.prisma, conversation.id, plan.reason);
+        } catch (err) {
+            fastify.log.error({ err, conversationId: conversation.id }, 'Takeover after assistant failure failed');
+            return;
+        }
+        fastify.log.warn(
+            { conversationId: conversation.id, reason: plan.reason },
+            'Assistant unavailable — conversation handed to a human',
+        );
+        if (plan.holdingMessage) {
+            await sendSystemMessage(fastify, tenant, conversation.id, {
+                channel: input.channel,
+                recipientId: input.recipientId,
+                text: plan.holdingMessage,
+                kind: 'holding',
+                reason: plan.reason,
+            });
+        }
+    }
+}
+
+/** A holding message went to this conversation within the cooldown window. */
+async function holdingSentRecently(prisma: any, conversationId: string): Promise<boolean> {
+    const since = new Date(Date.now() - HOLDING_MESSAGE_COOLDOWN_MS);
+    const recent = await prisma.message.findFirst({
+        where: {
+            conversationId,
+            direction: 'OUTBOUND',
+            createdAt: { gte: since },
+            metadata: { path: ['kind'], equals: 'holding' },
+        },
+        select: { id: true },
+    });
+    return Boolean(recent);
+}
+
+/**
+ * Send a short system-authored message (holding / retry). Reserves quota
+ * atomically, releases it if the send fails, and never throws: by the time
+ * this runs the customer-facing outcome is decided, and a failure here must
+ * not bubble up and fail the webhook.
+ */
+async function sendSystemMessage(
+    fastify: any,
+    tenant: any,
+    conversationId: string,
+    input: { channel: ChannelKind; recipientId: string; text: string; kind: string; reason?: string },
+): Promise<void> {
+    const { tryReserveOutbound, rollbackOutboundReservation } = await import('../../services/usage.js');
+
+    const creds = resolveChannelCredentials(
+        tenant,
+        input.channel,
+        decrypt,
+        resolveCredentials(selectCredentialSource(tenant)),
+    );
+    if (!creds) return;
+
+    const reservation = await tryReserveOutbound(fastify.prisma, tenant.id);
+    if (!reservation.ok) {
+        fastify.log.warn({ tenantId: tenant.id, kind: input.kind }, 'Quota exhausted — system message suppressed');
+        return;
+    }
+
+    let providerMessageId: string | undefined;
+    try {
+        const sent = await sendChannelText({
+            channel: input.channel,
+            credentials: creds,
+            recipientId: input.recipientId,
+            text: input.text,
+        });
+        providerMessageId = sent.messageId;
+    } catch (err) {
+        fastify.log.error({ err, channel: input.channel, kind: input.kind }, 'Failed to send system message');
+        await rollbackOutboundReservation(fastify.prisma, tenant.id).catch(() => undefined);
+        return;
+    }
+
+    try {
+        await fastify.prisma.message.create({
+            data: {
+                conversationId,
+                direction: 'OUTBOUND',
+                content: input.text,
+                messageType: 'TEXT',
+                whatsappMsgId: providerMessageId ?? null,
+                metadata: { source: 'system', kind: input.kind, reason: input.reason ?? null, channel: input.channel },
+            },
+        });
+    } catch (err) {
+        // Sent and billed; only the transcript row is missing.
+        fastify.log.error({ err, conversationId, kind: input.kind }, 'System message sent but not recorded');
+    }
 }
 
 /**
  * Run one customer turn through the LLM agent and send its reply.
  *
- * Quota is reserved the same way the menu bot reserves it, so an LLM
+ * The quota is checked first, so an LLM
  * conversation can't bypass a tenant's monthly message limit.
  */
 async function handleWithAgent(
@@ -1233,13 +1441,17 @@ async function handleWithAgent(
     conversation: { id: string },
     customerPhone: string,
     content: string,
-    channel: 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER' = 'WHATSAPP',
+    channel: ChannelKind = 'WHATSAPP',
     /** Who to reply to on this channel — phone, PSID or IGSID. */
     recipientId?: string,
+    progress: AgentProgress = { replySent: false },
 ): Promise<void> {
     const { runAgent } = await import('../../services/llm-agent.js');
-    const { checkOutboundQuota, incrementMessageUsage } = await import('../../services/usage.js');
+    const { checkOutboundQuota, tryReserveOutbound, rollbackOutboundReservation } =
+        await import('../../services/usage.js');
 
+    // Cheap early exit so an exhausted tenant doesn't pay for an LLM call.
+    // The authoritative, race-safe reservation happens just before the send.
     const quota = await checkOutboundQuota(fastify.prisma, tenant.id);
     if (!quota.ok) {
         fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
@@ -1289,6 +1501,14 @@ async function handleWithAgent(
     );
     if (!creds) return;
 
+    // check-then-increment is not safe under concurrency (see usage.ts);
+    // reserve atomically and release on a failed send.
+    const reservation = await tryReserveOutbound(fastify.prisma, tenant.id);
+    if (!reservation.ok) {
+        fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
+        return;
+    }
+
     let providerMessageId: string | undefined;
     try {
         const sent = await sendChannelText({
@@ -1300,21 +1520,28 @@ async function handleWithAgent(
         providerMessageId = sent.messageId;
     } catch (err) {
         fastify.log.error({ err, channel }, 'Failed to send agent reply');
+        await rollbackOutboundReservation(fastify.prisma, tenant.id).catch(() => undefined);
         return;
     }
+    progress.replySent = true;
 
-    await fastify.prisma.message.create({
-        data: {
-            conversationId: conversation.id,
-            direction: 'OUTBOUND',
-            content: reply,
-            messageType: 'TEXT',
-            whatsappMsgId: providerMessageId ?? null,
-            metadata: { source: 'llm', channel, model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', tools: result.toolsUsed },
-        },
-    });
-
-    await incrementMessageUsage(fastify.prisma, tenant.id);
+    // The customer has the reply. A failure recording it must not surface as
+    // an agent failure, or the fallback would follow a real answer with a
+    // handoff.
+    try {
+        await fastify.prisma.message.create({
+            data: {
+                conversationId: conversation.id,
+                direction: 'OUTBOUND',
+                content: reply,
+                messageType: 'TEXT',
+                whatsappMsgId: providerMessageId ?? null,
+                metadata: { source: 'llm', channel, model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', tools: result.toolsUsed },
+            },
+        });
+    } catch (err) {
+        fastify.log.error({ err, conversationId: conversation.id }, 'Agent reply sent but not recorded');
+    }
 }
 
 export default whatsappRoutes;

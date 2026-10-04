@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
     detectTakeover,
@@ -25,7 +26,6 @@ describe('Human Takeover Service', () => {
                     messageContent,
                     recentMessages: [],
                     botFailureCount: 0,
-                    state: 'MAIN_MENU',
                 });
 
                 expect(result.shouldTakeover).toBe(true);
@@ -47,7 +47,6 @@ describe('Human Takeover Service', () => {
                     messageContent,
                     recentMessages: [],
                     botFailureCount: 0,
-                    state: 'MAIN_MENU',
                 });
 
                 expect(result.shouldTakeover).toBe(true);
@@ -61,24 +60,10 @@ describe('Human Takeover Service', () => {
                 messageContent: 'hello',
                 recentMessages: [],
                 botFailureCount: 3,
-                state: 'MAIN_MENU',
             });
 
             expect(result.shouldTakeover).toBe(true);
             expect(result.reason).toBe('repeated_failure');
-        });
-
-        it('should detect takeover when in CONTACT_SUPPORT state', () => {
-            const result = detectTakeover({
-                messageContent: 'I need help with my order',
-                recentMessages: [],
-                botFailureCount: 0,
-                state: 'CONTACT_SUPPORT',
-            });
-
-            expect(result.shouldTakeover).toBe(true);
-            expect(result.reason).toBe('explicit_request');
-            expect(result.confidence).toBe(1.0);
         });
 
         it('should detect takeover for response timeout', () => {
@@ -88,7 +73,6 @@ describe('Human Takeover Service', () => {
                 messageContent: 'hello?',
                 recentMessages: [],
                 botFailureCount: 0,
-                state: 'MAIN_MENU',
                 lastBotResponseTime: thirtyOneSecondsAgo,
             });
 
@@ -109,7 +93,6 @@ describe('Human Takeover Service', () => {
                     messageContent,
                     recentMessages: [],
                     botFailureCount: 0,
-                    state: 'MAIN_MENU',
                 });
 
                 expect(result.shouldTakeover).toBe(false);
@@ -121,7 +104,6 @@ describe('Human Takeover Service', () => {
                 messageContent: 'SPEAK TO HUMAN',
                 recentMessages: [],
                 botFailureCount: 0,
-                state: 'MAIN_MENU',
             });
 
             expect(result.shouldTakeover).toBe(true);
@@ -187,7 +169,8 @@ describe('Human Takeover Service', () => {
                 where: { id: 'conv-123' },
                 data: expect.objectContaining({
                     state: 'BOT_ACTIVE',
-                    botContext: JSON.stringify({ state: 'WELCOME' }),
+                    botContext: Prisma.JsonNull,
+                    botFailureCount: 0,
                     assignedUserId: null,
                     resumedByUserId: 'user-456',
                 }),

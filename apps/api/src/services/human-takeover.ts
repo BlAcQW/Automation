@@ -5,6 +5,8 @@
  * a WhatsApp conversation from the bot, and manages the pause/resume logic.
  */
 
+import { Prisma } from '@prisma/client';
+
 // Keywords that trigger human takeover
 const TAKEOVER_KEYWORDS = [
     'speak to human',
@@ -41,7 +43,7 @@ const FRUSTRATION_INDICATORS = [
 
 export interface TakeoverResult {
     shouldTakeover: boolean;
-    reason?: 'keyword' | 'frustration' | 'repeated_failure' | 'explicit_request' | 'timeout';
+    reason?: 'keyword' | 'frustration' | 'repeated_failure' | 'timeout';
     confidence: number; // 0-1
 }
 
@@ -50,7 +52,6 @@ export interface ConversationContext {
     recentMessages: string[];
     botFailureCount: number;
     lastBotResponseTime?: Date;
-    state: string;
 }
 
 /**
@@ -87,15 +88,6 @@ export function detectTakeover(context: ConversationContext): TakeoverResult {
             shouldTakeover: true,
             reason: 'repeated_failure',
             confidence: 0.75,
-        };
-    }
-
-    // Check if already in CONTACT_SUPPORT state
-    if (context.state === 'CONTACT_SUPPORT') {
-        return {
-            shouldTakeover: true,
-            reason: 'explicit_request',
-            confidence: 1.0,
         };
     }
 
@@ -163,7 +155,8 @@ export async function resumeBot(
         where: { id: conversationId },
         data: {
             state: 'BOT_ACTIVE',
-            botContext: JSON.stringify({ state: 'WELCOME' }), // Reset to welcome state
+            botContext: Prisma.JsonNull,
+            botFailureCount: 0,
             assignedUserId: null,
             takeoverReason: null,
             resumedAt: new Date(),

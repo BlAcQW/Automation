@@ -675,6 +675,9 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             data: {
                 state: 'BOT_ACTIVE',
                 botContext: Prisma.JsonNull, // Reset bot context
+                // A stale count of 3+ would hand the conversation straight
+                // back to a human on the customer's next message.
+                botFailureCount: 0,
                 updatedAt: new Date(),
             },
         });

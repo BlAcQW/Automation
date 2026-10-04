@@ -20,15 +20,9 @@ import { sendEmail, resolveGmailCreds } from './gmail-smtp.js';
 import { buildTextBundle, type TextBundle, type MessageLinks } from './notification-text.js';
 import { config } from '../config/index.js';
 import { scoped } from '../lib/logger.js';
+import { OUT_OF_WINDOW_PURPOSES, purposeEntity } from './notification-purposes.js';
 
 const log = scoped('notification-worker');
-
-/** Purposes sent outside the WhatsApp 24h window — gated by the tenant toggle. */
-const OUT_OF_WINDOW_PURPOSES: ReadonlySet<TemplatePurpose> = new Set([
-    'BOOKING_REMINDER',
-    'ORDER_SHIPPED',
-    'ORDER_DELIVERED',
-] as TemplatePurpose[]);
 
 /**
  * Resolve the customer self-service link for a message, if applicable.
@@ -63,6 +57,14 @@ async function resolveMessageLinks(
             if (booking?.publicToken) {
                 return { cancelUrl: `${config.frontendUrl}/c/${booking.publicToken}` };
             }
+        }
+        if (
+            purpose !== 'ORDER_CONFIRMATION' &&
+            purpose !== 'ORDER_SHIPPED' &&
+            purpose !== 'ORDER_DELIVERED' &&
+            purpose !== 'BOOKING_REMINDER'
+        ) {
+            log.debug({ purpose }, 'No self-service link defined for purpose');
         }
     } catch {
         // Link resolution is best-effort — never block a send on it.
@@ -338,24 +340,39 @@ async function tryEmailFallback(args: {
     if (!creds) return { outcome: 'not_configured' };
 
     // Resolve the customer email by looking up the latest matching source
-    // record. Booking purposes hit booking; order purposes hit order.
-    const isOrderPurpose =
-        args.purpose === 'ORDER_CONFIRMATION' ||
-        args.purpose === 'ORDER_SHIPPED' ||
-        args.purpose === 'ORDER_DELIVERED';
-    const customerEmail = isOrderPurpose
-        ? (await prisma.order.findFirst({
-              where: { tenantId: args.tenantId, customerPhone: args.customerPhone },
-              orderBy: { createdAt: 'desc' },
-              select: { customerEmail: true },
-          }))?.customerEmail
-        : (await prisma.booking.findFirst({
-              where: { tenantId: args.tenantId, customerPhone: args.customerPhone },
-              orderBy: { createdAt: 'desc' },
-              select: { customerEmail: true },
-          }))?.customerEmail;
+    // record. Which entity to probe is decided by purposeEntity().
+    const entity = purposeEntity(args.purpose);
+    if (!entity) {
+        // A purpose we cannot map is a code bug (new enum value not wired up),
+        // not a customer without an email. Log loudly but do not throw — a
+        // throw would crash-loop the job.
+        log.error(
+            { purpose: args.purpose, tenantId: args.tenantId },
+            'Email fallback: unknown purpose, cannot determine which entity to look up',
+        );
+        return { outcome: 'no_email' };
+    }
+    const customerEmail =
+        entity === 'order'
+            ? (await prisma.order.findFirst({
+                  where: { tenantId: args.tenantId, customerPhone: args.customerPhone },
+                  orderBy: { createdAt: 'desc' },
+                  select: { customerEmail: true },
+              }))?.customerEmail
+            : (await prisma.booking.findFirst({
+                  where: { tenantId: args.tenantId, customerPhone: args.customerPhone },
+                  orderBy: { createdAt: 'desc' },
+                  select: { customerEmail: true },
+              }))?.customerEmail;
 
-    if (!customerEmail) return { outcome: 'no_email' };
+    if (!customerEmail) {
+        // Normal: the entity exists (or not) but carries no email address.
+        log.debug(
+            { purpose: args.purpose, tenantId: args.tenantId, entity },
+            'Email fallback: no customer email on file',
+        );
+        return { outcome: 'no_email' };
+    }
 
     const res = await sendEmail({
         user: creds.user,

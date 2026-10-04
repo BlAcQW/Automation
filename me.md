@@ -232,9 +232,10 @@ Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
 - [ ] **Rotate the Supabase database password.** Its prefix was printed to a
       terminal during a migration earlier in this project.
 - [ ] **Rotate the WhatsApp access token** that appeared in a screenshot.
-- [ ] Decide whether `/payments/connect` should reject `sk_test_` keys in
-      production. It currently accepts any key that does not return 401, which
-      was part of the critical flaw found in review.
+- [x] ~~Decide whether `/payments/connect` should reject `sk_test_` keys.~~
+      Done (4 Oct): in production it now only accepts `sk_live_` / `pk_live_`.
+      **If your own tenant is connected with a test key, reconnect with live
+      keys** or that tenant cannot save its settings again.
 
 ---
 
@@ -243,6 +244,16 @@ Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
 - [ ] **`git push origin Dev`** — your git hook blocks me from pushing, so
       everything built in this session exists only on this server.
 - [ ] After pulling: `npm install --legacy-peer-deps`, then rebuild both apps.
+- [ ] **Before deploying the 4 Oct changes**, check for duplicate outbound
+      message ids — the new unique index refuses to build on them, and a failed
+      migration stops the API starting:
+      ```sql
+      SELECT "conversationId","whatsappMsgId",count(*) FROM "Message"
+      WHERE "whatsappMsgId" IS NOT NULL AND "direction"='OUTBOUND'
+      GROUP BY 1,2 HAVING count(*)>1;
+      ```
+      Zero rows = safe. Duplicate *inbound* rows are cleaned up by the
+      migration itself. Back up the database first either way.
 - [ ] **nginx config is not in git.** `/etc/nginx/sites-available/bookly.ikieguy.online`
       must be re-applied by hand if the server is ever rebuilt. It carries the
       WebSocket upgrade and forwarded-host headers that two separate bugs

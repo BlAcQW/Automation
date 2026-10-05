@@ -5,6 +5,7 @@ import { generateAdminTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
 import { PLAN_IDS } from '../../services/plans.js';
+import { buildTenantUpdateData, parseTenantUpdate } from './tenant-update.js';
 import { currentCycleKey } from '../../services/usage.js';
 import { generatePromoCode, normalizePromoCode } from '../../services/promo.js';
 
@@ -19,13 +20,6 @@ const createAdminSchema = z.object({
     password: z.string().min(8),
     name: z.string().min(2),
     isSuperAdmin: z.boolean().default(false),
-});
-
-const updateTenantSchema = z.object({
-    name: z.string().min(2).optional(),
-    isActive: z.boolean().optional(),
-    timezone: z.string().optional(),
-    planId: z.enum(PLAN_IDS).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -189,6 +183,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     timezone: t.timezone,
                     isActive: t.isActive,
                     planId: t.planId,
+                    vertical: t.vertical,
+                    monthlyMessageQuotaOverride: t.monthlyMessageQuotaOverride,
                     messagesThisMonth: messagesThisCycle,
                     whatsappConnected: !!t.whatsappPhoneNumberId,
                     whatsappDisplayNumber: t.whatsappDisplayNumber,
@@ -245,6 +241,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             name: tenant.name,
             timezone: tenant.timezone,
             isActive: tenant.isActive,
+            vertical: tenant.vertical,
+            monthlyMessageQuotaOverride: tenant.monthlyMessageQuotaOverride,
             whatsappConnected: !!tenant.whatsappPhoneNumberId,
             whatsappDisplayNumber: tenant.whatsappDisplayNumber,
             users: tenant.users,
@@ -263,12 +261,33 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         preHandler: [fastify.authenticateAdmin],
     }, async (request) => {
         const { id } = request.params as { id: string };
-        const body = updateTenantSchema.parse(request.body);
+        const parsed = parseTenantUpdate(request.body);
+        if (!parsed.success) {
+            throw fastify.httpErrors.badRequest(
+                parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; '),
+            );
+        }
+        const body = parsed.data;
 
-        const tenant = await fastify.prisma.tenant.update({
+        const existing = await fastify.prisma.tenant.findUnique({
             where: { id },
-            data: body,
+            select: { vertical: true },
         });
+        if (!existing) {
+            throw fastify.httpErrors.notFound('Tenant not found');
+        }
+
+        // Optimistic concurrency: the vertical's defaults were computed from
+        // the vertical we just read, so only apply them if it is unchanged.
+        // A concurrent change gets a 409 rather than a wrong deposit default.
+        const applied = await fastify.prisma.tenant.updateMany({
+            where: { id, vertical: existing.vertical },
+            data: buildTenantUpdateData(body, existing.vertical),
+        });
+        if (applied.count === 0) {
+            throw fastify.httpErrors.conflict('Tenant was changed by someone else — reload and try again');
+        }
+        const tenant = await fastify.prisma.tenant.findUniqueOrThrow({ where: { id } });
 
         await audit({
             prisma: fastify.prisma,
@@ -287,6 +306,8 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             name: tenant.name,
             timezone: tenant.timezone,
             isActive: tenant.isActive,
+            vertical: tenant.vertical,
+            monthlyMessageQuotaOverride: tenant.monthlyMessageQuotaOverride,
         };
     });
 

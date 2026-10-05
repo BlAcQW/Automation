@@ -118,6 +118,9 @@ const envSchema = z.object({
     PLATFORM_WABA_ID: z.string().optional(),
     PLATFORM_WHATSAPP_TOKEN: z.string().optional(),
 
+    // Extra browser origins allowed by CORS, comma-separated. See parseCorsOrigins.
+    CORS_ORIGINS: z.string().optional(),
+
     // Frontend
     FRONTEND_URL: z.string().optional(),
     NEXT_PUBLIC_API_URL: z.string().optional(),
@@ -161,6 +164,36 @@ if (!parsed.success) {
         .join('\n');
     // Fail fast at boot — never let the app start with broken secrets
     throw new Error(`Invalid environment configuration:\n${issues}`);
+}
+
+/**
+ * Parse the optional CORS_ORIGINS env value (comma-separated).
+ *
+ * Credentials are used, so a wildcard is never acceptable. Each entry must be
+ * an absolute http(s) ORIGIN exactly as browsers send it (scheme + host
+ * [+ port]): no path, trailing slash, query, fragment or userinfo — such an
+ * entry would silently never match. Throws on the first bad entry so a typo
+ * fails at boot instead of quietly breaking (or loosening) CORS.
+ */
+export function parseCorsOrigins(raw: string | undefined): string[] {
+    if (!raw) return [];
+    const out: string[] = [];
+    for (const entry of raw.split(',').map((e) => e.trim()).filter(Boolean)) {
+        const invalid = (why: string) =>
+            new Error(`Invalid CORS_ORIGINS entry "${entry}": ${why} (expected an origin like https://app.example.com)`);
+        if (entry.includes('*')) throw invalid('wildcards are not allowed because credentials are used');
+        let url: URL;
+        try {
+            url = new URL(entry);
+        } catch {
+            throw invalid('not an absolute URL');
+        }
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') throw invalid('origin must be http or https');
+        if (url.username || url.password) throw invalid('origin must not contain credentials');
+        if (url.origin !== entry) throw invalid('origin must not include a path, trailing slash, query or fragment');
+        if (!out.includes(entry)) out.push(entry);
+    }
+    return out;
 }
 
 const env = parsed.data;
@@ -254,6 +287,7 @@ export const config = {
         env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,
         env.NODE_ENV === 'development' ? 'http://localhost:3001' : null,
         env.FRONTEND_URL,
+        ...parseCorsOrigins(env.CORS_ORIGINS),
     ].filter((origin): origin is string => Boolean(origin)),
 
     featureFlags: {

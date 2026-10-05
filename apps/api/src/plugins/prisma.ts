@@ -48,6 +48,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
     'LedgerEntry',
     'PayoutRecipient',
     'PayoutRequest',
+    'Customer',
 ]);
 
 const GUARDED_OPERATIONS = new Set([

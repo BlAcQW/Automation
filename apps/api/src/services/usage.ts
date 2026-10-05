@@ -22,7 +22,7 @@
 
 import type { PrismaClient, SubscriptionStatus } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
-import { getPlan, type Plan } from './plans.js';
+import { effectiveMessageQuota, getPlan, type Plan } from './plans.js';
 
 // The worker and the API use slightly different Prisma client types (raw vs
 // `$extends`-wrapped). Both expose the same methods we need here, so accept
@@ -43,6 +43,10 @@ const CYCLE_LENGTH_MS = 30 * 24 * 60 * 60 * 1000;
 export interface TenantCycleAnchor {
     quotaCycleStart: Date | null | undefined;
     createdAt: Date | null | undefined;
+}
+
+interface QuotaTenantRow extends TenantCycleAnchor {
+    monthlyMessageQuotaOverride?: number | null;
 }
 
 /**
@@ -110,10 +114,10 @@ export interface QuotaState {
 async function loadCycleAnchor(
     prisma: AnyPrismaClient,
     tenantId: string,
-): Promise<TenantCycleAnchor | null> {
+): Promise<QuotaTenantRow | null> {
     return prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { quotaCycleStart: true, createdAt: true },
+        select: { quotaCycleStart: true, createdAt: true, monthlyMessageQuotaOverride: true },
     });
 }
 
@@ -135,10 +139,11 @@ export async function getQuotaState(
         select: { messageCount: true },
     });
     const used = row?.messageCount ?? 0;
+    const limit = effectiveMessageQuota(plan, anchor?.monthlyMessageQuotaOverride);
     return {
-        ok: used < plan.monthlyMessageQuota,
+        ok: used < limit,
         used,
-        limit: plan.monthlyMessageQuota,
+        limit,
         planId: plan.id,
         cycleStart,
         cycleEnd,
@@ -171,7 +176,7 @@ export async function tryReserveOutbound(
     tenantId: string,
 ): Promise<ReserveOutcome> {
     const resolved = await evaluateSubscription(prisma, tenantId);
-    const limit = resolved.plan.monthlyMessageQuota;
+    const limit = effectiveMessageQuota(resolved.plan, resolved.quotaOverride);
     const planId = resolved.plan.id;
     const month = currentCycleKey(resolved.cycleAnchor);
 
@@ -271,6 +276,8 @@ export interface ResolvedPlan {
     currentPeriodEnd: Date | null;
     /** Anchor for the per-tenant 30-day quota cycle (Phase 4c). */
     cycleAnchor: TenantCycleAnchor;
+    /** Per-tenant replacement for plan.monthlyMessageQuota; null = plan default. */
+    quotaOverride: number | null;
 }
 
 /**
@@ -297,6 +304,7 @@ export async function evaluateSubscription(
             currentPeriodEnd: true,
             quotaCycleStart: true,
             createdAt: true,
+            monthlyMessageQuotaOverride: true,
         },
     });
     if (!tenant) {
@@ -306,6 +314,7 @@ export async function evaluateSubscription(
             trialEndsAt: null,
             currentPeriodEnd: null,
             cycleAnchor: { quotaCycleStart: null, createdAt: new Date() },
+            quotaOverride: null,
         };
     }
 
@@ -314,6 +323,7 @@ export async function evaluateSubscription(
         createdAt: tenant.createdAt ?? new Date(),
     };
 
+    const quotaOverride = tenant.monthlyMessageQuotaOverride ?? null;
     const now = Date.now();
     const status = tenant.subscriptionStatus;
     const trialExpired =
@@ -339,6 +349,7 @@ export async function evaluateSubscription(
             trialEndsAt: tenant.trialEndsAt,
             currentPeriodEnd: tenant.currentPeriodEnd,
             cycleAnchor,
+            quotaOverride,
         };
     }
 
@@ -348,5 +359,6 @@ export async function evaluateSubscription(
         trialEndsAt: tenant.trialEndsAt,
         currentPeriodEnd: tenant.currentPeriodEnd,
         cycleAnchor,
+        quotaOverride,
     };
 }

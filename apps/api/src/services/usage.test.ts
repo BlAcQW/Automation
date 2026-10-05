@@ -8,6 +8,7 @@ import {
     incrementMessageUsage,
     checkOutboundQuota,
     evaluateSubscription,
+    tryReserveOutbound,
 } from './usage';
 import { getPlan, PLAN_CATALOG } from './plans';
 
@@ -320,5 +321,58 @@ describe('evaluateSubscription (Phase 4b + 4c)', () => {
         const resolved = await evaluateSubscription(prisma, 't1');
         expect(resolved.cycleAnchor.quotaCycleStart?.toISOString()).toBe(anchor.toISOString());
         expect(resolved.cycleAnchor.createdAt?.toISOString()).toBe(anchor.toISOString());
+    });
+});
+
+describe('monthlyMessageQuotaOverride', () => {
+    const now = new Date();
+    function prismaWith(override: number | null, used: number) {
+        return {
+            tenant: {
+                findUnique: vi.fn().mockResolvedValue({
+                    planId: 'free',
+                    subscriptionStatus: null,
+                    trialEndsAt: null,
+                    currentPeriodEnd: null,
+                    quotaCycleStart: now,
+                    createdAt: now,
+                    monthlyMessageQuotaOverride: override,
+                }),
+                update: vi.fn(),
+            },
+            tenantUsage: {
+                findUnique: vi.fn().mockResolvedValue({ messageCount: used }),
+                upsert: vi.fn().mockResolvedValue({}),
+                updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            },
+        } as any;
+    }
+
+    it('getQuotaState uses the override instead of the plan quota', async () => {
+        const state = await getQuotaState(prismaWith(5000, 100), 't1', 'free');
+        expect(state).toMatchObject({ ok: true, limit: 5000, used: 100 });
+    });
+
+    it('getQuotaState: override lower than usage blocks sends', async () => {
+        const state = await getQuotaState(prismaWith(10, 10), 't1', 'free');
+        expect(state.ok).toBe(false);
+        expect(state.limit).toBe(10);
+    });
+
+    it('checkOutboundQuota honours the override', async () => {
+        const state = await checkOutboundQuota(prismaWith(7, 0), 't1');
+        expect(state.limit).toBe(7);
+    });
+
+    it('null override keeps the plan default', async () => {
+        const state = await checkOutboundQuota(prismaWith(null, 0), 't1');
+        expect(state.limit).toBe(PLAN_CATALOG.free.monthlyMessageQuota);
+    });
+
+    it('tryReserveOutbound caps at the override', async () => {
+        const prisma = prismaWith(3, 0);
+        const out = await tryReserveOutbound(prisma, 't1');
+        expect(out.limit).toBe(3);
+        expect(prisma.tenantUsage.updateMany.mock.calls[0][0].where.messageCount).toEqual({ lt: 3 });
     });
 });

@@ -89,3 +89,19 @@ export function isPlatformPaystackConfigured(): boolean {
         config.platformPaystack.planCodes.pro
     );
 }
+
+/**
+ * The monthly message quota that actually applies to a tenant. A per-tenant
+ * override (admin-set) replaces the plan's quota; null/undefined means "plan
+ * default". 0 is a real override. Values that could never have passed the
+ * API boundary (negative, fractional, NaN) fall back to the plan rather than
+ * throwing, so a bad row cannot break the send path.
+ */
+export function effectiveMessageQuota(
+    plan: Pick<Plan, 'monthlyMessageQuota'>,
+    override: number | null | undefined,
+): number {
+    if (override === null || override === undefined) return plan.monthlyMessageQuota;
+    if (!Number.isInteger(override) || override < 0) return plan.monthlyMessageQuota;
+    return override;
+}

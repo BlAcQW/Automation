@@ -15,85 +15,92 @@ datasource db {
 // ============================================
 
 model Tenant {
-  id                         String              @id @default(cuid())
-  name                       String
-  businessType               BusinessType        @default(SERVICE)
-  timezone                   String              @default("UTC")
-  whatsappPhoneNumberId      String?             @unique
-  whatsappAccountId          String?
-  whatsappAccessToken        String? // Encrypted. NULL for hosted numbers — they use the platform token.
-  whatsappDisplayNumber      String?
+  id                          String              @id @default(cuid())
+  name                        String
+  // Sub-type WITHIN the APPOINTMENTS vertical (service vs product catalog).
+  businessType                BusinessType        @default(SERVICE)
+  // Which product shape this tenant runs. See services/verticals.ts for the
+  // per-vertical Tenant defaults.
+  vertical                    Vertical            @default(APPOINTMENTS)
+  // When set, replaces the plan's monthlyMessageQuota for this tenant.
+  // NULL = plan default. Never negative (validated at the API boundary).
+  monthlyMessageQuotaOverride Int?
+  timezone                    String              @default("UTC")
+  whatsappPhoneNumberId       String?             @unique
+  whatsappAccountId           String?
+  whatsappAccessToken         String? // Encrypted. NULL for hosted numbers — they use the platform token.
+  whatsappDisplayNumber       String?
   // Phase 6 — Bookly-hosted numbers. TRUE means this number lives on Bookly's
   // OWN WABA, so Meta bills Bookly for it and Bookly rebills the tenant. FALSE
   // (the default) is the bring-your-own path via Embedded Signup, where the
   // tenant owns the WABA and pays Meta directly.
-  whatsappHosted             Boolean             @default(false)
+  whatsappHosted              Boolean             @default(false)
   // Onboarding progress for hosted numbers only: PENDING_CODE (added to our
   // WABA, OTP sent) → REGISTERED (verified + registered for Cloud API).
   // NULL for bring-your-own numbers, which are live the moment they connect.
-  whatsappNumberStatus       String?
+  whatsappNumberStatus        String?
   // Encrypted. Hosted numbers only — Meta's two-step verification PIN, set when
   // we register the number. Meta requires a re-register (with this same PIN)
   // after any display-name change, so it has to outlive onboarding.
-  whatsappRegistrationPin    String?
-  paystackSecretKey          String? // Encrypted (AES-GCM via crypto.ts)
-  paystackPublicKey          String? // Public, plaintext OK
-  paymentCurrency            String              @default("NGN") // ISO 4217
+  whatsappRegistrationPin     String?
+  paystackSecretKey           String? // Encrypted (AES-GCM via crypto.ts)
+  paystackPublicKey           String? // Public, plaintext OK
+  paymentCurrency             String              @default("NGN") // ISO 4217
   // Phase 4a — SaaS plan id. Kept as String so the catalog (services/plans.ts)
   // can grow without a migration. Validated against the catalog at the API boundary.
-  planId                     String              @default("free")
+  planId                      String              @default("free")
   // Phase 4b — Paystack subscription state. Null for tenants that predate 4b.
-  subscriptionStatus         SubscriptionStatus?
-  subscriptionRef            String? // Paystack subscription_code (SUB_xxx)
-  subscriptionEmailToken     String? // Paystack-issued token, required to disable
-  subscriptionCustomerCode   String? // Paystack customer_code (CUS_xxx)
-  currentPeriodEnd           DateTime?
-  trialEndsAt                DateTime?
+  subscriptionStatus          SubscriptionStatus?
+  subscriptionRef             String? // Paystack subscription_code (SUB_xxx)
+  subscriptionEmailToken      String? // Paystack-issued token, required to disable
+  subscriptionCustomerCode    String? // Paystack customer_code (CUS_xxx)
+  currentPeriodEnd            DateTime?
+  trialEndsAt                 DateTime?
   // Phase 4c — per-tenant 30-day quota cycle anchor. Decouples quota refresh
   // from the calendar 1st: each tenant gets 5,000 messages every 30 days
   // counted from their signup, not from the start of the calendar month
   // (which double-counts mid-month subscribers). Nullable for back-compat —
   // null falls back to `createdAt` so legacy tenants behave the same.
-  quotaCycleStart            DateTime?
+  quotaCycleStart             DateTime?
   // Phase 5 — SMS fallback (Arkesel) + Email fallback (Gmail SMTP).
-  arkeselApiKey              String? // Encrypted at rest via crypto.ts
-  arkeselSenderId            String? // 1-11 chars, alphanumeric or phone
-  gmailUser                  String? // Tenant's Gmail address
-  gmailAppPassword           String? // 16-char app password, encrypted
-  gmailFromName              String? // Display name in From: header
+  arkeselApiKey               String? // Encrypted at rest via crypto.ts
+  arkeselSenderId             String? // 1-11 chars, alphanumeric or phone
+  gmailUser                   String? // Tenant's Gmail address
+  gmailAppPassword            String? // 16-char app password, encrypted
+  gmailFromName               String? // Display name in From: header
   // Master switch — when false, the worker skips all out-of-window messages
   // (BOOKING_REMINDER, ORDER_SHIPPED, ORDER_DELIVERED) to save messaging cost.
-  outOfWindowMessagesEnabled Boolean             @default(true)
+  outOfWindowMessagesEnabled  Boolean             @default(true)
   // Deposits. When on, a booking is only confirmed once the customer has paid
   // the deposit; until then it is held for a short window. Per-service
   // `Service.depositAmount` overrides the default when it is set.
-  depositRequired            Boolean             @default(true)
-  defaultDepositAmount       Decimal             @default(50) @db.Decimal(10, 2)
+  depositRequired             Boolean             @default(true)
+  defaultDepositAmount        Decimal             @default(50) @db.Decimal(10, 2)
   // How many bookings the business can serve at the same time — chairs in a
   // salon, rooms in a clinic, bays in a workshop. Availability and booking
   // creation both allow up to this many overlapping bookings. Default 1 keeps
   // the old single-resource behaviour for every existing tenant.
-  bookingCapacity            Int                 @default(1)
+  bookingCapacity             Int                 @default(1)
   // Hide most of each customer's phone/email from STAFF in the dashboard, so
   // a departing staff member cannot walk off with the customer book. The owner
   // is never masked. Staff who genuinely need a number use the audited,
   // rate-limited reveal endpoint.
-  maskCustomerContact        Boolean             @default(true)
+  maskCustomerContact         Boolean             @default(true)
   // Facebook Page + Instagram. One Page access token serves both, because
   // Instagram messaging is delivered through the Page the IG professional
   // account is linked to. Unlike WhatsApp, Meta charges nothing per message on
   // either channel and needs no payment method.
-  facebookPageId             String?             @unique
-  facebookPageName           String?
-  facebookPageToken          String? // Encrypted
-  instagramUserId            String?             @unique
-  instagramUsername          String?
+  facebookPageId              String?             @unique
+  facebookPageName            String?
+  facebookPageToken           String? // Encrypted
+  instagramUserId             String?             @unique
+  instagramUsername           String?
   // The owner asked for the account to be deleted. A person confirms and
   // removes the tenant; this records the ask and shows it in Settings.
-  deletionRequestedAt        DateTime?
-  isActive                   Boolean             @default(true)
-  createdAt                  DateTime            @default(now())
-  updatedAt                  DateTime            @updatedAt
+  deletionRequestedAt         DateTime?
+  isActive                    Boolean             @default(true)
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
 
   users                User[]
   services             Service[]
@@ -108,10 +115,16 @@ model Tenant {
   messageTemplates     MessageTemplate[]
   tenantUsages         TenantUsage[]
   promoRedemptions     PromoRedemption[]
+  customers            Customer[]
   wallet               Wallet?
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
+}
+
+enum Vertical {
+  APPOINTMENTS
+  RIDES
 }
 
 enum BusinessType {
@@ -412,8 +425,6 @@ model Message {
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
-  @@index([conversationId])
-  @@index([createdAt])
   /// Meta retries webhooks, so the same inbound wamid can arrive more than
   /// once. This makes a second insert fail with P2002 instead of storing (and
   /// replying to) a duplicate. whatsappMsgId is nullable: Postgres treats NULLs
@@ -421,6 +432,8 @@ model Message {
   /// null id (outbound rows before the send returns, SMS/email) never collide.
   /// Index name: Message_conversationId_whatsappMsgId_key.
   @@unique([conversationId, whatsappMsgId])
+  @@index([conversationId])
+  @@index([createdAt])
 }
 
 enum Direction {
@@ -917,4 +930,26 @@ model PayoutRequest {
   recipient PayoutRecipient @relation(fields: [recipientId], references: [id])
 
   @@index([tenantId, status])
+}
+
+/// A tenant's end customer, keyed by phone. Not yet linked to Booking, Order
+/// or Conversation.
+model Customer {
+  id         String   @id @default(cuid())
+  tenantId   String
+  /// E.164, e.g. +233241234567
+  phone      String
+  name       String?
+  email      String?
+  /// Vertical-specific fields with no column of their own, e.g. for RIDES
+  /// { "studentId": "...", "university": "..." }. Free-form JSON: validate the
+  /// shape per vertical at the API boundary, never trust it on read.
+  attributes Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
 }

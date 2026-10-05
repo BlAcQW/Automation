@@ -7,8 +7,9 @@
 
 import { Prisma } from '@prisma/client';
 
-// Keywords that trigger human takeover
-const TAKEOVER_KEYWORDS = [
+// Explicit requests to reach a person. Vertical-neutral: a customer asking for
+// a human gets one in every business.
+const EXPLICIT_HUMAN_KEYWORDS = [
     'speak to human',
     'talk to human',
     'speak to agent',
@@ -20,6 +21,12 @@ const TAKEOVER_KEYWORDS = [
     'real person',
     'customer service',
     'customer support',
+];
+
+// Urgency/escalation words. Salon-tuned (a stressed booking, a complaint about
+// a service). In a ride business they are ordinary ride requests ("urgent,
+// need a car", "help me get to the airport"), so RIDES must not use them.
+const ESCALATION_KEYWORDS = [
     'help me',
     'urgent',
     'emergency',
@@ -27,6 +34,8 @@ const TAKEOVER_KEYWORDS = [
     'manager',
     'supervisor',
 ];
+
+const TAKEOVER_KEYWORDS = [...EXPLICIT_HUMAN_KEYWORDS, ...ESCALATION_KEYWORDS];
 
 // Phrases indicating frustration
 const FRUSTRATION_INDICATORS = [
@@ -52,6 +61,8 @@ export interface ConversationContext {
     recentMessages: string[];
     botFailureCount: number;
     lastBotResponseTime?: Date;
+    /** Tenant vertical. Omitted/unknown keeps the full (APPOINTMENTS) keyword set. */
+    vertical?: 'APPOINTMENTS' | 'RIDES' | string | null;
 }
 
 /**
@@ -60,8 +71,9 @@ export interface ConversationContext {
 export function detectTakeover(context: ConversationContext): TakeoverResult {
     const messageContent = context.messageContent.toLowerCase().trim();
 
-    // Check for explicit takeover keywords
-    for (const keyword of TAKEOVER_KEYWORDS) {
+    // RIDES: only explicit requests for a person trigger keyword takeover.
+    const keywords = context.vertical === 'RIDES' ? EXPLICIT_HUMAN_KEYWORDS : TAKEOVER_KEYWORDS;
+    for (const keyword of keywords) {
         if (messageContent.includes(keyword)) {
             return {
                 shouldTakeover: true,

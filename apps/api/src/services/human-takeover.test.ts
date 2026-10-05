@@ -293,3 +293,35 @@ describe('Human Takeover Service', () => {
         });
     });
 });
+
+describe('detectTakeover by vertical', () => {
+    const ctx = (messageContent: string, vertical?: 'APPOINTMENTS' | 'RIDES' | string) =>
+        detectTakeover({ messageContent, recentMessages: [], botFailureCount: 0, vertical } as ConversationContext);
+
+    const SALON_KEYWORDS = ['urgent, need a car', 'help me get to the airport', 'emergency pickup', 'I have a complaint', 'let me talk to the manager', 'get me your supervisor'];
+
+    it('APPOINTMENTS keeps every keyword', () => {
+        for (const m of SALON_KEYWORDS) {
+            expect(ctx(m, 'APPOINTMENTS')).toMatchObject({ shouldTakeover: true, reason: 'keyword', confidence: 0.95 });
+        }
+    });
+
+    it('omitted vertical behaves as APPOINTMENTS', () => {
+        for (const m of SALON_KEYWORDS) expect(ctx(m).shouldTakeover).toBe(true);
+    });
+
+    it('RIDES does not hand off on salon-tuned urgency/complaint keywords', () => {
+        for (const m of SALON_KEYWORDS) expect(ctx(m, 'RIDES').shouldTakeover).toBe(false);
+    });
+
+    it('RIDES still hands off on an explicit request for a person', () => {
+        for (const m of ['speak to human', 'can I talk to someone', 'real person please', 'agent please', 'customer support']) {
+            expect(ctx(m, 'RIDES')).toMatchObject({ shouldTakeover: true, reason: 'keyword' });
+        }
+    });
+
+    it('RIDES keeps repeated-failure takeover', () => {
+        const r = detectTakeover({ messageContent: 'hi', recentMessages: [], botFailureCount: 3, vertical: 'RIDES' });
+        expect(r.reason).toBe('repeated_failure');
+    });
+});

@@ -32,6 +32,7 @@ import {
     isDuplicateMessageError,
     HOLDING_MESSAGE_COOLDOWN_MS,
 } from '../../services/assistant-fallback.js';
+import { selectConversationHandler, canCustomerResumeBot } from '../../services/conversation-handlers.js';
 import { Prisma } from '@prisma/client';
 
 /**
@@ -899,10 +900,11 @@ async function processChannelMessage(
 
     const { isLlmEnabled } = await import('../../services/llm-agent.js');
     const llmEnabled = isLlmEnabled();
+    const handler = selectConversationHandler(tenant.vertical ?? 'APPOINTMENTS', llmEnabled);
     let agentThrew = false;
     const progress: AgentProgress = { replySent: false };
 
-    if (llmEnabled) {
+    if (handler === 'llm_agent') {
         try {
             await handleWithAgent(
                 fastify,
@@ -934,7 +936,7 @@ async function processChannelMessage(
     }
 
     await runAssistantFallback(fastify, tenant, conversation, {
-        llmEnabled,
+        llmEnabled: handler === 'llm_agent',
         agentThrew,
         replySent: progress.replySent,
         channel: input.channel,
@@ -1188,16 +1190,20 @@ async function processMessage(
     if (conversation.state === 'HUMAN_ACTIVE') {
         const cmd = content.trim().toLowerCase();
         const RESUME_BOT_KEYWORDS = new Set(['menu', 'bot', 'start']);
-        // A conversation a staff member has claimed stays with them: the
-        // customer must not be able to pull it back (and clear the
-        // assignment) by typing a keyword.
-        const owner = RESUME_BOT_KEYWORDS.has(cmd)
-            ? await fastify.prisma.conversation.findUnique({
-                  where: { id: conversation.id },
-                  select: { assignedUserId: true },
-              })
-            : null;
-        if (RESUME_BOT_KEYWORDS.has(cmd) && !owner?.assignedUserId) {
+        // Rules live in canCustomerResumeBot (tested): only with an assistant
+        // to resume to, and never for a staff-claimed conversation.
+        const { isLlmEnabled: llmOn } = await import('../../services/llm-agent.js');
+        const handler = selectConversationHandler(tenant.vertical ?? 'APPOINTMENTS', llmOn());
+        const isResumeKeyword = RESUME_BOT_KEYWORDS.has(cmd);
+        // Only look up the owner when it could change the answer.
+        const owner =
+            isResumeKeyword && handler !== 'unavailable'
+                ? await fastify.prisma.conversation.findUnique({
+                      where: { id: conversation.id },
+                      select: { assignedUserId: true },
+                  })
+                : null;
+        if (canCustomerResumeBot({ isResumeKeyword, handler, assignedUserId: owner?.assignedUserId })) {
             fastify.log.info(
                 { conversationId: conversation.id, cmd },
                 'Customer requested bot resume — exiting human takeover',
@@ -1228,6 +1234,7 @@ async function processMessage(
         messageContent: content,
         recentMessages: [],
         botFailureCount: conversation.botFailureCount || 0,
+        vertical: tenant.vertical ?? 'APPOINTMENTS',
     });
 
     if (takeoverResult.shouldTakeover) {
@@ -1255,7 +1262,8 @@ async function processMessage(
     let agentThrew = false;
     const progress: AgentProgress = { replySent: false };
     const llmEnabled = isLlmEnabled();
-    if (llmEnabled) {
+    const handler = selectConversationHandler(tenant.vertical ?? 'APPOINTMENTS', llmEnabled);
+    if (handler === 'llm_agent') {
         try {
             await handleWithAgent(fastify, tenant, conversation, customerPhone, content, 'WHATSAPP', undefined, progress);
             // The assistant coped, so any earlier failures no longer count
@@ -1274,7 +1282,7 @@ async function processMessage(
     }
 
     await runAssistantFallback(fastify, tenant, conversation, {
-        llmEnabled,
+        llmEnabled: handler === 'llm_agent',
         agentThrew,
         replySent: progress.replySent,
         channel: 'WHATSAPP',

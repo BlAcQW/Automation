@@ -4,6 +4,7 @@ import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
 import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
+import { dispatchFulfillment } from '../../services/payment-fulfillers.js';
 import { markPayoutFailed, markPayoutPaid } from '../../services/payout-transfer.js';
 import {
     initializeTransaction,
@@ -98,6 +99,9 @@ interface PaystackWebhookEvent {
             orderId?: string;
             bookingId?: string;
             customerPhone?: string;
+            /** Vertical-specific purchases; see services/payment-fulfillers.ts. */
+            fulfillmentKind?: unknown;
+            entityId?: unknown;
         };
     };
 }
@@ -604,6 +608,38 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             return reply.code(200).send({ ok: true, entity: 'booking' });
+        }
+
+        // Registered fulfillers (rides etc.). Only reached when the charge
+        // names neither a booking nor an order, so the built-in paths above
+        // and below are untouched. The key was already chosen from the stored
+        // collectionRoute; these payments never have a stored row, so they
+        // verify against the tenant's OWN key and never reach the ledger.
+        if (!metaOrderId && event.data.metadata?.fulfillmentKind !== undefined) {
+            const result = await dispatchFulfillment({
+                prisma: fastify.prisma,
+                tenantId,
+                reference,
+                metadata: event.data.metadata as Record<string, unknown>,
+                log: request.log,
+                verify: async () => {
+                    try {
+                        return await verifyTransaction(secretKey, reference);
+                    } catch (err) {
+                        request.log.error({ err }, 'Paystack verify failed during webhook (fulfillment)');
+                        throw fastify.httpErrors.badGateway('Paystack verify failed');
+                    }
+                },
+            });
+            if (result.unattributedReason) {
+                await reportUnattributed(request.log, result.unattributedReason, {
+                    reference,
+                    tenantId,
+                    amount: result.amountMinor ?? event.data.amount,
+                    currency: result.currency ?? event.data.currency,
+                });
+            }
+            return reply.code(200).send(result.body);
         }
 
         // Default path: order. Preserves Phase 3c behaviour exactly.

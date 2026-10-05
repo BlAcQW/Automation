@@ -16,6 +16,7 @@ import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { decrypt } from './crypto.js';
 import { initializeTransaction } from './paystack.js';
 import { resolveCollectionRoute } from './collection-route.js';
+import { isRegisteredFulfillmentKind } from './payment-fulfillers.js';
 import { scoped } from '../lib/logger.js';
 
 const log = scoped('payment-link');
@@ -91,6 +92,104 @@ export async function createPaymentLink(args: PaymentLinkArgs): Promise<string |
         return init.authorizationUrl;
     } catch (err) {
         log.error({ err, entity: args.entity, id: args.id }, 'Paystack init failed');
+        return null;
+    }
+}
+
+export interface FulfillmentPaymentLinkArgs {
+    tenantId: string;
+    /** Tenant.paystackSecretKey as stored (encrypted); null if not connected. */
+    paystackSecretKeyEncrypted: string | null;
+    currency: string;
+    /** A kind registered via registerPaymentFulfiller (never 'booking'/'order'). */
+    kind: string;
+    /** The caller's own entity id (e.g. a ride package purchase). */
+    entityId: string;
+    /** Major unit, e.g. 25.00 GHS. */
+    amount: number;
+    customerPhone: string;
+    /**
+     * Where Paystack returns the customer after paying — e.g. a wa.me link
+     * back into the WhatsApp chat. Falls back to PAYSTACK_CALLBACK_URL, then
+     * to Paystack's dashboard default. Deliberately never the orders page.
+     */
+    callbackUrl?: string;
+    /**
+     * REQUIRED persistence hook. The new entity lives outside this service, so
+     * the caller must save `reference` and `authorizationUrl` on it (and
+     * `collectionRoute` if its table has such a column). Awaited; if it throws
+     * no link is returned. Persisting the route is informational only: the
+     * webhook finds no booking/order row for these charges and therefore
+     * verifies them with the tenant's own key, which is why this function
+     * refuses to collect on the platform account.
+     */
+    onCreated: (link: {
+        reference: string;
+        authorizationUrl: string;
+        collectionRoute: 'OWN_GATEWAY';
+    }) => Promise<void> | void;
+}
+
+/**
+ * Payment link for a registered fulfillment kind (rides, etc.).
+ *
+ * Writes `fulfillmentKind` + `entityId` + `tenantId` into the Paystack
+ * metadata; the webhook dispatches on them (services/payment-fulfillers.ts).
+ *
+ * OWN_GATEWAY ONLY. Unlike bookings/orders there is no stored row whose
+ * `collectionRoute` the webhook can read before choosing the verifying key; it
+ * falls back to the tenant's key. A PLATFORM-collected charge would therefore
+ * fail signature verification, and would also have no ledger handling. So with
+ * no usable tenant key this returns null (best-effort contract, like
+ * createPaymentLink) instead of falling back to the platform account.
+ */
+export async function createFulfillmentPaymentLink(args: FulfillmentPaymentLinkArgs): Promise<string | null> {
+    if (!isRegisteredFulfillmentKind(args.kind)) {
+        log.error({ kind: args.kind, tenantId: args.tenantId }, 'Refusing payment link for unregistered fulfillment kind');
+        return null;
+    }
+    if (!Number.isFinite(args.amount) || Math.round(args.amount * 100) <= 0) {
+        log.error({ kind: args.kind, tenantId: args.tenantId }, 'Refusing payment link with non-positive amount');
+        return null;
+    }
+
+    // Platform key deliberately omitted: own gateway or nothing.
+    const route = resolveCollectionRoute({ tenantSecretKeyEncrypted: args.paystackSecretKeyEncrypted }, undefined);
+    if (!route) {
+        log.warn({ tenantId: args.tenantId, kind: args.kind }, 'No tenant Paystack key available for fulfillment payment');
+        return null;
+    }
+
+    try {
+        const digits = args.customerPhone.replace(/[^0-9]/g, '');
+        const callbackUrl = args.callbackUrl ?? config.paystack.callbackUrl ?? undefined;
+
+        const init = await initializeTransaction({
+            secretKey: route.secretKey,
+            email: `${digits || 'customer'}@customer.bookingflow.app`,
+            amountKobo: Math.round(args.amount * 100),
+            currency: args.currency,
+            // bf_f_ = fulfillment, distinct from order (bf_o_) references.
+            reference: `bf_f_${args.kind}_${args.entityId}_${Date.now()}`,
+            callbackUrl,
+            metadata: {
+                tenantId: args.tenantId,
+                collectionRoute: route.route,
+                fulfillmentKind: args.kind,
+                entityId: args.entityId,
+                customerPhone: args.customerPhone,
+            },
+        });
+
+        await args.onCreated({
+            reference: init.reference,
+            authorizationUrl: init.authorizationUrl,
+            collectionRoute: 'OWN_GATEWAY',
+        });
+
+        return init.authorizationUrl;
+    } catch (err) {
+        log.error({ err, kind: args.kind, entityId: args.entityId }, 'Fulfillment payment link failed');
         return null;
     }
 }

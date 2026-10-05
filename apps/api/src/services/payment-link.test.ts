@@ -98,3 +98,75 @@ describe('createPaymentLink', () => {
         expect((initializeTransaction as any).mock.calls[0][0].metadata).toMatchObject({ orderId: 'or1' });
     });
 });
+
+import { registerPaymentFulfiller, resetPaymentFulfillersForTests } from './payment-fulfillers.js';
+import { createFulfillmentPaymentLink } from './payment-link.js';
+
+describe('createFulfillmentPaymentLink', () => {
+    const args = {
+        tenantId: 't1', paystackSecretKeyEncrypted: 'enc', currency: 'GHS',
+        kind: 'ride_package', entityId: 'pk1', amount: 25, customerPhone: '+233 24 000 0000',
+    };
+    beforeEach(() => {
+        resetPaymentFulfillersForTests();
+        registerPaymentFulfiller('ride_package', vi.fn());
+        (initializeTransaction as any).mockResolvedValue({ authorizationUrl: 'https://pay/r', reference: 'bf_o_ride_package_pk1_1', accessCode: 'ac' });
+    });
+
+    it('writes fulfillmentKind, entityId and tenantId to metadata and collects on the tenant key', async () => {
+        const onCreated = vi.fn();
+        const url = await createFulfillmentPaymentLink({ ...args, onCreated });
+        expect(url).toBe('https://pay/r');
+        const call = (initializeTransaction as any).mock.calls[0][0];
+        expect(call.secretKey).toBe('dec(enc)');
+        expect(call.amountKobo).toBe(2500);
+        expect(call.metadata).toMatchObject({
+            tenantId: 't1', fulfillmentKind: 'ride_package', entityId: 'pk1', collectionRoute: 'OWN_GATEWAY',
+        });
+        expect(call.metadata.orderId).toBeUndefined();
+        expect(call.metadata.bookingId).toBeUndefined();
+        // bf_f_ = fulfillment; must not look like an order reference (bf_o_).
+        expect(call.reference.startsWith('bf_f_ride_package_pk1_')).toBe(true);
+    });
+
+    it('returns the customer to the caller-supplied URL, not the orders page', async () => {
+        await createFulfillmentPaymentLink({ ...args, onCreated: vi.fn(), callbackUrl: 'https://wa.me/233240000000' });
+        const call = (initializeTransaction as any).mock.calls[0][0];
+        expect(call.callbackUrl).toBe('https://wa.me/233240000000');
+        expect(call.callbackUrl).not.toMatch(/orders\/paid/);
+    });
+
+    it('hands the reference, url and route to the caller to persist', async () => {
+        const onCreated = vi.fn();
+        await createFulfillmentPaymentLink({ ...args, onCreated });
+        expect(onCreated).toHaveBeenCalledWith({
+            reference: 'bf_o_ride_package_pk1_1', authorizationUrl: 'https://pay/r', collectionRoute: 'OWN_GATEWAY',
+        });
+    });
+
+    it('never collects into the platform account: no tenant key means no link', async () => {
+        // The webhook verifies unattributed-by-row charges with the tenant's own
+        // key, and these payments must not look like platform-ledger money.
+        const url = await createFulfillmentPaymentLink({ ...args, paystackSecretKeyEncrypted: null, onCreated: vi.fn() });
+        expect(url).toBeNull();
+        expect(initializeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses unregistered and reserved kinds', async () => {
+        for (const kind of ['nope', 'booking', 'order']) {
+            expect(await createFulfillmentPaymentLink({ ...args, kind, onCreated: vi.fn() })).toBeNull();
+        }
+        expect(initializeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('returns null when persisting fails, rather than handing out an untracked link', async () => {
+        const url = await createFulfillmentPaymentLink({ ...args, onCreated: vi.fn().mockRejectedValue(new Error('db')) });
+        expect(url).toBeNull();
+    });
+
+    it('rejects non-positive or non-integer-minor amounts', async () => {
+        for (const amount of [0, -5, NaN]) {
+            expect(await createFulfillmentPaymentLink({ ...args, amount, onCreated: vi.fn() })).toBeNull();
+        }
+    });
+});

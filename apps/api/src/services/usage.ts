@@ -256,6 +256,39 @@ export async function incrementMessageUsage(
 }
 
 /**
+ * Platform-SMS fallback usage lives on the SAME TenantUsage row as message
+ * usage (one row per tenant per cycle). It used to be bucketed by calendar
+ * month, which created a second row per tenant and skewed admin numbers.
+ * Old YYYY-MM rows are left in place; they are simply never read again.
+ */
+export async function incrementPlatformSmsUsage(
+    prisma: AnyPrismaClient,
+    tenantId: string,
+): Promise<void> {
+    const anchor = await loadCycleAnchor(prisma, tenantId);
+    if (!anchor) return;
+    const month = currentCycleKey(anchor);
+    await prisma.tenantUsage.upsert({
+        where: { tenantId_month: { tenantId, month } },
+        create: { tenantId, month, platformSmsCount: 1 },
+        update: { platformSmsCount: { increment: 1 } },
+    });
+}
+
+export async function getPlatformSmsCount(
+    prisma: AnyPrismaClient,
+    tenantId: string,
+): Promise<number> {
+    const anchor = await loadCycleAnchor(prisma, tenantId);
+    if (!anchor) return 0;
+    const row = await prisma.tenantUsage.findUnique({
+        where: { tenantId_month: { tenantId, month: currentCycleKey(anchor) } },
+        select: { platformSmsCount: true },
+    });
+    return row?.platformSmsCount ?? 0;
+}
+
+/**
  * Convenience helper used by every outbound send site: resolve the tenant's
  * effective plan (running the subscription evaluator first so an expired
  * trial or lapsed PAST_DUE has been demoted before we count quota) and then

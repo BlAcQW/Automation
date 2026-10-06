@@ -23,6 +23,7 @@ import { refundTransaction } from './paystack.js';
 import { resolveCollectionRoute } from './collection-route.js';
 import { postMovement, refreshCachedBalances, refundIssued } from './ledger.js';
 import { pendingFromEntries } from './wallet-clearing.js';
+import { raiseAlert } from './alerts.js';
 
 export interface RefundDepositArgs {
     prisma: ExtendedPrismaClient;
@@ -125,6 +126,14 @@ export async function refundDepositForBooking(
             { err, bookingId, reference: booking.paymentReference },
             'Salon cancelled a paid booking but the refund FAILED — customer is owed money',
         );
+        await raiseAlert(prisma, {
+            kind: 'refund.provider_failed',
+            severity: 'critical',
+            tenantId,
+            message: 'A paid booking was cancelled but the Paystack refund failed; the customer is owed money.',
+            context: { bookingId, reference: booking.paymentReference },
+            dedupeKey: `refund.provider_failed:${bookingId}`,
+        });
         return { refunded: false, reason: 'provider_failed' };
     }
 

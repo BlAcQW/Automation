@@ -1,3 +1,4 @@
+import { raiseAlert } from '../../services/alerts.js';
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { config } from '../../config/index.js';
@@ -9,7 +10,9 @@ import { deriveBalances, readWalletCurrency } from '../../services/ledger.js';
 import {
     initiateTransfer,
     markPayoutFailed,
+    reportTransferUncertain,
     TransferRejectedError,
+    TransferUncertainError,
 } from '../../services/payout-transfer.js';
 import {
     createWithdrawal,
@@ -299,23 +302,52 @@ const moneyRoutes: FastifyPluginAsync = async (fastify) => {
                     // without trusting anything the provider echoes back.
                     reference: created.payoutId,
                 });
-                await fastify.prisma.payoutRequest.update({
-                    where: { id: created.payoutId },
+                await fastify.prisma.payoutRequest.updateMany({
+                    where: { id: created.payoutId, tenantId },
                     data: { status: 'PROCESSING', providerRef: transfer.transferCode },
                 });
             } catch (err) {
                 // Only give the money back when Paystack definitively refused.
                 if (err instanceof TransferRejectedError) {
                     fastify.log.warn({ err, payoutId: created.payoutId }, 'Transfer rejected by Paystack');
-                    await markPayoutFailed({
-                        prisma: fastify.prisma,
-                        payoutId: created.payoutId,
-                        failureReason: 'We could not send the transfer. Your money is back in your balance.',
-                        logger: fastify.log,
-                    }).catch(() => undefined);
+                    let reversed = true;
+                    try {
+                        await markPayoutFailed({
+                            prisma: fastify.prisma,
+                            payoutId: created.payoutId,
+                            tenantId,
+                            failureReason: 'We could not send the transfer. Your money is back in your balance.',
+                            logger: fastify.log,
+                        });
+                    } catch (reverseErr) {
+                        // Never tell the owner their money is back when it
+                        // isn't. Page a human to reconcile instead.
+                        reversed = false;
+                        fastify.log.error({ err: reverseErr, payoutId: created.payoutId }, 'Reversal of rejected transfer FAILED');
+                        await raiseAlert(fastify.prisma, {
+                            kind: 'payout.reversal_failed',
+                            severity: 'critical',
+                            tenantId,
+                            message: 'A rejected transfer could not be returned to the balance — reconcile by hand.',
+                            context: { payoutId: created.payoutId },
+                            dedupeKey: `payout.reversal_failed:${created.payoutId}`,
+                        });
+                    }
                     throw fastify.httpErrors.badGateway(
-                        'We could not send that right now. Your money is back in your balance — please try again.',
+                        reversed
+                            ? 'We could not send that right now. Your money is back in your balance — please try again.'
+                            : 'We could not send that right now. We are checking your balance — please do not try again yet.',
                     );
+                }
+
+                // Page a human: this payout needs reconciling against Paystack.
+                if (err instanceof TransferUncertainError) {
+                    await reportTransferUncertain({
+                        prisma: fastify.prisma,
+                        tenantId,
+                        payoutId: created.payoutId,
+                        detail: err.detail,
+                    }).catch(() => undefined);
                 }
 
                 // Anything else — a timeout, a 5xx, a reply we could not read
@@ -359,9 +391,18 @@ const moneyRoutes: FastifyPluginAsync = async (fastify) => {
             if (err instanceof WithdrawalConflictError) {
                 throw fastify.httpErrors.conflict(err.message);
             }
+            // The transfer branch above already chose its answer (502
+            // rejected, 504 outcome unknown). Flattening that into "nothing
+            // has left your balance — try again" is false in the unknown case
+            // and invites a second, double-paying withdrawal.
+            if (typeof (err as { statusCode?: unknown })?.statusCode === 'number') {
+                throw err;
+            }
             fastify.log.error({ err, tenantId }, 'Withdrawal failed unexpectedly');
+            // Unknown failure — possibly after the transfer was accepted (e.g.
+            // the audit write). Don't promise the money is untouched.
             throw fastify.httpErrors.internalServerError(
-                'We could not start that withdrawal. Nothing has left your balance — please try again.',
+                'We could not confirm that withdrawal. Check your balance before trying again.',
             );
         }
     });

@@ -26,6 +26,7 @@ import {
     refreshCachedBalances,
 } from './ledger.js';
 import { createNotification } from './notifications.js';
+import { raiseAlert } from './alerts.js';
 
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
@@ -124,7 +125,19 @@ export async function initiateTransfer(args: {
 export interface SettleArgs {
     prisma: ExtendedPrismaClient;
     payoutId: string;
+    /**
+     * REQUIRED when called from an authenticated request (e.g. the withdraw
+     * route reversing a rejected transfer): every payout query is then scoped
+     * to it, and the tenant guard would otherwise block the reversal. Omitted
+     * only by the Paystack webhook, which runs without tenant context.
+     */
+    tenantId?: string;
     logger?: FastifyBaseLogger;
+}
+
+/** Payout where-clause, tenant-scoped whenever the caller knows the tenant. */
+function payoutWhere(args: SettleArgs): { id: string; tenantId?: string } {
+    return args.tenantId ? { id: args.payoutId, tenantId: args.tenantId } : { id: args.payoutId };
 }
 
 /**
@@ -140,9 +153,9 @@ export interface SettleArgs {
  *   2. payout ids are cuids, so they cannot be guessed.
  *
  * They are therefore safe because of WHERE they are called from, not because
- * of what they check. Calling either from an authenticated route would be a
- * cross-tenant hole: tenant A could settle or reverse tenant B's payout by id.
- * If you need that, add a tenantId argument and filter on it.
+ * of what they check. An authenticated caller MUST pass `tenantId`, which
+ * scopes every query below; without it tenant A could settle or reverse
+ * tenant B's payout by id (and the tenant guard blocks the attempt).
  */
 
 /**
@@ -158,13 +171,13 @@ export async function markPayoutPaid(args: SettleArgs): Promise<{ applied: boole
         // Atomic claim — only the first delivery of a retried webhook does
         // the work, so the ledger cannot be written twice.
         const claimed = await client.payoutRequest.updateMany({
-            where: { id: payoutId, status: { in: ['REQUESTED', 'PROCESSING'] } },
+            where: { ...payoutWhere(args), status: { in: ['REQUESTED', 'PROCESSING'] } },
             data: { status: 'PAID', settledAt: new Date() },
         });
         if (claimed.count === 0) return { applied: false };
 
         const payout = await client.payoutRequest.findUnique({
-            where: { id: payoutId },
+            where: payoutWhere(args),
             select: { tenantId: true, walletId: true, amountMinor: true, currency: true },
         });
         if (!payout) return { applied: false };
@@ -198,7 +211,7 @@ export async function markPayoutFailed(
         const client = tx as ExtendedPrismaClient;
 
         const claimed = await client.payoutRequest.updateMany({
-            where: { id: payoutId, status: { in: ['REQUESTED', 'PROCESSING'] } },
+            where: { ...payoutWhere(args), status: { in: ['REQUESTED', 'PROCESSING'] } },
             data: {
                 status: 'FAILED',
                 failureReason: args.failureReason ?? 'The transfer did not go through.',
@@ -207,7 +220,7 @@ export async function markPayoutFailed(
         if (claimed.count === 0) return { applied: false, tenantId: null, amountMinor: 0, currency: 'GHS' };
 
         const payout = await client.payoutRequest.findUnique({
-            where: { id: payoutId },
+            where: payoutWhere(args),
             select: { tenantId: true, walletId: true, amountMinor: true, currency: true },
         });
         if (!payout) return { applied: false, tenantId: null, amountMinor: 0, currency: 'GHS' };
@@ -234,6 +247,14 @@ export async function markPayoutFailed(
     // Say so out loud. Money that quietly failed to arrive is the single
     // worst silence in the product.
     if (result.applied && result.tenantId) {
+        await raiseAlert(prisma, {
+            kind: 'payout.failed',
+            severity: 'critical',
+            tenantId: result.tenantId,
+            message: `A payout of ${result.currency} ${(result.amountMinor / 100).toFixed(2)} failed or was reversed and the funds were returned to the tenant.`,
+            context: { payoutId, failureReason: args.failureReason ?? null },
+            dedupeKey: `payout.failed:${payoutId}`,
+        });
         await createNotification(
             prisma,
             {
@@ -248,4 +269,25 @@ export async function markPayoutFailed(
     }
 
     return { applied: result.applied };
+}
+
+/**
+ * A transfer whose outcome we cannot know (timeout, 5xx, unparseable reply).
+ * The payout stays in flight on purpose, so a human must reconcile it against
+ * Paystack. Call this wherever TransferUncertainError is caught.
+ */
+export async function reportTransferUncertain(args: {
+    prisma: ExtendedPrismaClient;
+    tenantId: string;
+    payoutId: string;
+    detail: string;
+}): Promise<void> {
+    await raiseAlert(args.prisma, {
+        kind: 'payout.uncertain',
+        severity: 'critical',
+        tenantId: args.tenantId,
+        message: 'A payout transfer has an unknown outcome; reconcile with Paystack before retrying.',
+        context: { payoutId: args.payoutId, detail: args.detail },
+        dedupeKey: `payout.uncertain:${args.payoutId}`,
+    });
 }

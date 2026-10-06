@@ -12,7 +12,13 @@ import { PrismaClient, TemplatePurpose } from '@prisma/client';
 import { QUEUE_NAMES, NotificationJob, ReminderJob } from '../plugins/redis.js';
 import { decrypt } from './crypto.js';
 import { sendTemplateMessage } from './whatsapp-templates.js';
-import { tryReserveOutbound, rollbackOutboundReservation } from './usage.js';
+import {
+    tryReserveOutbound,
+    rollbackOutboundReservation,
+    incrementPlatformSmsUsage,
+    getPlatformSmsCount,
+} from './usage.js';
+import { raiseAlert } from './alerts.js';
 import { getWhatsappCredentials } from './whatsapp-credentials.js';
 import { sendSms } from './arkesel.js';
 import { resolveSmsRoute, withinSmsBudget, DEFAULT_MONTHLY_SMS_BUDGET } from './sms-route.js';
@@ -290,26 +296,13 @@ async function trySmsFallback(args: {
     return res.ok ? 'sent' : 'send_failed';
 }
 
-/** Current cycle key, matching how message usage is bucketed. */
-function smsCycleKey(now = new Date()): string {
-    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
+// Platform-SMS metering shares the message cycle row; see usage.ts.
 async function currentPlatformSmsCount(tenantId: string): Promise<number> {
-    const row = await prisma.tenantUsage.findUnique({
-        where: { tenantId_month: { tenantId, month: smsCycleKey() } },
-        select: { platformSmsCount: true },
-    });
-    return row?.platformSmsCount ?? 0;
+    return getPlatformSmsCount(prisma, tenantId);
 }
 
 async function countPlatformSms(tenantId: string): Promise<void> {
-    const month = smsCycleKey();
-    await prisma.tenantUsage.upsert({
-        where: { tenantId_month: { tenantId, month } },
-        create: { tenantId, month, platformSmsCount: 1 },
-        update: { platformSmsCount: { increment: 1 } },
-    });
+    await incrementPlatformSmsUsage(prisma, tenantId);
 }
 
 interface EmailFallbackResult {
@@ -350,6 +343,14 @@ async function tryEmailFallback(args: {
             { purpose: args.purpose, tenantId: args.tenantId },
             'Email fallback: unknown purpose, cannot determine which entity to look up',
         );
+        await raiseAlert(prisma, {
+            kind: 'notification.unknown_purpose',
+            severity: 'warning',
+            tenantId: args.tenantId,
+            message: `Notification purpose ${String(args.purpose)} has no entity mapping; email fallback skipped.`,
+            context: { purpose: String(args.purpose) },
+            dedupeKey: `notification.unknown_purpose:${String(args.purpose)}`,
+        });
         return { outcome: 'no_email' };
     }
     const customerEmail =

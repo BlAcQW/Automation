@@ -6,6 +6,9 @@ vi.mock('../lib/logger.js', () => ({
     logger: {},
 }));
 
+const raise = vi.hoisted(() => vi.fn());
+vi.mock('./alerts.js', () => ({ raiseAlert: raise }));
+
 import { ensureWallet, readWalletCurrency } from './ledger.js';
 
 function makeTx(opts: { wallet?: { id: string; currency: string } | null; tenantCurrency?: string | null }) {
@@ -22,7 +25,7 @@ function makeTx(opts: { wallet?: { id: string; currency: string } | null; tenant
     } as any;
 }
 
-beforeEach(() => errorLog.mockClear());
+beforeEach(() => { errorLog.mockClear(); raise.mockClear(); });
 
 describe('ensureWallet', () => {
     it('returns the existing wallet without creating one', async () => {
@@ -46,6 +49,20 @@ describe('ensureWallet', () => {
         const tx = makeTx({ tenantCurrency: 'NGN' });
         const w = await ensureWallet(tx, 't1');
         expect(w.currency).toBe('NGN');
+    });
+
+    it('raises a critical alert on a currency mismatch, none otherwise', async () => {
+        const mismatch = makeTx({ wallet: { id: 'w1', currency: 'GHS' } });
+        await ensureWallet(mismatch, 't1', 'NGN');
+        expect(raise).toHaveBeenCalledWith(mismatch, expect.objectContaining({
+            kind: 'wallet.currency_mismatch',
+            severity: 'critical',
+            tenantId: 't1',
+            dedupeKey: 'wallet.currency_mismatch:t1:NGN',
+        }));
+        raise.mockClear();
+        await ensureWallet(makeTx({ wallet: { id: 'w1', currency: 'GHS' } }), 't1', 'GHS');
+        expect(raise).not.toHaveBeenCalled();
     });
 
     it('logs at error and keeps the existing currency on a mismatch', async () => {

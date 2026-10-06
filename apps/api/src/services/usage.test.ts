@@ -9,6 +9,8 @@ import {
     checkOutboundQuota,
     evaluateSubscription,
     tryReserveOutbound,
+    incrementPlatformSmsUsage,
+    getPlatformSmsCount,
 } from './usage';
 import { getPlan, PLAN_CATALOG } from './plans';
 
@@ -374,5 +376,60 @@ describe('monthlyMessageQuotaOverride', () => {
         const out = await tryReserveOutbound(prisma, 't1');
         expect(out.limit).toBe(3);
         expect(prisma.tenantUsage.updateMany.mock.calls[0][0].where.messageCount).toEqual({ lt: 3 });
+    });
+});
+
+describe('platform SMS metering shares the message cycle key', () => {
+    const anchor = new Date('2026-05-12T10:00:00Z');
+    const tenantRow = { quotaCycleStart: anchor, createdAt: anchor };
+
+    it('increments platformSmsCount on the same [tenantId, month] row as messageCount', async () => {
+        const upsert = vi.fn().mockResolvedValue({ messageCount: 1 });
+        const findUnique = vi.fn().mockResolvedValue({ messageCount: 3, platformSmsCount: 0 });
+        const prisma = {
+            tenant: { findUnique: vi.fn().mockResolvedValue(tenantRow) },
+            tenantUsage: { upsert, updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUnique },
+        } as any;
+
+        await incrementMessageUsage(prisma, 't1');
+        await incrementPlatformSmsUsage(prisma, 't1');
+
+        const msgKey = upsert.mock.calls[0][0].where.tenantId_month;
+        const smsCall = upsert.mock.calls[1][0];
+        expect(smsCall.where.tenantId_month).toEqual(msgKey);
+        expect(smsCall.where.tenantId_month.month).toBe(currentCycleKey(tenantRow));
+        expect(smsCall.create).toMatchObject({ tenantId: 't1', month: msgKey.month, platformSmsCount: 1 });
+        expect(smsCall.update).toEqual({ platformSmsCount: { increment: 1 } });
+    });
+
+    it('does not use the calendar-month key', async () => {
+        const upsert = vi.fn().mockResolvedValue({});
+        const prisma = {
+            tenant: { findUnique: vi.fn().mockResolvedValue(tenantRow) },
+            tenantUsage: { upsert },
+        } as any;
+        await incrementPlatformSmsUsage(prisma, 't1');
+        expect(upsert.mock.calls[0][0].where.tenantId_month.month).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('reads the count from the current cycle row, 0 when absent', async () => {
+        const findUnique = vi.fn().mockResolvedValueOnce({ platformSmsCount: 4 }).mockResolvedValueOnce(null);
+        const prisma = {
+            tenant: { findUnique: vi.fn().mockResolvedValue(tenantRow) },
+            tenantUsage: { findUnique },
+        } as any;
+        expect(await getPlatformSmsCount(prisma, 't1')).toBe(4);
+        expect(findUnique.mock.calls[0][0].where.tenantId_month.month).toBe(currentCycleKey(tenantRow));
+        expect(await getPlatformSmsCount(prisma, 't1')).toBe(0);
+    });
+
+    it('returns 0 / no-ops for a missing tenant', async () => {
+        const prisma = {
+            tenant: { findUnique: vi.fn().mockResolvedValue(null) },
+            tenantUsage: { upsert: vi.fn(), findUnique: vi.fn() },
+        } as any;
+        expect(await getPlatformSmsCount(prisma, 'ghost')).toBe(0);
+        await incrementPlatformSmsUsage(prisma, 'ghost');
+        expect(prisma.tenantUsage.upsert).not.toHaveBeenCalled();
     });
 });

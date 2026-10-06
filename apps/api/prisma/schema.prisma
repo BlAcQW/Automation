@@ -421,6 +421,21 @@ model Message {
   billingCategory String?
   /// False for messages inside a free allowance or free entry-point window.
   billable        Boolean?
+  /// INBOUND only: set once the turn for this message completed normally
+  /// (including deliberate no-reply outcomes). Null = stored but not yet
+  /// answered, so a retry must run the turn instead of deduping it away.
+  handledAt       DateTime?
+  /// OUTBOUND agent replies only (outbox): the INBOUND message this answers.
+  /// Plain id, no FK: it is only ever looked up, never joined.
+  replyToId       String?
+  /// OUTBOUND agent replies only: PENDING (stored, send not confirmed),
+  /// SENT, or SUPPRESSED (quota / no channel: deliberately not sent). Null for
+  /// every other message. Separate from `status`, which is Meta's delivery
+  /// receipt and only exists after a successful send.
+  sendState       String?
+  /// When the current sender claimed this reply (sendState SENDING). A claim
+  /// older than SEND_CLAIM_STALE_MS is presumed abandoned and may be taken over.
+  sendClaimedAt   DateTime?
   createdAt       DateTime       @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -434,6 +449,7 @@ model Message {
   @@unique([conversationId, whatsappMsgId])
   @@index([conversationId])
   @@index([createdAt])
+  @@index([replyToId])
 }
 
 enum Direction {
@@ -951,5 +967,50 @@ model Customer {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, phone])
+  @@index([tenantId])
+}
+
+// Durable store for raw inbound webhooks (platform-level, no tenantId).
+// Exists because acking the provider before processing lost messages when the
+// process crashed or was redeployed mid-handling: the provider considered the
+// delivery done and never retried. We persist first, ack, then process.
+model WebhookInbox {
+  id            String    @id @default(cuid())
+  source        String // e.g. "META"
+  payload       Json
+  status        String    @default("PENDING") // PENDING | PROCESSING | DONE | FAILED
+  attempts      Int       @default(0)
+  lastError     String?
+  receivedAt    DateTime  @default(now())
+  processedAt   DateTime?
+  /// Set when a worker claims the row. Stuck-PROCESSING detection measures from
+  /// here, not receivedAt, so a slow-but-live turn is not mistaken for a crash.
+  claimedAt     DateTime?
+  /// Earliest time the sweep may re-dispatch a PENDING row (retry backoff).
+  nextAttemptAt DateTime?
+
+  @@index([status, receivedAt])
+  @@index([status, nextAttemptAt])
+  @@index([status, claimedAt])
+}
+
+// Things a human must look at. tenantId is null for platform-wide alerts.
+// Deliberately NO FK to Tenant: alerts survive tenant removal (like AuditLog).
+// Repeats of the same condition upsert on dedupeKey and bump count.
+model PlatformAlert {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  kind        String
+  severity    String // info | warning | critical
+  message     String
+  context     Json?
+  dedupeKey   String    @unique
+  count       Int       @default(1)
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+
+  @@index([resolvedAt, severity, lastSeenAt])
   @@index([tenantId])
 }

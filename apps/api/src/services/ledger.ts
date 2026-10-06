@@ -32,6 +32,7 @@
 import type { LedgerAccount, LedgerReason, PrismaClient } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { scoped } from '../lib/logger.js';
+import { raiseAlert } from './alerts.js';
 
 export type AnyPrismaClient = PrismaClient | ExtendedPrismaClient;
 
@@ -402,7 +403,7 @@ export async function refreshCachedBalances(
 ): Promise<WalletBalances> {
     const balances = await deriveBalances(tx, tenantId);
     await tx.wallet.update({
-        where: { id: walletId },
+        where: { id: walletId, tenantId },
         data: {
             cachedAvailableMinor: balances.availableMinor,
             cachedPendingMinor: balances.pendingMinor,
@@ -456,6 +457,14 @@ export async function ensureWallet(
                 { tenantId, walletId: existing.id, walletCurrency: existing.currency, requestedCurrency: currency },
                 'Wallet currency mismatch: keeping the existing wallet currency',
             );
+            await raiseAlert(tx as never, {
+                kind: 'wallet.currency_mismatch',
+                severity: 'critical',
+                tenantId,
+                message: `Wallet is ${existing.currency} but a ${currency} movement was requested; kept ${existing.currency}.`,
+                context: { walletId: existing.id, walletCurrency: existing.currency, requestedCurrency: currency },
+                dedupeKey: `wallet.currency_mismatch:${tenantId}:${currency}`,
+            });
         }
         return existing;
     }

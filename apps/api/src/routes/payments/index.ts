@@ -6,6 +6,7 @@ import { audit } from '../../services/audit.js';
 import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
 import { dispatchFulfillment } from '../../services/payment-fulfillers.js';
 import { markPayoutFailed, markPayoutPaid } from '../../services/payout-transfer.js';
+import { raiseAlert } from '../../services/alerts.js';
 import {
     initializeTransaction,
     verifyTransaction,
@@ -144,6 +145,15 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             targetType: 'PaystackCharge',
             targetId: report.targetId,
             metadata: report.metadata,
+        });
+        await raiseAlert(fastify.prisma, {
+            kind: 'payment.unattributed',
+            severity: 'critical',
+            tenantId: input.tenantId,
+            message: `Verified Paystack charge could not be attributed (${reason}).`,
+            context: { reference: input.reference, reason, amount: input.amount, currency: input.currency },
+            // Tenant in the key: two tenants' charges sharing a reference stay separate.
+            dedupeKey: `payment.unattributed:${input.tenantId}:${String(input.reference)}`,
         });
     }
 
@@ -316,8 +326,8 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             throw err;
         }
 
-        await fastify.prisma.order.update({
-            where: { id: order.id },
+        await fastify.prisma.order.updateMany({
+            where: { id: order.id, tenantId },
             data: {
                 paymentReference: result.reference,
                 paymentAuthorizationUrl: result.authorizationUrl,
@@ -420,8 +430,8 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             throw err;
         }
 
-        await fastify.prisma.booking.update({
-            where: { id: booking.id },
+        await fastify.prisma.booking.updateMany({
+            where: { id: booking.id, tenantId },
             data: {
                 paymentReference: result.reference,
                 paymentAuthorizationUrl: result.authorizationUrl,

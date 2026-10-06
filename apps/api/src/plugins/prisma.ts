@@ -73,6 +73,14 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
     'WebhookDelivery',
     'SupportSession',
     'BillingTerms',
+    // RIDES pack (TURBO)
+    'RideSettings',
+    'RideDestination',
+    'Driver',
+    'RidePass',
+    'RidePassEntry',
+    'Ride',
+    'PaygDay',
 ]);
 
 export { hasTenantFilter };

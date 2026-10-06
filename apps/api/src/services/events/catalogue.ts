@@ -61,6 +61,21 @@ export const EVENT_TYPES = Object.freeze({
         conversationId: 'string', customerId: 'string | null',
         vars: 'object (values the flow collected, from an allowlist derived from the definition: menu set values, choose value/label/attrs, declared produces; never free-text ask answers, locations, payment url/reference or phone)',
     }),
+    'ride.requested': doc('A ride was requested (a package ride booked, or a PAYG ride paid)', {
+        rideId: 'string', ref: 'string (customer-facing, e.g. TR-7K2Q9M)', kind: "'PACKAGE' | 'PAYG'", customerId: 'string',
+        distanceKm: 'number (estimated road distance)', fare: 'number (minor units; 0 for package rides)', currency: 'string',
+        source: "'WHATSAPP' | 'APP' | 'CONSOLE'",
+    }),
+    'ride.assigned': doc('A driver was assigned to a ride', {
+        rideId: 'string', ref: 'string', kind: "'PACKAGE' | 'PAYG'", customerId: 'string', driverId: 'string',
+    }),
+    'ride.completed': doc('A ride was marked completed (a package ride deducts one ride here, once)', {
+        rideId: 'string', ref: 'string', kind: "'PACKAGE' | 'PAYG'", customerId: 'string', passId: 'string | null',
+        ridesRemaining: 'number | null (package balance after this ride; null for PAYG)',
+    }),
+    'ride_pass.activated': doc('A ride package was activated by a verified payment', {
+        passId: 'string', customerId: 'string', rides: 'number', expiresAt: 'ISO date', reference: 'string (payment reference)',
+    }),
 } as const satisfies Record<string, EventTypeDoc>);
 
 export type EventType = keyof typeof EVENT_TYPES;

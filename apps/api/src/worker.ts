@@ -18,6 +18,7 @@ import redisPlugin from './plugins/redis.js';
 import { processWebhook } from './routes/whatsapp/index.js';
 import { registerExternalAppFulfiller } from './services/external-app.js';
 import { registerFlowPaymentFulfiller } from './services/flow-payments.js';
+import { registerRidesPack } from './services/rides/index.js';
 import { startTasks, installDeliveryDispatcher } from './background/tasks.js';
 import { installRealtimeForwarder } from './background/realtime-bridge.js';
 import { assertRoleRequirements } from './lib/process-role.js';
@@ -52,6 +53,7 @@ export async function startWorker(opts: WorkerOptions = { redisUrl: config.redis
     // payment from an inbound message processed here.
     registerExternalAppFulfiller();
     registerFlowPaymentFulfiller();
+    registerRidesPack(app.prisma);
 
     const uninstallDispatcher = installDeliveryDispatcher({ prisma: app.prisma, log: app.log, queues: app.queues });
     const uninstallForwarder = installRealtimeForwarder(app.redis!);

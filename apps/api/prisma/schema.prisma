@@ -137,6 +137,13 @@ model Tenant {
   webhookSubscriptions WebhookSubscription[]
   supportSessions      SupportSession[]
   billingTerms         BillingTerms?
+  rideSettings         RideSettings?
+  rideDestinations     RideDestination[]
+  drivers              Driver[]
+  ridePasses           RidePass[]
+  ridePassEntries      RidePassEntry[]
+  rides                Ride[]
+  paygDays             PaygDay[]
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -1030,6 +1037,8 @@ model Customer {
   conversations Conversation[]
   bookings      Booking[]
   orders        Order[]
+  ridePasses    RidePass[]
+  rides         Ride[]
 
   @@unique([tenantId, phone])
   @@index([tenantId])
@@ -1273,4 +1282,239 @@ model BillingTerms {
   updatedAt       DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// RIDES PACK (TURBO) — passes, balance log, rides, drivers, PAYG capacity
+// ============================================
+// Money is integer minor units (pesewas), like BillingTerms. Every model is
+// tenant-scoped and registered in TENANT_SCOPED_MODELS (plugins/prisma.ts).
+
+/// One per tenant. Absent = the defaults below (services/rides/settings.ts).
+model RideSettings {
+  id                String   @id @default(cuid())
+  tenantId          String   @unique
+  currency          String   @default("GHS")
+  /// Founding package
+  packagePriceMinor Int      @default(96000)
+  packageRides      Int      @default(60)
+  validityDays      Int      @default(60)
+  maxKm             Float    @default(6)
+  foundingCap       Int      @default(50)
+  /// A slot is held this long while the customer pays.
+  holdMinutes       Int      @default(30)
+  /// Pay-as-you-go
+  paygOpen          Boolean  @default(true)
+  paygDailyLimit    Int      @default(10)
+  /// [{ "upToKm": 6, "fareMinor": 2500 }, ...] ascending; further is not offered.
+  paygFares         Json     @default("[{\"upToKm\":6,\"fareMinor\":2500},{\"upToKm\":10,\"fareMinor\":3500}]")
+  /// Straight-line distance x this = the estimated road distance.
+  roadFactor        Float    @default(1.3)
+  /// Tell the driver by SMS when assigned.
+  driverSms         Boolean  @default(false)
+  timezone          String   @default("Africa/Accra")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+/// The tenant's saved places, offered as a numbered list for the destination.
+model RideDestination {
+  id        String   @id @default(cuid())
+  tenantId  String
+  label     String
+  latitude  Float
+  longitude Float
+  active    Boolean  @default(true)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active, sort])
+}
+
+/// Drivers are deactivated, never deleted (rides keep pointing at them).
+model Driver {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  phone     String
+  vehicle   String
+  plate     String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rides  Ride[]
+
+  @@index([tenantId, active])
+}
+
+enum RidePassStatus {
+  HELD // slot held while the customer pays (holdExpiresAt)
+  ACTIVE // paid and activated
+  EXPIRED // validity ran out
+  CANCELLED // hold lapsed, or a payment that could not be honoured (see cancelReason)
+}
+
+/// A ride package. Activated ONLY by a verified payment (ride_package fulfiller).
+/// The balance is never stored: it is SUM(RidePassEntry.delta).
+model RidePass {
+  id                       String         @id @default(cuid())
+  tenantId                 String
+  customerId               String
+  /// The WhatsApp conversation that bought it (flow advance + replies). Null from the app.
+  conversationId           String?
+  status                   RidePassStatus @default(HELD)
+  /// Terms frozen at purchase time.
+  ridesTotal               Int
+  validityDays             Int
+  maxKm                    Float
+  priceMinor               Int
+  currency                 String
+  holdExpiresAt            DateTime?
+  activatedAt              DateTime?
+  expiresAt                DateTime?
+  /// The latest payment link's reference while unpaid; the PAID reference once paid.
+  paymentReference         String?        @unique
+  paidAt                   DateTime?
+  paidAmountMinor          Int?
+  /// Paystack's transaction id and channel (mobile_money, card) for the paid charge.
+  providerTransactionId    String?
+  paymentChannel           String?
+  cancelledAt              DateTime?
+  /// hold_expired | cap_full_after_hold | duplicate_purchase | ...
+  cancelReason             String?
+  /// Each reminder goes out once (claimed by setting the column).
+  expiryReminderSentAt     DateTime?
+  lowBalanceReminderSentAt DateTime?
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  entries  RidePassEntry[]
+  rides    Ride[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([status, holdExpiresAt])
+  @@index([status, expiresAt])
+}
+
+enum RidePassEntryType {
+  PURCHASE // +ridesTotal on activation
+  RIDE // -1 when a ride is COMPLETED (rideId unique: at most once per ride)
+  EXPIRY // -remaining when the pass expires
+  ADJUSTMENT
+}
+
+/// Append-only balance log, like the money ledger. Never updated or deleted.
+model RidePassEntry {
+  id        String            @id @default(cuid())
+  tenantId  String
+  passId    String
+  type      RidePassEntryType
+  delta     Int
+  /// RIDE entries only. UNIQUE: a ride deducts at most once.
+  rideId    String?           @unique
+  /// PURCHASE entries: the payment reference.
+  reference String?
+  note      String?
+  createdAt DateTime          @default(now())
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pass   RidePass @relation(fields: [passId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, passId])
+}
+
+enum RideKind {
+  PACKAGE
+  PAYG
+}
+
+enum RideStatus {
+  PENDING_PAYMENT // PAYG: link sent, capacity reserved, not paid yet
+  REQUESTED
+  ASSIGNED
+  EN_ROUTE
+  COMPLETED
+  CANCELLED
+}
+
+model Ride {
+  id               String     @id @default(cuid())
+  tenantId         String
+  /// Short customer-facing reference, e.g. TR-7K2Q9M.
+  ref              String
+  kind             RideKind
+  status           RideStatus
+  customerId       String
+  conversationId   String?
+  passId           String?
+  driverId         String?
+  pickupLabel      String
+  pickupLat        Float
+  pickupLng        Float
+  destinationLabel String
+  destinationLat   Float
+  destinationLng   Float
+  destinationId    String?
+  /// Estimated road distance (straight line x roadFactor).
+  distanceKm       Float
+  /// PAYG fare; 0 for package rides (paid with a ride credit).
+  fareMinor        Int        @default(0)
+  currency         String
+  /// PAYG: latest link reference while unpaid, the PAID reference once paid.
+  paymentReference String?    @unique
+  /// PAYG: unpaid by then = cancelled and the capacity released.
+  paymentExpiresAt DateTime?
+  paidAt           DateTime?
+  paidAmountMinor  Int?
+  /// Paystack's transaction id and channel (mobile_money, card) for the paid charge.
+  providerTransactionId String?
+  paymentChannel   String?
+  /// PAYG: the YYYY-MM-DD (tenant timezone) whose capacity this ride holds.
+  paygDay          String?
+  /// WHATSAPP | APP | CONSOLE
+  source           String     @default("WHATSAPP")
+  requestedAt      DateTime   @default(now())
+  assignedAt       DateTime?
+  enRouteAt        DateTime?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  pass     RidePass? @relation(fields: [passId], references: [id], onDelete: SetNull)
+  driver   Driver?   @relation(fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, ref])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, customerId, createdAt])
+  @@index([status, paymentExpiresAt])
+}
+
+/// PAYG capacity counter per tenant per local day. Reserved atomically
+/// (UPDATE ... WHERE used < limit), released when an unpaid ride expires.
+model PaygDay {
+  id        String   @id @default(cuid())
+  tenantId  String
+  /// YYYY-MM-DD in the tenant's ride timezone.
+  day       String
+  used      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, day])
 }

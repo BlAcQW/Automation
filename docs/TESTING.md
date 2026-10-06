@@ -98,6 +98,8 @@ fails immediately with `REFUSING TO RUN THE DB TESTS`.
 | `tenant-guard.dbtest.ts` | On the real engine: an unscoped query throws inside a bound tenant context (also inside `$transaction`, across awaits and interleaved tenants), a scoped one works, admin and no-context are allowed. |
 | `events.dbtest.ts` | `publishEventOnce`: concurrent publishes write one row and one delivery per subscription; different tenants may reuse a key. |
 | `usage.dbtest.ts` | `tryReserveOutbound` respects the cap exactly under concurrency; rollbacks never go negative. |
+| `rides.dbtest.ts` | RIDES pack races: customers racing for the 50th Founding slot (one wins); eight concurrent deliveries of one payment activate once (one +60 entry); late payment after the hold lapsed with the cap full is recorded and alerted, not activated; a double COMPLETED deducts once (60 -> 59, UNIQUE(rideId)); concurrent same-driver assigns change once; concurrent PAYG past the daily limit gets exactly `limit` seats and the sweep returns unpaid ones; expiry (EXPIRY entry) and once-only reminders; every console query on the real schema inside a tenant context. |
+| `rides-journey.dbtest.ts` | E1: TURBO's whole WhatsApp journey through the production turn handler, the real flow, payment preparers, webhook dispatch + fulfillers, console routes (real auth plugin) and `/v1/rides` (real API key): Hi -> buy -> pay -> activate -> book -> assign -> complete -> balance 59 -> history -> PAYG -> capacity limit -> app booking. Paystack, the WhatsApp send and SMS/email are mocked. |
 | `sweep-*.dbtest.ts` | Column-existence sweep (below). |
 | `guard.dbtest.ts`, `blind-spots.dbtest.ts` | The safety guard and the static blind-spot scan. |
 
@@ -148,8 +150,8 @@ Add the file to the table with how it is covered.
 | `services/events/publish.ts` | 7 | `prisma: any, tx: any` throughout | Covered (`events`, `fulfillment`, `sweep-*`): rows, fan-out, dedupeKey. |
 | `services/external-app.ts` | 2 | `withAdvisoryLock(... tx: any)` | Covered (`sweep-flows-events`). `fulfillExternalAppPayment` is not. |
 | `services/flow-events.ts` | 1 | `emitFlowCompleted(prisma: unknown, ...)` | Covered (`sweep-orders-admin`). |
-| `services/flow-payments.ts` | 1 | `loadConversation(prisma: any, ...)` and the flow_payment fulfiller | NOT covered. Needs a test that drives `fulfillFlowPayment` end to end. |
-| `services/flow-ports.ts` | 2 | `prisma: any` in `FlowPortsDeps` | `enqueueStaff` covered (`sweep-flows-events`). `createPaymentLink` is not (needs a Paystack double). |
+| `services/flow-payments.ts` | 1 | `loadConversation(prisma: any, ...)` and the flow_payment fulfiller | `advanceFlowOnPackPayment` (pack kinds) covered end to end (`rides-journey`). `fulfillFlowPayment` itself is NOT covered. |
+| `services/flow-ports.ts` | 3 | `prisma: any` in `FlowPortsDeps` and in `FlowPaymentPrepareInput` (pack payment preparers) | `enqueueStaff` covered (`sweep-flows-events`). `createPaymentLink` with a preparer (ride_package / ride_payg) covered end to end with a Paystack double (`rides-journey`); the plain flow_payment link is not. |
 | `services/flows/store.ts` | 1 | `type Fn = (args: any)` delegates | Covered (`sweep-flows-events`: definitions, versions, optimistic `saveBotContext`). |
 | `services/human-takeover.ts` | 4 | `prisma: any` on all four functions | Covered (`sweep-conversations`: the takeoverAt regression). |
 | `services/inbound-queue.ts` | 6 | `prisma: any` on every inbox function | Covered (`sweep-flows-events`). |

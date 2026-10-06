@@ -28,6 +28,7 @@ import { startInboundSweeper } from '../services/inbound-queue.js';
 import { startDeliverySweeper, dispatchDelivery } from '../services/events/delivery.js';
 import { startWebhookWorker, stopWebhookWorker } from '../services/events/worker.js';
 import { setDeliveryDispatcher } from '../services/events/dispatcher.js';
+import { startRideSweeper } from '../services/rides/sweeper.js';
 
 export interface BackgroundContext {
     prisma: ExtendedPrismaClient;
@@ -116,6 +117,12 @@ export const BACKGROUND_TASKS: BackgroundTask[] = [
         // Atomic: stuck recovery re-checks claimedAt in its WHERE; dispatch is idempotent (jobId = row id).
         name: 'webhook-sweeper',
         start: (ctx) => startDeliverySweeper(webhookDeps(ctx)),
+    },
+    {
+        // RIDES pack: lapsed holds, unpaid PAYG seats, package expiry, reminders. Safe in many processes: every change
+        // is a guarded updateMany claim and the follow-up (seat release, EXPIRY entry, reminder) runs only on count 1.
+        name: 'ride-sweeper',
+        start: (ctx) => startRideSweeper(ctx.prisma, ctx.log),
     },
 ];
 // ---- END REGISTRY ----

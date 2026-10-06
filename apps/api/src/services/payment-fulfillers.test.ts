@@ -87,6 +87,12 @@ describe('dispatchFulfillment', () => {
         });
         expect(r).toEqual({ body: { ok: true, entity: 'ride_package' } });
     });
+    it('passes Paystack\'s transaction id and channel through (shown to the business as the transaction ID)', async () => {
+        const f = vi.fn().mockResolvedValue({ status: 'applied' });
+        registerPaymentFulfiller('ride_package', f);
+        await dispatchFulfillment(base({ verify: vi.fn().mockResolvedValue(verified({ transactionId: '4099260516', channel: 'mobile_money' })) }));
+        expect(f).toHaveBeenCalledWith(expect.objectContaining({ transactionId: '4099260516', channel: 'mobile_money' }));
+    });
     it('answers idempotent when the fulfiller says already_applied', async () => {
         registerPaymentFulfiller('ride_package', vi.fn().mockResolvedValue({ status: 'already_applied' }));
         expect(await dispatchFulfillment(base())).toEqual({ body: { ok: true, idempotent: true } });

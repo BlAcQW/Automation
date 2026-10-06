@@ -49,7 +49,10 @@ function definedVarsOf(step: FlowStep): string[] {
     switch (step.type) {
         case 'menu': return step.options.flatMap((o) => Object.keys(o.set ?? {}));
         case 'ask': return [step.var];
-        case 'location': return [step.var, `${step.var}_lat`, `${step.var}_lng`, `${step.var}_label`];
+        case 'location': return [
+            step.var, `${step.var}_lat`, `${step.var}_lng`, `${step.var}_label`,
+            ...(step.acceptText ? [`${step.var}_text`] : []),
+        ];
         case 'choose': {
             const attrs = new Set(step.items.flatMap((i) => Object.keys(i.attrs ?? {})));
             return [step.var, `${step.var}_label`, ...[...attrs].map((a) => `${step.var}_${a}`)];

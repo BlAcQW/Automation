@@ -37,6 +37,58 @@ import { canEncodeFlowEntityId, encodeFlowEntityId } from './flow-entity-id.js';
 import { triggerTakeover } from './human-takeover.js';
 import { createNotification } from './notifications.js';
 
+// ------------------------------------------------------------- preparers
+//
+// A pack that owns a payment kind (e.g. 'ride_package') can register a
+// PREPARER: it runs when the flow asks for a link of that kind, BEFORE Paystack,
+// and reserves what the payment is for (a Founding slot, a PAYG seat) in its own
+// table. Its row id becomes the link's entity id, so the pack's fulfiller pays
+// exactly that row. A refusal (sold out, full) creates no link and the flow
+// takes the step's failure branch. Kinds without a preparer (flow_payment) are
+// unchanged: the entity id encodes the conversation and the step.
+
+export interface FlowPaymentPrepareInput {
+    prisma: any;
+    tenantId: string;
+    conversationId: string;
+    customerPhone: string | null;
+    kind: string;
+    /** Major units, as the flow asked. The preparer should check it against its own price. */
+    amount: number;
+    currency: string;
+    vars: Record<string, string>;
+    idempotencyKey: string;
+}
+
+export type FlowPaymentPrepared =
+    | {
+        ok: true;
+        /** Becomes metadata.entityId on the Paystack link (max 100 chars). */
+        entityId: string;
+        /** The link exists: record its reference on the reserved row. */
+        onCreated: (link: { reference: string; authorizationUrl: string }) => Promise<void> | void;
+        /** No link after all (Paystack refused): release what was reserved. */
+        onFailed?: () => Promise<void> | void;
+    }
+    | { ok: false; reason: string };
+
+export type FlowPaymentPreparer = (input: FlowPaymentPrepareInput) => Promise<FlowPaymentPrepared>;
+
+const preparers = new Map<string, FlowPaymentPreparer>();
+
+export function registerFlowPaymentPreparer(kind: string, fn: FlowPaymentPreparer): void {
+    if (preparers.has(kind)) throw new Error(`A payment preparer is already registered for kind "${kind}"`);
+    preparers.set(kind, fn);
+}
+
+export function hasFlowPaymentPreparer(kind: string): boolean {
+    return preparers.has(kind);
+}
+
+export function resetFlowPaymentPreparersForTests(): void {
+    preparers.clear();
+}
+
 export interface FlowPortsDeps {
     prisma: any;
     tenant: { id: string; paystackSecretKey?: string | null; whatsappDisplayNumber?: string | null };
@@ -79,6 +131,44 @@ async function existingLink(
 export function createFlowPorts(deps: FlowPortsDeps): FlowPorts {
     const { prisma, tenant, log } = deps;
 
+    async function createPreparedLink(preparer: FlowPaymentPreparer, req: PaymentLinkRequest): Promise<{ url: string; reference?: string } | null> {
+        let prepared: FlowPaymentPrepared;
+        try {
+            prepared = await preparer({ prisma, ...req });
+        } catch (err) {
+            log.error({ err, kind: req.kind, conversationId: req.conversationId }, 'Payment preparer failed; no link created');
+            return null;
+        }
+        if (!prepared.ok) {
+            log.warn({ kind: req.kind, conversationId: req.conversationId, reason: prepared.reason }, 'Payment preparer refused; no link created');
+            return null;
+        }
+        let reference: string | undefined;
+        const url = await createFulfillmentPaymentLink({
+            tenantId: tenant.id,
+            paystackSecretKeyEncrypted: tenant.paystackSecretKey ?? null,
+            currency: req.currency,
+            kind: req.kind,
+            entityId: prepared.entityId,
+            amount: req.amount,
+            customerPhone: req.customerPhone ?? '',
+            callbackUrl: whatsappReturnUrl(tenant.whatsappDisplayNumber),
+            onCreated: async (link) => {
+                reference = link.reference;
+                await prepared.onCreated({ reference: link.reference, authorizationUrl: link.authorizationUrl });
+            },
+        });
+        if (!url) {
+            try {
+                await prepared.onFailed?.();
+            } catch (err) {
+                log.error({ err, kind: req.kind }, 'Payment preparer could not release after a failed link');
+            }
+            return null;
+        }
+        return { url, ...(reference ? { reference } : {}) };
+    }
+
     return {
         async createPaymentLink(req: PaymentLinkRequest) {
             if (req.tenantId !== tenant.id) {
@@ -93,6 +183,9 @@ export function createFlowPorts(deps: FlowPortsDeps): FlowPorts {
 
             const held = await existingLink(prisma, req, parsed);
             if (held) return held;
+
+            const preparer = preparers.get(req.kind);
+            if (preparer) return createPreparedLink(preparer, req);
 
             const amountMinor = Math.round(req.amount * 100);
             const entity = { conversationId: req.conversationId, state: parsed.state, amountMinor, currency: req.currency };

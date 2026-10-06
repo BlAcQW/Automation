@@ -118,6 +118,7 @@ describe('verifyTransaction', () => {
                         reference: 'bf_o1_1',
                         customer: { email: 'cust@example.com' },
                         channel: 'card',
+                        id: 4099260516,
                     },
                 }),
                 { status: 200 },
@@ -125,6 +126,7 @@ describe('verifyTransaction', () => {
         );
 
         const result = await verifyTransaction('sk_test', 'bf_o1_1');
+        expect(result.transactionId).toBe('4099260516');
         expect(result.status).toBe('success');
         expect(result.amountKobo).toBe(500000);
         expect(result.currency).toBe('NGN');

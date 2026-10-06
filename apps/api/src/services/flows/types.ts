@@ -64,6 +64,12 @@ const locationStep = z.object({
         }).strict())
         .max(10)
         .optional(),
+    /**
+     * Also accept a typed answer (e.g. a number from a list the prompt shows, or
+     * a place name). It is stored in `<var>_text` for a pack action to resolve;
+     * a pin clears `<var>_text` and a typed answer clears the pin variables.
+     */
+    acceptText: z.boolean().optional(),
     next: stateName,
 }).strict();
 
@@ -158,6 +164,12 @@ export const flowDefinitionSchema = z.object({
     start: stateName,
     /** Typed command (case-insensitive, trimmed) -> jump. Checked before the current step. */
     globals: z.record(z.string().regex(/^[a-z][a-z0-9]{0,19}$/), z.object({ goto: stateName }).strict()).optional(),
+    /**
+     * Also honour a global command when it is the message that (re)opens the
+     * flow (first contact, or after the flow ended or handed off), e.g. "Reply
+     * BOOK" after a ride. Off by default: the opening message just shows `start`.
+     */
+    globalsOnOpen: z.boolean().optional(),
     /** Shown on handoff after repeated misses. */
     handoffText: z.string().min(1).max(500).optional(),
     invalidText: z.string().min(1).max(500).optional(),

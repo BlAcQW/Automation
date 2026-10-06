@@ -33,6 +33,8 @@ import { validateField } from './validators.js';
 
 export const MAX_CONSECUTIVE_MISSES = 3;
 export const MAX_AUTO_HOPS = 30;
+/** Longest typed answer a location step with acceptText keeps. */
+export const LOCATION_TEXT_MAX = 200;
 
 export const DEFAULT_INVALID_TEXT = "Sorry, I didn't get that.";
 export const DEFAULT_HANDOFF_TEXT = "Let me get someone from the team to help you. They'll reply shortly.";
@@ -462,13 +464,26 @@ class Run {
             const i = selectIndex(fb.length, [], fb.map((f) => f.label), input);
             if (i !== null) return this.locationVars(step, fb[i].latitude, fb[i].longitude, fb[i].label);
         }
+        if (step.acceptText && typeof input.text === 'string' && !input.interactiveId) {
+            const typed = validateField({ validate: 'free' }, input.text.slice(0, 500));
+            if (typed.ok) {
+                const v = step.var;
+                return {
+                    ok: true, next: step.next,
+                    vars: { [v]: '', [`${v}_label`]: '', [`${v}_lat`]: '', [`${v}_lng`]: '', [`${v}_text`]: typed.value.slice(0, LOCATION_TEXT_MAX) },
+                };
+            }
+        }
         return REJECT;
     }
 
     private locationVars(step: LocationStep, lat: number, lng: number, label: string): Accepted {
         return {
             ok: true, next: step.next,
-            vars: { [step.var]: label, [`${step.var}_label`]: label, [`${step.var}_lat`]: String(lat), [`${step.var}_lng`]: String(lng) },
+            vars: {
+                [step.var]: label, [`${step.var}_label`]: label, [`${step.var}_lat`]: String(lat), [`${step.var}_lng`]: String(lng),
+                ...(step.acceptText ? { [`${step.var}_text`]: '' } : {}),
+            },
         };
     }
 
@@ -572,9 +587,13 @@ export async function step(
 
     if (!state || needsRestart(def, state)) {
         // First contact (or a finished flow): show the start state. The message
-        // that opened the conversation is not interpreted as an answer.
+        // that opened the conversation is not interpreted as an answer, except,
+        // in a flow that opts in (globalsOnOpen), a global command: the customer
+        // asked for that, e.g. "Need another ride? Reply BOOK." after a flow ended.
+        const typed = (input.text ?? '').trim().toLowerCase();
+        const global = def.globalsOnOpen && !input.interactiveId && typed ? def.globals?.[typed] : undefined;
         const run = new Run(def, { ...newFlowState(def), lastInboundId: input.inboundId }, ports, meta, input.inboundId);
-        await run.enter(def.start);
+        await run.enter(global ? global.goto : def.start);
         return run.result();
     }
 

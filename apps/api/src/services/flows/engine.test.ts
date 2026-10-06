@@ -153,6 +153,31 @@ describe('step: ask', () => {
         expect(c.state.vars).toEqual({});
         expect(c.replies[0]).toMatch(/Main/);
     });
+
+    it('with globalsOnOpen, an opening message that is a global command starts there (e.g. "Reply BOOK" after a finished flow)', async () => {
+        const opted = def({ ...base, globalsOnOpen: true });
+        const { f, r } = await start();
+        const a = await step(opted, r.state, msg('1'), f.ports, testMeta);
+        const ended = await step(opted, a.state, msg('Ama'), f.ports, testMeta);
+        expect(ended.state.status).toBe('ended');
+        const g = await step(opted, ended.state, msg('  HELP '), f.ports, testMeta);
+        expect(g.replies[0]).toBe('Getting a human');
+        expect(g.state.status).toBe('handed_off');
+        // Brand-new conversation too.
+        const fresh = await step(opted, null, msg('help'), f.ports, testMeta);
+        expect(fresh.replies[0]).toBe('Getting a human');
+        // Anything else still just shows the start state, uninterpreted.
+        const other = await step(opted, ended.state, msg('1'), f.ports, testMeta);
+        expect(other.state.current).toBe('menu');
+        expect(other.replies[0]).toMatch(/^Main/);
+    });
+
+    it('without globalsOnOpen (the default) the opening message is never interpreted, even a global', async () => {
+        const f = fakePorts();
+        const fresh = await step(base, null, msg('help'), f.ports, testMeta);
+        expect(fresh.replies[0]).toMatch(/^Main/);
+        expect(fresh.state.status).toBe('active');
+    });
 });
 
 describe('step: choose, location, confirm', () => {
@@ -179,6 +204,47 @@ describe('step: choose, location, confirm', () => {
         expect(bad.state.misses).toBe(1);
         const nan = await step(base, a.state, { inboundId: 'p3', location: { latitude: NaN, longitude: 0 } }, f.ports, testMeta);
         expect(nan.state.misses).toBe(1);
+    });
+
+    it('location with acceptText also takes a typed answer (into <var>_text) and clears the other form', async () => {
+        const d = def({
+            key: 'lt', version: 1, start: 'dest',
+            states: {
+                dest: { type: 'location', prompt: 'Where to?', var: 'dest', acceptText: true, fallback: [{ label: 'Main gate', latitude: 5.6, longitude: -0.18 }], next: 'show' },
+                show: { type: 'notify', text: '[{dest}] [{dest_text}] [{dest_lat}]', next: 'fin' },
+                fin: { type: 'end' },
+            },
+        });
+        const f = fakePorts();
+        const r = await step(d, null, msg('hi'), f.ports, testMeta);
+        expect(r.replies[0]).toBe('Where to?\n\nOr reply with a number:\n1. Main gate');
+
+        // A fallback number still resolves to the fallback place.
+        const fb = await step(d, r.state, msg('1'), f.ports, testMeta);
+        expect(fb.state.vars).toMatchObject({ dest: 'Main gate', dest_lat: '5.6', dest_text: '' });
+
+        // Any other text is accepted as typed, with the pin fields cleared.
+        const typed = await step(d, { ...r.state, vars: { dest_lat: '1', dest_lng: '2', dest: 'old', dest_label: 'old' } }, msg('  2\n'), f.ports, testMeta);
+        expect(typed.state.vars).toMatchObject({ dest_text: '2', dest: '', dest_label: '', dest_lat: '', dest_lng: '' });
+        expect(typed.replies[0]).toBe('[] [2] []');
+
+        // A pin clears a previously typed answer.
+        const pin = await step(d, { ...r.state, vars: { dest_text: 'old' } }, { inboundId: 'pp', location: { latitude: 5.65, longitude: -0.19, name: 'Legon' } }, f.ports, testMeta);
+        expect(pin.state.vars).toMatchObject({ dest: 'Legon', dest_lat: '5.65', dest_text: '' });
+
+        // Empty / control-only text is still a miss; text is bounded.
+        const empty = await step(d, r.state, msg('\u0000 '), f.ports, testMeta);
+        expect(empty.state.misses).toBe(1);
+        const long = await step(d, r.state, msg('x'.repeat(5000)), f.ports, testMeta);
+        expect(long.state.vars.dest_text.length).toBe(200);
+    });
+
+    it('location without acceptText still rejects typed text (unchanged behaviour)', async () => {
+        const { f, r } = await start();
+        const a = await step(base, r.state, msg('3'), f.ports, testMeta);
+        const typed = await step(base, a.state, msg('the library'), f.ports, testMeta);
+        expect(typed.state.misses).toBe(1);
+        expect(typed.state.vars.pickup_text).toBeUndefined();
     });
 
     it('confirm routes yes and no, applies menu `set`', async () => {

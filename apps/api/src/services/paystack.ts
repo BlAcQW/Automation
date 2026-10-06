@@ -35,6 +35,8 @@ export interface VerifyResult {
     reference: string;
     customerEmail: string;
     channel?: string;
+    /** Paystack's own transaction id (what the business sees on its Paystack dashboard). */
+    transactionId?: string;
     /**
      * Whatever we stamped at initialize time. Carries `collectionRoute`, which
      * decides whether this money is in Bookly's balance and may credit a
@@ -144,6 +146,7 @@ export async function verifyTransaction(
         reference: string;
         customer: { email: string };
         channel?: string;
+        id?: number | string;
     }>(
         `/transaction/verify/${encodeURIComponent(reference)}`,
         {
@@ -174,6 +177,7 @@ export async function verifyTransaction(
         reference: data.reference,
         customerEmail: data.customer.email,
         channel: data.channel,
+        transactionId: data.id != null ? String(data.id) : undefined,
     };
 }
 

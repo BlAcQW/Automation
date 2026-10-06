@@ -288,6 +288,54 @@ async function handOff(input: FulfillmentInput, conversationId: string, reason: 
     }
 }
 
+/**
+ * For PACK fulfillers (ride_package, ride_payg...): after the pack has applied
+ * a verified payment to its own row, move the conversation's flow off its
+ * payment step, exactly like the flow_payment fulfiller does: success branch
+ * (or failure branch when the pack refused the payment), reply through the
+ * outbox, hand-off if the flow asks, flow.completed if it ended.
+ *
+ * Only a flow waiting at a payment step of `kind` on THIS link reference moves
+ * (the engine checks kind, reference and amount). Returns
+ *   'advanced'  this call moved the flow (its reply was sent),
+ *   'already'   a concurrent delivery of the same reference already moved it,
+ *   'not_waiting' the chat has moved on: the caller should message the customer itself.
+ * Throws on a lost state write (transient), so the webhook is retried.
+ */
+export async function advanceFlowOnPackPayment(
+    input: FulfillmentInput,
+    args: { conversationId: string; kind: string; success: boolean },
+): Promise<'advanced' | 'already' | 'not_waiting'> {
+    const { prisma, tenantId, reference, amountMinor, currency } = input;
+    const conv = await loadConversation(prisma, tenantId, args.conversationId);
+    if (!conv) return 'not_waiting';
+    if (readFlowState(conv.botContext)?.lastEventId === reference) return 'already';
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) return 'not_waiting';
+
+    const result = await advanceFlow(flowDeps(input, tenant), {
+        tenantId,
+        conversationId: conv.id,
+        event: args.success
+            ? { type: 'payment.succeeded', eventId: reference, kind: args.kind, reference, amountMinor, currency: currency.toUpperCase() }
+            : { type: 'payment.failed', eventId: reference, kind: args.kind, reference },
+        vertical: tenant.vertical ?? undefined,
+        currency: tenant.paymentCurrency ?? undefined,
+    });
+    if (!result.applied && result.reply === FLOW_CONFLICT_REPLY) throw new Error('flow_state_conflict');
+    if (!result.applied) {
+        const after = await loadConversation(prisma, tenantId, conv.id);
+        return readFlowState(after?.botContext)?.lastEventId === reference ? 'already' : 'not_waiting';
+    }
+    if (result.completed) {
+        await emitFlowCompleted(prisma, { tenantId, conversationId: conv.id, customerId: conv.customerId, completion: result.completed });
+    }
+    if (result.wantsHuman) await handOff(input, conv.id, args.success ? 'flow_handoff' : 'flow_payment_failed');
+    const reply = result.reply.trim();
+    if (reply) await sendFlowReply(input, tenant, conv, reply);
+    return 'advanced';
+}
+
 /** Safe to call more than once. */
 export function registerFlowPaymentFulfiller(): void {
     if (isRegisteredFulfillmentKind(FLOW_PAYMENT_KIND)) return;

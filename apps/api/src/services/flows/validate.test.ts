@@ -128,3 +128,25 @@ describe('action registry', () => {
         expect(() => registerFlowAction('turbo_x', async () => ({ ok: true }))).toThrow(/already/);
     });
 });
+
+describe('location acceptText', () => {
+    const withLoc = (loc: Record<string, unknown>, text: string) => base({
+        start: 'loc',
+        states: {
+            loc: { type: 'location', prompt: 'Where?', var: 'dest', next: 'show', ...loc },
+            show: { type: 'notify', text, next: 'done' },
+            done: { type: 'end' },
+        },
+    });
+
+    it('makes <var>_text a known variable only when acceptText is on', () => {
+        expect(parseFlowDefinition(withLoc({ acceptText: true }, 'You typed {dest_text}')).ok).toBe(true);
+        const off = parseFlowDefinition(withLoc({}, 'You typed {dest_text}'));
+        expect(off.ok).toBe(false);
+        if (!off.ok) expect(off.errors.join(';')).toMatch(/unknown variable \{dest_text\}/);
+    });
+
+    it('stays strict: acceptText must be a boolean', () => {
+        expect(parseFlowDefinition(withLoc({ acceptText: 'yes' }, 'x')).ok).toBe(false);
+    });
+});

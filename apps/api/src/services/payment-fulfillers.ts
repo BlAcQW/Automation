@@ -55,6 +55,9 @@ export interface FulfillmentInput {
     amountMinor: number;
     currency: string;
     log: FulfillerLogger;
+    /** Paystack's transaction id and payment channel, for the record shown to the business. */
+    transactionId?: string;
+    channel?: string;
 }
 
 export type FulfillmentOutcome =
@@ -192,6 +195,8 @@ export async function dispatchFulfillment(args: DispatchArgs): Promise<DispatchR
         amountMinor: verified.amountKobo,
         currency: verified.currency,
         log: args.log,
+        transactionId: verified.transactionId,
+        channel: verified.channel,
     });
 
     switch (outcome?.status) {

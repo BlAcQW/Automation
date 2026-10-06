@@ -8,7 +8,7 @@ vi.mock('./human-takeover.js', () => ({ triggerTakeover: (...a: unknown[]) => tr
 const createNotification = vi.fn();
 vi.mock('./notifications.js', () => ({ createNotification: (...a: unknown[]) => createNotification(...a) }));
 
-import { createFlowPorts, parseIdempotencyKey, whatsappReturnUrl } from './flow-ports.js';
+import { createFlowPorts, parseIdempotencyKey, whatsappReturnUrl, registerFlowPaymentPreparer, resetFlowPaymentPreparersForTests } from './flow-ports.js';
 import { decodeFlowEntityId } from './flow-entity-id.js';
 import { registerFlowAction, resetFlowActionsForTests } from './flows/index.js';
 
@@ -213,5 +213,53 @@ describe('runAction', () => {
     it('an unregistered action is a failure, not a crash', async () => {
         const r = { tenantId: 't1', conversationId: 'c1', customerPhone: null, name: 'nope', args: {}, vars: {}, idempotencyKey: 'k' };
         expect(await createFlowPorts({ prisma: prismaWith(null), tenant, log }).runAction(r)).toEqual({ ok: false });
+    });
+});
+
+describe('createPaymentLink with a registered preparer (pack kinds, e.g. ride_package)', () => {
+    beforeEach(() => resetFlowPaymentPreparersForTests());
+
+    it('lets the preparer choose the entity id and amount, and reports the link back to it', async () => {
+        const onCreated = vi.fn();
+        const preparer = vi.fn(async () => ({ ok: true as const, entityId: 'pass_123', onCreated }));
+        registerFlowPaymentPreparer('ride_package', preparer);
+        const ports = createFlowPorts({ prisma: prismaWith(null), tenant, log });
+        const link = await ports.createPaymentLink(payReq({ kind: 'ride_package', amount: 960, vars: { pkg_price: '960' } }));
+
+        expect(link).toEqual({ url: 'https://paystack/x', reference: 'bf_f_ref' });
+        expect(preparer).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', conversationId: 'c1', customerPhone: '233241234567', amount: 960, currency: 'GHS', vars: { pkg_price: '960' } }));
+        const args = (createFulfillmentPaymentLink.mock.calls[0] as any)[0];
+        expect(args).toMatchObject({ kind: 'ride_package', entityId: 'pass_123', amount: 960 });
+        expect(onCreated).toHaveBeenCalledWith({ reference: 'bf_f_ref', authorizationUrl: 'https://paystack/x' });
+    });
+
+    it('a preparer refusal creates no link', async () => {
+        registerFlowPaymentPreparer('ride_payg', async () => ({ ok: false as const, reason: 'full' }));
+        const ports = createFlowPorts({ prisma: prismaWith(null), tenant, log });
+        expect(await ports.createPaymentLink(payReq({ kind: 'ride_payg' }))).toBeNull();
+        expect(createFulfillmentPaymentLink).not.toHaveBeenCalled();
+    });
+
+    it('when Paystack gives no link, the preparer is told so it can release what it reserved', async () => {
+        const onFailed = vi.fn();
+        registerFlowPaymentPreparer('ride_payg', async () => ({ ok: true as const, entityId: 'ride_1', onCreated: vi.fn(), onFailed }));
+        createFulfillmentPaymentLink.mockResolvedValueOnce(null);
+        const ports = createFlowPorts({ prisma: prismaWith(null), tenant, log });
+        expect(await ports.createPaymentLink(payReq({ kind: 'ride_payg' }))).toBeNull();
+        expect(onFailed).toHaveBeenCalledOnce();
+    });
+
+    it('a re-run of the same turn returns the held link without preparing again', async () => {
+        const preparer = vi.fn();
+        registerFlowPaymentPreparer('ride_package', preparer);
+        const held = { flow: { flowKey: 'f', flowVersion: 1, current: 'pay', status: 'waiting', vars: { payment_url: 'https://held', payment_reference: 'r0' }, misses: 0, lastInboundId: 'wamid.IN1' } };
+        const ports = createFlowPorts({ prisma: prismaWith(held), tenant, log });
+        expect(await ports.createPaymentLink(payReq({ kind: 'ride_package' }))).toEqual({ url: 'https://held', reference: 'r0' });
+        expect(preparer).not.toHaveBeenCalled();
+    });
+
+    it('refuses a second preparer for the same kind', () => {
+        registerFlowPaymentPreparer('ride_package', vi.fn());
+        expect(() => registerFlowPaymentPreparer('ride_package', vi.fn())).toThrow(/already/);
     });
 });

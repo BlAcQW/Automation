@@ -365,3 +365,52 @@ describe('flow_payment fulfiller', () => {
         expect(kit.eventsOfType('payment.succeeded')).toHaveLength(1);
     });
 });
+
+describe('advanceFlowOnPackPayment (pack kinds, e.g. ride_package)', () => {
+    const PACK_FLOW = {
+        key: 'pack-flow', version: 1, start: 'pay',
+        states: {
+            pay: { type: 'payment', prompt: 'Pay here: {payment_url}', kind: 'ride_package', amount: 25, onSuccess: 'done', onFailure: 'failed' },
+            done: { type: 'end', text: 'Activated!' },
+            failed: { type: 'end', text: 'Not activated.' },
+        },
+    };
+    let pack: typeof import('./flow-payments.js').advanceFlowOnPackPayment;
+    beforeEach(async () => {
+        resetPaymentFulfillersForTests();
+        const { registerPaymentFulfiller } = await import('./payment-fulfillers.js');
+        registerPaymentFulfiller('ride_package', async () => ({ status: 'applied' }));
+        ({ advanceFlowOnPackPayment: pack } = await import('./flow-payments.js'));
+    });
+    const kitFor = () => {
+        const kit = makeFlowKit({ definition: PACK_FLOW });
+        kit.installPublish(publish);
+        kit.seedWaiting();
+        const input = (over: Record<string, unknown> = {}) => ({ prisma: kit.prisma, tenantId: 't1', entityId: 'p1', reference: 'bf_f_old', amountMinor: 2500, currency: 'GHS', log, ...over }) as any;
+        return { kit, input };
+    };
+
+    it('moves the waiting flow to its success branch and sends the reply once', async () => {
+        const { kit, input } = kitFor();
+        expect(await pack(input(), { conversationId: 'c1', kind: 'ride_package', success: true })).toBe('advanced');
+        expect(kit.outbound().map((m) => m.content)).toEqual(['Activated!']);
+        expect(readFlowState(kit.conv.botContext)?.status).toBe('ended');
+        // Redelivery: already applied, nothing sent again.
+        expect(await pack(input(), { conversationId: 'c1', kind: 'ride_package', success: true })).toBe('already');
+        expect(kit.outbound()).toHaveLength(1);
+    });
+
+    it('a refused payment takes the failure branch', async () => {
+        const { kit, input } = kitFor();
+        expect(await pack(input(), { conversationId: 'c1', kind: 'ride_package', success: false })).toBe('advanced');
+        expect(kit.outbound().map((m) => m.content)).toEqual(['Not activated.']);
+    });
+
+    it('an old link (other reference), another kind or a chat that moved on: not_waiting, nothing sent', async () => {
+        const { kit, input } = kitFor();
+        expect(await pack(input({ reference: 'bf_f_other' }), { conversationId: 'c1', kind: 'ride_package', success: true })).toBe('not_waiting');
+        expect(await pack(input(), { conversationId: 'c1', kind: 'ride_payg', success: true })).toBe('not_waiting');
+        expect(await pack(input(), { conversationId: 'nope', kind: 'ride_package', success: true })).toBe('not_waiting');
+        expect(kit.outbound()).toHaveLength(0);
+    });
+});

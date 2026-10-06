@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import { generateTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
+import { createTenantWallet, newTenantMoneyDefaults } from '../../services/ledger.js';
+import type { ExtendedPrismaClient } from '../../plugins/prisma.js';
 import { crossSiteClearOptions, crossSiteCookieOptions } from '../../plugins/csrf.js';
 import { extractRefreshToken, isMobileClient } from '../../lib/auth-transport.js';
 import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
@@ -13,6 +15,7 @@ import {
     passwordResetEmail,
     verifyResetToken,
 } from '../../services/password-reset.js';
+import { claimOwnerEmail, EmailTakenError } from '../../services/email-claim.js';
 import { createVerifyToken, verifyEmailToken, verificationEmail } from '../../services/email-verification.js';
 
 // Validation schemas. `businessType` is optional and defaults to SERVICE so
@@ -40,6 +43,24 @@ const loginSchema = z.object({
 //    JSON body, since native clients have no cookie jar.
 const REFRESH_COOKIE = { path: '/', maxAge: 7 * 24 * 60 * 60 }; // 7 days
 
+/** The tenant block returned by GET /auth/me (same shape for users and support). */
+function tenantView(t: any) {
+    return {
+        id: t.id,
+        name: t.name,
+        businessType: t.businessType,
+        timezone: t.timezone,
+        whatsappConnected: !!t.whatsappPhoneNumberId,
+        outOfWindowMessagesEnabled: t.outOfWindowMessagesEnabled,
+        depositRequired: t.depositRequired,
+        defaultDepositAmount: Number(t.defaultDepositAmount),
+        bookingCapacity: t.bookingCapacity,
+        maskCustomerContact: t.maskCustomerContact,
+        currency: t.paymentCurrency,
+        deletionRequestedAt: t.deletionRequestedAt,
+    };
+}
+
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /auth/register - Create new tenant + owner user
     fastify.post('/register', async (request, reply) => {
@@ -64,7 +85,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Create tenant and user in a transaction
         const TRIAL_DAYS = 14;
-        const result = await fastify.prisma.$transaction(async (tx) => {
+        let result;
+        try {
+        result = await fastify.prisma.$transaction(async (tx) => {
+            // The check above is only a fast path; this lock + re-check is
+            // what stops a double-submitted sign-up creating two accounts.
+            await claimOwnerEmail(tx, body.email);
             // Create tenant. Phase 4b — every new tenant gets a 14-day Pro
             // trial. The lazy `evaluateSubscription` helper downgrades them
             // to Free + CANCELLED once `trialEndsAt` lapses unless they've
@@ -86,8 +112,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     // Phase 4c — anchor the 30-day quota cycle to this signup
                     // time so the counter doesn't reset on the calendar 1st.
                     quotaCycleStart: now,
+                    // Explicit: the schema still defaults paymentCurrency to
+                    // NGN. The wallet below takes the same value.
+                    ...newTenantMoneyDefaults(),
                 },
             });
+            await createTenantWallet(tx as unknown as ExtendedPrismaClient, tenant);
 
             // Create owner user
             const user = await tx.user.create({
@@ -115,6 +145,12 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
             return { tenant, user };
         });
+        } catch (err) {
+            if (err instanceof EmailTakenError) {
+                throw fastify.httpErrors.conflict('An account with this email already exists. Sign in, or reset your password.');
+            }
+            throw err;
+        }
 
         // Verification email, best-effort: a mail outage must not block sign-up.
         // The dashboard offers "resend" until it lands.
@@ -253,6 +289,26 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/me', {
         preHandler: [fastify.authenticate],
     }, async (request) => {
+        // A platform admin on a read-only support session (A5) has no user
+        // row: answer with a support identity so the dashboard can render.
+        // Contacts are always masked for support viewers.
+        if (request.user.support) {
+            const tenant = await fastify.prisma.tenant.findFirst({ where: { id: request.user.tenantId } });
+            if (!tenant) throw fastify.httpErrors.notFound('Tenant not found');
+            return {
+                user: {
+                    id: request.user.userId,
+                    email: null,
+                    name: 'Bookly support (read-only)',
+                    role: 'STAFF',
+                    emailVerifiedAt: null,
+                    support: true,
+                    readOnly: true,
+                },
+                tenant: { ...tenantView(tenant), maskCustomerContact: true },
+            };
+        }
+
         const user = await fastify.prisma.user.findFirst({
             where: { id: request.user.userId, tenantId: request.user.tenantId },
             include: { tenant: true },
@@ -270,20 +326,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 role: user.role,
                 emailVerifiedAt: user.emailVerifiedAt,
             },
-            tenant: {
-                id: user.tenant.id,
-                name: user.tenant.name,
-                businessType: user.tenant.businessType,
-                timezone: user.tenant.timezone,
-                whatsappConnected: !!user.tenant.whatsappPhoneNumberId,
-                outOfWindowMessagesEnabled: user.tenant.outOfWindowMessagesEnabled,
-                depositRequired: user.tenant.depositRequired,
-                defaultDepositAmount: Number(user.tenant.defaultDepositAmount),
-                bookingCapacity: user.tenant.bookingCapacity,
-                maskCustomerContact: user.tenant.maskCustomerContact,
-                currency: user.tenant.paymentCurrency,
-                deletionRequestedAt: user.tenant.deletionRequestedAt,
-            },
+            tenant: tenantView(user.tenant),
         };
     });
 

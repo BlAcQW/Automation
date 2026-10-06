@@ -6,8 +6,11 @@ import { Building2, Users, Calendar, MessageSquare, TrendingUp } from 'lucide-re
 import Link from 'next/link';
 import { StatCard, Card, CardHeader, CardTitle, CardContent, Badge, Button } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { useAdmin } from './admin-context';
+import { AttentionPanel } from './_components/attention-panel';
 
 export default function AdminDashboardPage() {
+    const { can } = useAdmin();
     const { data: stats, isLoading } = useQuery({
         queryKey: ['admin', 'stats'],
         queryFn: async () => {
@@ -75,6 +78,9 @@ export default function AdminDashboardPage() {
                 <h1 className="text-2xl font-bold text-white">Platform Overview</h1>
                 <p className="text-slate-400">Monitor and manage all tenants from here.</p>
             </div>
+
+            {/* What needs a person right now */}
+            {can('attention:read') && <AttentionPanel />}
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

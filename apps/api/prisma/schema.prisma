@@ -213,9 +213,11 @@ model Admin {
   isActive           Boolean   @default(true)
   // Wave 3 (A4) — OWNER | SUPPORT | FINANCE | READONLY. A String, not an enum,
   // so a new role needs no migration; validated against the set in code.
-  // The column default is the safe-for-bootstrap OWNER only for brand-new
-  // rows created by seed; the migration backfills existing rows explicitly.
-  role               String    @default("OWNER")
+  // Least privilege: a row created without naming a role is READONLY (migration
+  // 20261008100000_admin_role_default; earlier rows keep the role they have).
+  // Code that creates admins (admin:create, seed, POST /admin/admins) names the
+  // role explicitly and never relies on this default.
+  role               String    @default("READONLY")
   // TOTP secret, encrypted at rest via crypto.ts (never plaintext). NULL =
   // not enrolled. totpEnabledAt is set only after the first code verifies,
   // so a half-finished enrolment does not lock anyone out.

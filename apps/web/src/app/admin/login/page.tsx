@@ -11,6 +11,9 @@ export default function AdminLoginPage() {
     const router = useRouter();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    // Second factor: shown once the API says this admin has 2FA on.
+    const [code, setCode] = useState('');
+    const [needCode, setNeedCode] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -20,16 +23,32 @@ export default function AdminLoginPage() {
         setError('');
 
         try {
-            const response = await adminApi.post('/admin/auth/login', { email, password });
+            // `_retry` makes the client's 401 handler skip its refresh attempt: a 401 from
+            // login is an answer (bad password / "2FA code needed"), not an expired session,
+            // and the refresh failure would otherwise replace that answer.
+            const response = await adminApi.post(
+                '/admin/auth/login',
+                { email, password, ...(needCode && code.trim() ? { code: code.trim() } : {}) },
+                { _retry: true } as never,
+            );
             localStorage.setItem('adminAccessToken', response.data.accessToken);
             const isProd = process.env.NODE_ENV === 'production';
             document.cookie = `adminAccessToken=${encodeURIComponent(response.data.accessToken)}; path=/; max-age=900; samesite=lax${isProd ? '; secure' : ''}`;
             // Full navigation, not router.push: the admin layout only loads the session on
             // mount, so a client-side push landed on /admin with no admin in state and
             // bounced straight back here.
-            window.location.assign('/admin');
+            // If the platform requires 2FA and this admin has none, the account page is
+            // the only place the API will let them go.
+            const tf = response.data.twoFactor;
+            window.location.assign(tf?.required && !tf?.enrolled ? '/admin/account' : '/admin');
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Invalid email or password');
+            if (err.response?.data?.totpRequired) {
+                setNeedCode(true);
+                setError('');
+            } else {
+                setError(err.response?.data?.message || 'Invalid email or password');
+                if (needCode && err.response?.status !== 429) setCode('');
+            }
         } finally {
             setLoading(false);
         }
@@ -82,6 +101,23 @@ export default function AdminLoginPage() {
                                 required
                             />
                         </div>
+                        {needCode && (
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-300" htmlFor="admin-2fa-code">Two-factor code</label>
+                                <Input
+                                    id="admin-2fa-code"
+                                    value={code}
+                                    onChange={(e) => setCode(e.target.value)}
+                                    className="bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-600 tracking-widest"
+                                    placeholder="123456 or a recovery code"
+                                    autoComplete="one-time-code"
+                                    inputMode="text"
+                                    autoFocus
+                                    required
+                                />
+                                <p className="text-xs text-slate-500">From your authenticator app. Lost your device? Use one of your recovery codes.</p>
+                            </div>
+                        )}
                         <Button
                             type="submit"
                             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"

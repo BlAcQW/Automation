@@ -1,7 +1,11 @@
 /**
  * Create (or reset the password of) a platform admin.
  *
- *   npm run admin:create -w apps/api -- --email you@example.com --name "Your Name" [--password ...] [--super]
+ *   npm run admin:create -w apps/api -- --email you@example.com --name "Your Name" [--password ...] [--role OWNER|FINANCE|SUPPORT|READONLY | --super]
+ *
+ * Role: --role picks one; --super is shorthand for --role OWNER. With neither, a NEW admin
+ * is SUPPORT (least privilege, never OWNER) and an EXISTING admin keeps their role. With
+ * --super/--role an existing admin's role is rewritten too.
  *
  * Omit --password to have a strong one generated and printed once.
  * Needs DATABASE_URL in the environment (source the root .env first).
@@ -9,22 +13,20 @@
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import { buildAdminUpsert, parseCreateAdminArgs, type CreateAdminArgs } from '../src/services/admin-bootstrap.js';
 
-function arg(name: string): string | undefined {
-    const i = process.argv.indexOf(`--${name}`);
-    return i >= 0 ? process.argv[i + 1] : undefined;
-}
+const USAGE = 'Usage: --email you@example.com --name "Your Name" [--password ...] [--role OWNER|FINANCE|SUPPORT|READONLY | --super]';
 
-const email = arg('email')?.toLowerCase();
-const name = arg('name') ?? 'Platform Admin';
-const isSuperAdmin = process.argv.includes('--super');
-let password = arg('password');
-
-if (!email || !email.includes('@')) {
-    console.error('Usage: --email you@example.com --name "Your Name" [--password ...] [--super]');
+let args: CreateAdminArgs;
+try {
+    args = parseCreateAdminArgs(process.argv);
+} catch (err) {
+    console.error((err as Error).message);
+    console.error(USAGE);
     process.exit(1);
 }
 
+let password = args.password;
 let generated = false;
 if (!password) {
     // 16 chars from an unambiguous alphabet.
@@ -38,14 +40,15 @@ async function main(): Promise<void> {
     const prisma = new PrismaClient();
     const passwordHash = await bcrypt.hash(password as string, 12);
     const admin = await prisma.admin.upsert({
-        where: { email },
-        update: { passwordHash, name, isActive: true, ...(isSuperAdmin ? { isSuperAdmin: true } : {}) },
-        create: { email: email as string, passwordHash, name, isSuperAdmin },
-        select: { id: true, email: true, isSuperAdmin: true },
+        ...buildAdminUpsert(args, passwordHash),
+        select: { id: true, email: true, role: true },
     });
     await prisma.$disconnect();
 
-    console.log(`Admin ready: ${admin.email} (super admin: ${admin.isSuperAdmin})`);
+    console.log(`Admin ready: ${admin.email} (role: ${admin.role})`);
+    if (!args.roleExplicit) {
+        console.log('No --role/--super given: new admins are SUPPORT; an existing admin keeps their current role.');
+    }
     if (generated) {
         console.log(`Temporary password (shown once, change it after signing in): ${password}`);
     }

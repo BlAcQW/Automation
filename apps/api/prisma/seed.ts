@@ -1,13 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
+import { seedRefusal } from '../src/lib/seed-guard.js';
 
 const prisma = new PrismaClient();
 
 async function main() {
+    const refusal = seedRefusal({
+        nodeEnv: process.env.NODE_ENV,
+        databaseUrl: process.env.DATABASE_URL,
+        allowRemote: process.env.SEED_ALLOW_REMOTE,
+    });
+    if (refusal) throw new Error(refusal);
+
     console.log('🌱 Seeding database...');
 
-    // Create platform admin
-    const adminPassword = await bcrypt.hash('admin123', 12);
+    // Create platform admin. Random password, printed once: a fixed one would
+    // be a known OWNER credential wherever this ever ran.
+    const adminPlain = randomBytes(12).toString('base64url');
+    const adminPassword = await bcrypt.hash(adminPlain, 12);
     const admin = await prisma.admin.upsert({
         where: { email: 'admin@bookingflow.com' },
         update: {},
@@ -15,6 +26,9 @@ async function main() {
             email: 'admin@bookingflow.com',
             passwordHash: adminPassword,
             name: 'Platform Admin',
+            // Written explicitly: the column default is the least-privilege READONLY.
+            // This is the local demo OWNER; real admins come from `npm run admin:create`.
+            role: 'OWNER',
             isSuperAdmin: true,
         },
     });
@@ -154,7 +168,7 @@ async function main() {
     console.log('✅ Created', products.length, 'demo products');
 
     console.log('\n📋 Demo Credentials:');
-    console.log('  Platform Admin: admin@bookingflow.com / admin123');
+    console.log(`  Platform Admin: admin@bookingflow.com / ${adminPlain} (only if newly created; an existing admin keeps its password)`);
     console.log('  Service Business (Salon): salon@example.com / demo123');
     console.log('  Product Business (Store): store@example.com / demo123');
     console.log('\n🎉 Seeding complete!');

@@ -7,6 +7,11 @@
  * The owner short-circuits without touching the database — they are never
  * masked, so there is nothing to look up. Only staff requests pay for the read,
  * and that read is a primary-key hit.
+ *
+ * A platform-admin SUPPORT viewer is the opposite short-circuit: always masked,
+ * regardless of the tenant's setting or the role on the token, with no lookup.
+ * (The tenant's "show contacts to staff" choice is theirs to make for their own
+ * staff; it never extends to Bookly support.) Every call site passes the flag.
  */
 
 import type { PrismaClient } from '@prisma/client';
@@ -26,7 +31,10 @@ export async function resolveMaskPolicy(
     prisma: AnyPrismaClient,
     tenantId: string,
     role: string | undefined,
+    /** `!!request.user.support`: true for a platform-admin support token. */
+    support: boolean = false,
 ): Promise<boolean> {
+    if (support) return true;
     if (role === 'OWNER') return false;
 
     try {

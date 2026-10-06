@@ -166,6 +166,19 @@ if (process.env.NODE_ENV === 'test') {
     }
 }
 
+/**
+ * The admin token namespace is separate so a forged tenant token cannot be an
+ * admin token. That only holds if the two secrets differ: refuse to boot when
+ * they are the same value.
+ */
+export function assertAdminSecretDistinct(env: { JWT_SECRET: string; ADMIN_JWT_SECRET: string }): void {
+    if (env.JWT_SECRET === env.ADMIN_JWT_SECRET) {
+        throw new Error(
+            'Invalid environment configuration:\n  - ADMIN_JWT_SECRET: must differ from JWT_SECRET (a shared secret lets a tenant token be forged as an admin token)',
+        );
+    }
+}
+
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
     const issues = parsed.error.issues
@@ -174,6 +187,7 @@ if (!parsed.success) {
     // Fail fast at boot — never let the app start with broken secrets
     throw new Error(`Invalid environment configuration:\n${issues}`);
 }
+assertAdminSecretDistinct(parsed.data);
 
 /**
  * Parse the optional CORS_ORIGINS env value (comma-separated).

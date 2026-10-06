@@ -12,7 +12,7 @@ vi.mock('../../plugins/auth.js', () => ({
     default: fp(async (app: any) => {
         app.decorate('authenticate', async () => undefined);
         app.decorate('authenticateAdmin', async (request: any) => {
-            request.admin = { adminId: 'admin-1' };
+            request.admin = { adminId: 'admin-1', isSuperAdmin: true, role: 'OWNER', totpEnabled: true };
         });
     }, { name: 'auth' }),
 }));
@@ -40,6 +40,7 @@ const stub: any = {
     auditLog: { create: vi.fn(async (a: any) => { stub.audits.push(a.data); return {}; }) },
     tenant: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
     tenantUsage: { findMany: vi.fn(async () => []) },
+    platformSetting: { findUnique: vi.fn(async () => null) },
     platformAlert: {
         findMany: vi.fn(async () => []),
         count: vi.fn(async () => 0),
@@ -48,8 +49,10 @@ const stub: any = {
     },
     $transaction: vi.fn(async (fn: any) => fn({
         tenant: { create: vi.fn(async (a: any) => ({ id: 't1', ...a.data })) },
-        user: { create: vi.fn(async (a: any) => ({ id: 'u1', ...a.data })) },
+        user: { create: vi.fn(async (a: any) => ({ id: 'u1', ...a.data })), findFirst: vi.fn(async () => null) },
+        $executeRaw: vi.fn(async () => 0),
         workingHours: { createMany: vi.fn(async () => ({ count: 5 })) },
+        wallet: { create: vi.fn(async (a: any) => ({ id: 'w1', currency: a.data.currency })) },
     })),
     $connect: async () => undefined,
     $disconnect: async () => undefined,

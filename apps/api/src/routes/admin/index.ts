@@ -1,9 +1,18 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
-import { generateAdminTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
+import { adminGuard } from './guard.js';
+import adminAuthRoutes from './auth.js';
+import adminManagementRoutes from './admins.js';
+import attentionRoutes from './attention.js';
+import organisationRoutes from './organisation.js';
+import moneyRoutes from './money.js';
+import auditLogRoutes from './audit-log.js';
+import messagingRoutes from './messaging.js';
+import supportRoutes from './support.js';
+import flowRoutes from './flows.js';
 import { PLAN_IDS } from '../../services/plans.js';
 import { buildTenantUpdateData, parseTenantUpdate } from './tenant-update.js';
 import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
@@ -15,25 +24,25 @@ import {
 import { messagesThisCycleByTenant } from './tenant-usage.js';
 import { alertListQuerySchema, buildAlertWhere } from './alerts.js';
 import { generatePromoCode, normalizePromoCode } from '../../services/promo.js';
+import { can } from '../../services/admin-permissions.js';
+import { revokeAllForAdmin } from './refresh-store.js';
 
 // Validation schemas
-const loginSchema = z.object({
-    email: z.string().email(),
-    password: z.string(),
-});
-
-const createAdminSchema = z.object({
-    email: z.string().email(),
-    password: z.string().min(8),
-    name: z.string().min(2),
-    isSuperAdmin: z.boolean().default(false),
-});
-
 const updateUserSchema = z.object({
     name: z.string().min(2).optional(),
     isActive: z.boolean().optional(),
     role: z.enum(['OWNER', 'STAFF']).optional(),
 });
+
+/**
+ * Tenant fields that move money terms. Changing them takes billing:write, not
+ * just tenants:write, so SUPPORT cannot hand an organisation a plan or quota.
+ */
+const BILLING_TENANT_FIELDS = ['planId', 'monthlyMessageQuotaOverride'] as const;
+const touchesBillingFields = (body: unknown): boolean =>
+    typeof body === 'object' && body !== null && BILLING_TENANT_FIELDS.some((k) => k in body);
+/** The plan every organisation starts on; choosing it grants nothing. */
+const BASELINE_PLAN = 'free';
 
 const paginationSchema = z.object({
     page: z.coerce.number().min(1).default(1),
@@ -42,90 +51,19 @@ const paginationSchema = z.object({
 });
 
 const adminRoutes: FastifyPluginAsync = async (fastify) => {
-    // ============================================
-    // ADMIN AUTHENTICATION
-    // ============================================
-
-    // POST /admin/auth/login - Admin login
-    fastify.post('/auth/login', async (request, reply) => {
-        const body = loginSchema.parse(request.body);
-
-        const admin = await fastify.prisma.admin.findUnique({
-            where: { email: body.email },
-        });
-
-        if (!admin || !admin.isActive) {
-            throw fastify.httpErrors.unauthorized('Invalid email or password');
-        }
-
-        const validPassword = await bcrypt.compare(body.password, admin.passwordHash);
-        if (!validPassword) {
-            throw fastify.httpErrors.unauthorized('Invalid email or password');
-        }
-
-        // Update last login
-        await fastify.prisma.admin.update({
-            where: { id: admin.id },
-            data: { lastLoginAt: new Date() },
-        });
-
-        // Generate tokens using the ADMIN JWT namespace (separate secret).
-        const accessToken = (fastify as any).jwt.admin.sign(
-            generateAdminTokenPayload(admin.id, 'admin_access'),
-            { expiresIn: config.jwtExpiresIn }
-        );
-
-        const refreshToken = (fastify as any).jwt.admin.sign(
-            generateAdminTokenPayload(admin.id, 'admin_refresh'),
-            { expiresIn: config.jwtRefreshExpiresIn }
-        );
-
-        reply.setCookie('adminRefreshToken', refreshToken, {
-            httpOnly: true,
-            secure: config.nodeEnv === 'production',
-            sameSite: 'lax',
-            path: '/admin/auth',
-            maxAge: 7 * 24 * 60 * 60,
-        });
-
-        return {
-            admin: {
-                id: admin.id,
-                email: admin.email,
-                name: admin.name,
-                isSuperAdmin: admin.isSuperAdmin,
-            },
-            accessToken,
-        };
-    });
-
-    // GET /admin/auth/me - Get current admin
-    fastify.get('/auth/me', {
-        preHandler: [fastify.authenticateAdmin],
-    }, async (request) => {
-        const adminId = request.admin!.adminId;
-
-        const admin = await fastify.prisma.admin.findUnique({
-            where: { id: adminId },
-        });
-
-        if (!admin) {
-            throw fastify.httpErrors.notFound('Admin not found');
-        }
-
-        return {
-            id: admin.id,
-            email: admin.email,
-            name: admin.name,
-            isSuperAdmin: admin.isSuperAdmin,
-        };
-    });
-
-    // POST /admin/auth/logout - Clear admin refresh token
-    fastify.post('/auth/logout', async (request, reply) => {
-        reply.clearCookie('adminRefreshToken', { path: '/admin/auth' });
-        return { success: true };
-    });
+    // Sign-in, refresh, logout, /auth/me and 2FA live in ./auth.ts; admin
+    // management in ./admins.ts. Every other route below names a permission via
+    // adminGuard (role check, see services/admin-permissions.ts).
+    await fastify.register(adminAuthRoutes);
+    await fastify.register(adminManagementRoutes);
+    // Control room (A3), support access + switches (A5), workflow editor (A6).
+    await fastify.register(attentionRoutes);
+    await fastify.register(organisationRoutes);
+    await fastify.register(moneyRoutes);
+    await fastify.register(auditLogRoutes);
+    await fastify.register(messagingRoutes);
+    await fastify.register(supportRoutes);
+    await fastify.register(flowRoutes);
 
     // ============================================
     // TENANT MANAGEMENT
@@ -133,13 +71,22 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // POST /admin/tenants - Create an organisation with an OWNER invite
     fastify.post('/tenants', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'tenants:write'),
     }, async (request, reply) => {
         const parsed = createTenantSchema.safeParse(request.body);
         if (!parsed.success) {
             throw fastify.httpErrors.badRequest(
                 parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; '),
             );
+        }
+
+        // A paid plan or a message-quota override at creation is a billing
+        // decision, same as changing it later.
+        const grantsBilling =
+            parsed.data.planId !== BASELINE_PLAN ||
+            (parsed.data.monthlyMessageQuotaOverride !== undefined && parsed.data.monthlyMessageQuotaOverride !== null);
+        if (grantsBilling && !can(request.admin!.role, 'billing:write')) {
+            throw fastify.httpErrors.forbidden('Choosing a paid plan or a message quota needs billing access');
         }
 
         // Account email always goes from the platform sender.
@@ -210,7 +157,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /admin/alerts - paginated, newest lastSeenAt first
     fastify.get('/alerts', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'alerts:read'),
     }, async (request) => {
         const query = alertListQuerySchema.parse(request.query);
         const where = buildAlertWhere(query);
@@ -246,7 +193,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // POST /admin/alerts/:id/resolve
     fastify.post('/alerts/:id/resolve', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'alerts:write'),
     }, async (request) => {
         const { id } = request.params as { id: string };
         const adminId = request.admin!.adminId;
@@ -278,7 +225,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /admin/tenants - List all tenants
     fastify.get('/tenants', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'tenants:read'),
     }, async (request) => {
         const query = paginationSchema.parse(request.query);
         const skip = (query.page - 1) * query.limit;
@@ -345,7 +292,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /admin/tenants/:id - Get tenant details
     fastify.get('/tenants/:id', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'tenants:read'),
     }, async (request) => {
         const { id } = request.params as { id: string };
 
@@ -402,7 +349,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // PATCH /admin/tenants/:id - Update tenant
     fastify.patch('/tenants/:id', {
-        preHandler: [fastify.authenticateAdmin],
+        // plan / quota need billing:write; anything else needs tenants:write.
+        // A body mixing both needs both (checked below once parsed).
+        preHandler: adminGuard(fastify, (r) => (touchesBillingFields(r.body) ? 'billing:write' : 'tenants:write')),
     }, async (request) => {
         const { id } = request.params as { id: string };
         const parsed = parseTenantUpdate(request.body);
@@ -413,9 +362,14 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         }
         const body = parsed.data;
 
+        const onlyBilling = Object.keys(body).every((k) => (BILLING_TENANT_FIELDS as readonly string[]).includes(k));
+        if (!onlyBilling && !can(request.admin!.role, 'tenants:write')) {
+            throw fastify.httpErrors.forbidden('Your admin role does not allow this');
+        }
+
         const existing = await fastify.prisma.tenant.findUnique({
             where: { id },
-            select: { vertical: true },
+            select: { vertical: true, planId: true, monthlyMessageQuotaOverride: true },
         });
         if (!existing) {
             throw fastify.httpErrors.notFound('Tenant not found');
@@ -441,7 +395,11 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             tenantId: tenant.id,
             targetType: 'Tenant',
             targetId: tenant.id,
-            metadata: body as Record<string, unknown>,
+            metadata: {
+                ...(body as Record<string, unknown>),
+                // What the money terms were before, so a plan/quota change is reviewable.
+                before: { planId: existing.planId, monthlyMessageQuotaOverride: existing.monthlyMessageQuotaOverride },
+            },
             ipAddress: request.ip,
         });
 
@@ -457,13 +415,28 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // DELETE /admin/tenants/:id - Disable tenant (soft delete)
     fastify.delete('/tenants/:id', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'tenants:delete'),
     }, async (request) => {
         const { id } = request.params as { id: string };
+
+        const existing = await fastify.prisma.tenant.findUnique({ where: { id }, select: { id: true, isActive: true } });
+        if (!existing) throw fastify.httpErrors.notFound('Tenant not found');
 
         await fastify.prisma.tenant.update({
             where: { id },
             data: { isActive: false },
+        });
+
+        await audit({
+            prisma: fastify.prisma,
+            action: 'tenant.deactivated',
+            actorType: 'ADMIN',
+            actorId: request.admin!.adminId,
+            tenantId: id,
+            targetType: 'Tenant',
+            targetId: id,
+            metadata: { wasActive: existing.isActive },
+            ipAddress: request.ip,
         });
 
         return { success: true };
@@ -475,7 +448,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /admin/users - List all users
     fastify.get('/users', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'users:read'),
     }, async (request) => {
         const query = paginationSchema.parse(request.query);
         const skip = (query.page - 1) * query.limit;
@@ -528,7 +501,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /admin/users/:id - Get user details
     fastify.get('/users/:id', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'users:read'),
     }, async (request) => {
         const { id } = request.params as { id: string };
 
@@ -563,14 +536,42 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // PATCH /admin/users/:id - Update user
     fastify.patch('/users/:id', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'users:write'),
     }, async (request) => {
         const { id } = request.params as { id: string };
         const body = updateUserSchema.parse(request.body);
 
+        // An OWNER can withdraw money. Only an OWNER admin may hand that out.
+        if (body.role === 'OWNER' && request.admin!.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only an owner admin can make a user an owner');
+        }
+
+        const before = await fastify.prisma.user.findUnique({
+            where: { id },
+            select: { id: true, tenantId: true, name: true, role: true, isActive: true },
+        });
+        if (!before) throw fastify.httpErrors.notFound('User not found');
+
         const user = await fastify.prisma.user.update({
             where: { id },
             data: body,
+        });
+
+        // Before/after of just the fields that were sent (no email or other PII).
+        const changed = Object.keys(body) as Array<keyof typeof body>;
+        await audit({
+            prisma: fastify.prisma,
+            action: 'user.updated',
+            actorType: 'ADMIN',
+            actorId: request.admin!.adminId,
+            tenantId: before.tenantId,
+            targetType: 'User',
+            targetId: id,
+            metadata: {
+                before: Object.fromEntries(changed.map((k) => [k, before[k]])),
+                after: Object.fromEntries(changed.map((k) => [k, user[k]])),
+            },
+            ipAddress: request.ip,
         });
 
         return {
@@ -588,7 +589,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /admin/bookings - List all bookings
     fastify.get('/bookings', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'bookings:read'),
     }, async (request) => {
         const query = z.object({
             page: z.coerce.number().min(1).default(1),
@@ -645,7 +646,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
     // GET /admin/stats - Platform-wide statistics
     fastify.get('/stats', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'stats:read'),
     }, async () => {
         const [
             tenantsCount,
@@ -699,79 +700,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         };
     });
 
-    // ============================================
-    // ADMIN MANAGEMENT (Super Admin Only)
-    // ============================================
-
-    // GET /admin/admins - List all admins
-    fastify.get('/admins', {
-        preHandler: [fastify.authenticateAdmin],
-    }, async (request) => {
-        const { isSuperAdmin } = request.admin!;
-
-        if (!isSuperAdmin) {
-            throw fastify.httpErrors.forbidden('Super admin access required');
-        }
-
-        const admins = await fastify.prisma.admin.findMany({
-            orderBy: { createdAt: 'desc' },
-            select: {
-                id: true,
-                email: true,
-                name: true,
-                isSuperAdmin: true,
-                isActive: true,
-                createdAt: true,
-                lastLoginAt: true,
-            },
-        });
-
-        return { data: admins };
-    });
-
-    // POST /admin/admins - Create new admin
-    fastify.post('/admins', {
-        preHandler: [fastify.authenticateAdmin],
-    }, async (request) => {
-        const { isSuperAdmin } = request.admin!;
-
-        if (!isSuperAdmin) {
-            throw fastify.httpErrors.forbidden('Super admin access required');
-        }
-
-        const body = createAdminSchema.parse(request.body);
-
-        // Check if email exists
-        const existing = await fastify.prisma.admin.findUnique({
-            where: { email: body.email },
-        });
-
-        if (existing) {
-            throw fastify.httpErrors.conflict('Email already registered');
-        }
-
-        const passwordHash = await bcrypt.hash(body.password, 12);
-
-        const admin = await fastify.prisma.admin.create({
-            data: {
-                email: body.email,
-                passwordHash,
-                name: body.name,
-                isSuperAdmin: body.isSuperAdmin,
-            },
-        });
-
-        return {
-            id: admin.id,
-            email: admin.email,
-            name: admin.name,
-            isSuperAdmin: admin.isSuperAdmin,
-        };
-    });
-
     // PATCH /admin/auth/password - Change your own admin password.
     fastify.patch('/auth/password', {
-        preHandler: [fastify.authenticateAdmin],
+        preHandler: adminGuard(fastify, 'self'),
     }, async (request) => {
         const body = z.object({
             currentPassword: z.string(),
@@ -787,6 +718,19 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             where: { id: admin.id },
             data: { passwordHash: await bcrypt.hash(body.newPassword, 12) },
         });
+        // A changed password must end every other session: stamp a cutoff so
+        // every refresh token issued up to now is refused (access tokens run
+        // out on their own within minutes; this device signs in again then).
+        await revokeAllForAdmin(fastify.redis, admin.id);
+        await audit({
+            prisma: fastify.prisma,
+            action: 'admin.password.changed',
+            actorType: 'ADMIN',
+            actorId: admin.id,
+            targetType: 'Admin',
+            targetId: admin.id,
+            ipAddress: request.ip,
+        });
         return { success: true };
     });
 
@@ -801,7 +745,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     } as const;
 
     // GET /admin/promo-codes
-    fastify.get('/promo-codes', { preHandler: [fastify.authenticateAdmin] }, async () => {
+    fastify.get('/promo-codes', { preHandler: adminGuard(fastify, 'promos:read') }, async () => {
         const codes = await fastify.prisma.promoCode.findMany({
             orderBy: { createdAt: 'desc' },
             select: promoSelect,
@@ -810,7 +754,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // POST /admin/promo-codes
-    fastify.post('/promo-codes', { preHandler: [fastify.authenticateAdmin] }, async (request) => {
+    fastify.post('/promo-codes', { preHandler: adminGuard(fastify, 'promos:write') }, async (request) => {
         const body = z.object({
             code: z.string().max(40).optional(),
             prefix: z.string().max(12).optional(),
@@ -862,7 +806,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // PATCH /admin/promo-codes/:id - pause/resume, edit note, cap or expiry.
-    fastify.patch('/promo-codes/:id', { preHandler: [fastify.authenticateAdmin] }, async (request) => {
+    fastify.patch('/promo-codes/:id', { preHandler: adminGuard(fastify, 'promos:write') }, async (request) => {
         const { id } = request.params as { id: string };
         const body = z.object({
             isActive: z.boolean().optional(),
@@ -885,7 +829,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // GET /admin/promo-codes/:id/redemptions - who used it and what it did.
-    fastify.get('/promo-codes/:id/redemptions', { preHandler: [fastify.authenticateAdmin] }, async (request) => {
+    fastify.get('/promo-codes/:id/redemptions', { preHandler: adminGuard(fastify, 'promos:read') }, async (request) => {
         const { id } = request.params as { id: string };
         const rows = await fastify.prisma.promoRedemption.findMany({
             where: { promoCodeId: id },

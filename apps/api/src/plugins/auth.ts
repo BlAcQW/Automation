@@ -3,6 +3,9 @@ import fp from 'fastify-plugin';
 import jwtPlugin from '@fastify/jwt';
 import { config } from '../config/index.js';
 import { bindTenantContext, tenantContextOnRequest } from '../lib/tenant-context.js';
+import { resolveAdminRole, type AdminRole } from '../services/admin-permissions.js';
+import { checkSupportEntitlement, findLiveSession, isSupportReadRoute } from '../services/support-session.js';
+import { isTwoFactorRequired } from '../services/admin-totp.js';
 
 // =============================================================
 // Type augmentation
@@ -16,7 +19,11 @@ declare module 'fastify' {
     interface FastifyRequest {
         admin?: {
             adminId: string;
+            /** @deprecated legacy flag; authorise on `role`. */
             isSuperAdmin: boolean;
+            role: AdminRole;
+            /** True once the admin has a verified TOTP enrolment. */
+            totpEnabled: boolean;
         };
     }
 }
@@ -27,12 +34,16 @@ declare module '@fastify/jwt' {
             userId: string;
             tenantId: string;
             role: 'OWNER' | 'STAFF';
-            type: 'access' | 'refresh';
+            /** 'support' = a read-only platform-admin support token (A5). */
+            type: 'access' | 'refresh' | 'support';
+            support?: { sessionId: string; adminId: string };
         };
         user: {
             userId: string;
             tenantId: string;
             role: 'OWNER' | 'STAFF';
+            /** Set only for support-access requests: who is really behind them. */
+            support?: { sessionId: string; adminId: string };
         };
     }
 }
@@ -40,6 +51,10 @@ declare module '@fastify/jwt' {
 export interface AdminJWTPayload {
     adminId: string;
     type: 'admin_access' | 'admin_refresh';
+    /** Refresh tokens only: unique id, so a logged-out token can be refused. */
+    jti?: string;
+    /** Refresh tokens only: the sign-in this token descends from; reuse revokes the whole family. */
+    fam?: string;
 }
 
 // =============================================================
@@ -69,15 +84,28 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         sign: { expiresIn: config.jwtExpiresIn },
     });
 
-    // Tenant user authentication.
+    // Tenant user authentication. Also accepts a support token (A5): a
+    // platform admin's time-boxed, READ-ONLY view of one tenant.
     fastify.decorate('authenticate', async (request: FastifyRequest) => {
+        let decoded: {
+            userId: string;
+            tenantId: string;
+            role: 'OWNER' | 'STAFF';
+            type: 'access' | 'refresh' | 'support';
+            support?: { sessionId: string; adminId: string };
+        };
         try {
-            const decoded = (await request.jwtVerify()) as unknown as {
-                userId: string;
-                tenantId: string;
-                role: 'OWNER' | 'STAFF';
-                type: 'access' | 'refresh';
-            };
+            decoded = (await request.jwtVerify()) as unknown as typeof decoded;
+        } catch {
+            throw fastify.httpErrors.unauthorized('Invalid or expired token');
+        }
+
+        if (decoded.type === 'support') {
+            await authenticateSupport(request, decoded);
+            return;
+        }
+
+        try {
             if (decoded.type !== 'access') {
                 throw new Error('Invalid token type');
             }
@@ -102,11 +130,104 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         }
     });
 
+    /**
+     * Support access. Rules, in order:
+     *  1. Read-only: anything but GET is refused (and the attempt audited).
+     *  2. Deny by default: only the resolved routes on SUPPORT_READ_ROUTES are
+     *     reachable (matched on `request.routeOptions.url`, never the raw
+     *     path). Anything else is refused and audited.
+     *  3. The session must still be live FOR THE TOKEN'S TENANT, belong to the
+     *     admin the token names, and that admin must still be active, still
+     *     hold support:access and satisfy the 2FA-required policy, checked on
+     *     every request so ending a session or demoting an admin cuts access
+     *     immediately.
+     *  4. Every request is audited BEFORE it runs. If the audit cannot be
+     *     written the request is refused: no unaudited support access.
+     */
+    async function authenticateSupport(
+        request: FastifyRequest,
+        decoded: { userId: string; tenantId: string; role: 'OWNER' | 'STAFF'; support?: { sessionId: string; adminId: string } },
+    ): Promise<void> {
+        const claim = decoded.support;
+        if (!claim?.sessionId || !claim.adminId || !decoded.tenantId) {
+            throw fastify.httpErrors.unauthorized('Invalid or expired token');
+        }
+        // The resolved route PATTERN only. The raw URL can carry customer
+        // phone numbers and refs, so it is never stored or matched.
+        const route = request.routeOptions?.url;
+
+        const deny = async (reason: string, message: string): Promise<never> => {
+            await fastify.prisma.auditLog
+                .create({
+                    data: {
+                        tenantId: decoded.tenantId,
+                        actorType: 'ADMIN',
+                        actorId: claim.adminId,
+                        action: 'support.request_denied',
+                        targetType: 'SupportSession',
+                        targetId: claim.sessionId,
+                        metadata: { method: request.method, route: route ?? '(unmatched)', reason },
+                        ipAddress: request.ip,
+                    },
+                })
+                .catch((err: unknown) => request.log.error({ err }, 'support denied-request audit failed'));
+            throw fastify.httpErrors.forbidden(message);
+        };
+
+        if (request.method !== 'GET') await deny('read_only', 'Support access is read-only');
+        if (!isSupportReadRoute(route)) await deny('route_not_allowed', 'Support access does not include this');
+
+        const session = await findLiveSession(fastify.prisma, claim.sessionId, decoded.tenantId);
+        if (!session || session.adminId !== claim.adminId) {
+            throw fastify.httpErrors.unauthorized('Support session has ended');
+        }
+
+        const entitlement = checkSupportEntitlement(session.admin, await isTwoFactorRequired(fastify.prisma));
+        if (!entitlement.ok) {
+            if (entitlement.reason === 'two_factor_required') {
+                await deny('two_factor_required', 'Two-factor authentication is required. Set it up under My account.');
+            }
+            throw fastify.httpErrors.unauthorized('Support session has ended');
+        }
+
+        try {
+            await fastify.prisma.auditLog.create({
+                data: {
+                    tenantId: decoded.tenantId,
+                    actorType: 'ADMIN',
+                    actorId: claim.adminId,
+                    action: 'support.request',
+                    targetType: 'SupportSession',
+                    targetId: claim.sessionId,
+                    metadata: { method: request.method, route },
+                    ipAddress: request.ip,
+                },
+            });
+        } catch (err) {
+            request.log.error({ err }, 'support request audit failed; refusing the request');
+            throw fastify.httpErrors.serviceUnavailable('Support access is temporarily unavailable');
+        }
+
+        request.user = {
+            userId: decoded.userId,
+            tenantId: decoded.tenantId,
+            role: decoded.role,
+            support: { sessionId: claim.sessionId, adminId: claim.adminId },
+        };
+        bindTenantContext({ tenantId: decoded.tenantId, userId: decoded.userId });
+        request.log = request.log.child({
+            tenantId: decoded.tenantId,
+            supportAdminId: claim.adminId,
+            supportSessionId: claim.sessionId,
+        });
+    }
+
     // Admin authentication.
     // 1. Verifies the token against ADMIN_JWT_SECRET (not JWT_SECRET).
     // 2. Re-reads the admin row from DB. `isSuperAdmin` and `isActive` come
-    //    from the row, never from the token claim, so a stolen-then-revoked
-    //    admin or a demoted super-admin loses access immediately.
+    //    `role` and `isActive` come from the row, never from the token claim,
+    //    so a stolen-then-revoked admin or a demoted admin loses access
+    //    immediately.
     fastify.decorate('authenticateAdmin', async (request: FastifyRequest) => {
         let decoded: AdminJWTPayload;
         try {
@@ -121,16 +242,20 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
 
         const admin = await fastify.prisma.admin.findUnique({
             where: { id: decoded.adminId },
-            select: { id: true, isSuperAdmin: true, isActive: true },
+            select: { id: true, isSuperAdmin: true, isActive: true, role: true, totpEnabledAt: true },
         });
 
         if (!admin || !admin.isActive) {
             throw fastify.httpErrors.unauthorized('Admin account is not active');
         }
 
+        // The role column decides; the legacy flag only fills in a missing one.
+        const role = resolveAdminRole(admin);
         request.admin = {
             adminId: admin.id,
             isSuperAdmin: admin.isSuperAdmin,
+            role,
+            totpEnabled: !!admin.totpEnabledAt,
         };
         // Admin context — adminId set, tenantId omitted so the Prisma guard
         // knows this is a platform-admin call and skips the tenant filter check.
@@ -139,7 +264,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         });
         request.log = request.log.child({
             adminId: admin.id,
-            isSuperAdmin: admin.isSuperAdmin,
+            adminRole: role,
         });
     });
 };
@@ -165,6 +290,8 @@ export function generateTokenPayload(
 export function generateAdminTokenPayload(
     adminId: string,
     type: 'admin_access' | 'admin_refresh',
+    jti?: string,
+    fam?: string,
 ): AdminJWTPayload {
-    return { adminId, type };
+    return { adminId, type, ...(jti ? { jti } : {}), ...(fam ? { fam } : {}) };
 }

@@ -24,6 +24,10 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
     // ============================================
 
     fastify.get('/google/connect', { preHandler: fastify.authenticate }, async (request) => {
+        // Defence in depth: the support token already cannot reach this route
+        // (plugins/auth.ts allowlist), but a signed OAuth state lets whoever
+        // finishes the flow bind THEIR calendar to this tenant, so refuse here too.
+        if (request.user.support) throw fastify.httpErrors.forbidden('Not available in support access');
         // Signed, time-limited state prevents CSRF binding of attacker
         // calendars onto victim tenants.
         const state = signOAuthState({

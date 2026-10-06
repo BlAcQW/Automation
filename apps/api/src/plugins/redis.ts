@@ -10,6 +10,7 @@ export const QUEUE_NAMES = {
     REMINDERS: 'reminders',
     CALENDAR_SYNC: 'calendar-sync',
     INBOUND: 'inbound',
+    WEBHOOKS: 'webhooks',
 } as const;
 
 declare module 'fastify' {
@@ -20,6 +21,7 @@ declare module 'fastify' {
             reminders: Queue | null;
             calendarSync: Queue | null;
             inbound: Queue | null;
+            webhooks: Queue | null;
         };
         hasRedis: boolean;
     }
@@ -37,6 +39,7 @@ const redisPlugin: FastifyPluginAsync = async (fastify) => {
             reminders: null,
             calendarSync: null,
             inbound: null,
+            webhooks: null,
         });
         fastify.decorate('hasRedis', false);
         return;
@@ -99,6 +102,17 @@ const redisPlugin: FastifyPluginAsync = async (fastify) => {
         },
     });
 
+    // Outgoing webhooks (D3). Same discipline as inbound: the WebhookDelivery row
+    // is the source of truth, jobs carry only its id, retries are row-driven.
+    const webhooksQueue = new Queue(QUEUE_NAMES.WEBHOOKS, {
+        connection: redis,
+        defaultJobOptions: {
+            removeOnComplete: true,
+            removeOnFail: true,
+            attempts: 1,
+        },
+    });
+
     // Decorate fastify with redis and queues
     fastify.decorate('redis', redis);
     fastify.decorate('queues', {
@@ -106,6 +120,7 @@ const redisPlugin: FastifyPluginAsync = async (fastify) => {
         reminders: remindersQueue,
         calendarSync: calendarSyncQueue,
         inbound: inboundQueue,
+        webhooks: webhooksQueue,
     });
     fastify.decorate('hasRedis', true);
 
@@ -115,6 +130,7 @@ const redisPlugin: FastifyPluginAsync = async (fastify) => {
         await remindersQueue.close();
         await calendarSyncQueue.close();
         await inboundQueue.close();
+        await webhooksQueue.close();
         await redis.quit();
     });
 };

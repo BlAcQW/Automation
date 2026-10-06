@@ -21,6 +21,9 @@ interface PresenceArgs {
     logger?: FastifyBaseLogger;
 }
 
+/** Best-effort call: give up quickly rather than linger as an open socket. */
+const PRESENCE_TIMEOUT_MS = 10_000;
+
 async function post(args: PresenceArgs, body: Record<string, unknown>): Promise<void> {
     try {
         const response = await fetch(
@@ -32,6 +35,7 @@ async function post(args: PresenceArgs, body: Record<string, unknown>): Promise<
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ messaging_product: 'whatsapp', ...body }),
+                signal: AbortSignal.timeout(PRESENCE_TIMEOUT_MS),
             },
         );
         if (!response.ok) {

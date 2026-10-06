@@ -34,6 +34,22 @@ import {
 } from '../../services/assistant-fallback.js';
 import { selectConversationHandler, canCustomerResumeBot } from '../../services/conversation-handlers.js';
 import { Prisma } from '@prisma/client';
+import { persistInbound, dispatchInbound } from '../../services/inbound-queue.js';
+import { withConversationLock, LockTimeoutError, type LockRedis } from '../../services/conversation-lock.js';
+import { findInbound, insertInbound, markInboundHandled } from './inbound-store.js';
+import { deliverReply, resendPendingReply, ReplySendError } from './reply-outbox.js';
+import { raiseAlert } from '../../services/alerts.js';
+
+/**
+ * How long an inbound job queues for its conversation's lock before handing the
+ * inbox row back (see processInboxRow 'busy'). Short on purpose: a long wait
+ * parks a shared worker slot, so one chatty sender could stall every tenant.
+ * Ordering: same-conversation turns never overlap; deferred rows return after a
+ * fixed BUSY_RETRY_MS in the order they gave up, so arrival order is kept in the
+ * normal case, but strict FIFO is not guaranteed once a burst outlasts this wait.
+ */
+const INBOUND_LOCK_WAIT_MS = 1_500;
+const lockOpts = (fastify: any) => ({ waitMs: INBOUND_LOCK_WAIT_MS, log: fastify.log });
 
 /**
  * Meta caps a business portfolio at 20 registered business phone numbers, so
@@ -200,17 +216,30 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
 
         const payload = request.body as WhatsAppWebhookPayload;
 
-        // Immediately respond to acknowledge receipt
+        // Persist BEFORE acknowledging. Once we answer 200 Meta will not
+        // retry, so the payload must already be durable. If the insert fails
+        // we answer 5xx and Meta redelivers.
+        let inboxId: string;
+        try {
+            inboxId = await persistInbound(fastify.prisma, payload);
+        } catch (err) {
+            fastify.log.error({ err }, 'Could not persist inbound webhook - asking Meta to retry');
+            throw fastify.httpErrors.serviceUnavailable('Webhook not stored');
+        }
+
         reply.send({ status: 'received' });
 
-        // Process asynchronously
-        setImmediate(async () => {
-            try {
-                await processWebhook(fastify, payload);
-            } catch (err) {
-                fastify.log.error(err, 'Error processing webhook');
-            }
-        });
+        // Hand off: BullMQ when Redis is up, in-process otherwise. Never
+        // awaited and never throws - the row is safe and the sweep recovers it.
+        void dispatchInbound(
+            {
+                prisma: fastify.prisma,
+                log: fastify.log,
+                process: (p) => processWebhook(fastify, p as WhatsAppWebhookPayload),
+                queue: fastify.queues?.inbound ?? null,
+            },
+            inboxId,
+        ).catch((err) => fastify.log.error({ err, inboxId }, 'Inbound dispatch failed'));
     });
 
     // ===================================
@@ -800,6 +829,7 @@ async function processMessagingWebhook(
     payload: MessagingWebhookPayload,
     channel: 'INSTAGRAM' | 'MESSENGER',
 ) {
+    const errors: unknown[] = [];
     for (const entry of payload.entry ?? []) {
         const tenant = await fastify.prisma.tenant.findFirst({
             where: channel === 'INSTAGRAM'
@@ -821,14 +851,57 @@ async function processMessagingWebhook(
             const text = event.message?.text;
             if (!senderId || !text) continue;
 
-            await processChannelMessage(fastify, tenant, {
-                channel,
-                senderId,
-                text,
-                providerMessageId: event.message?.mid,
-            });
+            await settle(errors, fastify, { channel, senderId }, () =>
+                withConversationLock(
+                    lockRedis(fastify),
+                    `${tenant.id}:${channel}:${senderId}`,
+                    () => processChannelMessage(fastify, tenant, {
+                        channel,
+                        senderId,
+                        text,
+                        providerMessageId: event.message?.mid,
+                    }),
+                    lockOpts(fastify),
+                ),
+            );
         }
     }
+    throwIfAny(errors);
+}
+
+/**
+ * Run one unit of webhook work so a throw cannot abandon the rest of the
+ * batch. Failures are logged at error and collected; the caller throws once at
+ * the end so the inbox row is retried (dedupe makes re-running finished
+ * messages a no-op).
+ */
+async function settle(
+    errors: unknown[],
+    fastify: any,
+    context: Record<string, unknown>,
+    fn: () => Promise<unknown>,
+): Promise<void> {
+    try {
+        await fn();
+    } catch (err) {
+        errors.push(err);
+        fastify.log.error({ err, ...context }, 'Inbound webhook item failed');
+    }
+}
+
+function throwIfAny(errors: unknown[]): void {
+    if (errors.length === 0) return;
+    const first = errors[0];
+    // Every failure was lock contention: surface it as such so the inbox row is
+    // deferred without consuming an attempt (the rest of the batch is deduped).
+    if (errors.every((e) => e instanceof LockTimeoutError)) throw first;
+    throw new Error(
+        `${errors.length} webhook item(s) failed: ${first instanceof Error ? first.message : String(first)}`,
+    );
+}
+
+function lockRedis(fastify: any): LockRedis | null {
+    return (fastify.redis as LockRedis | null | undefined) ?? null;
 }
 
 /**
@@ -857,35 +930,52 @@ async function processChannelMessage(
 
     // Duplicate delivery is normal — Meta retries. The provider id is unique
     // per message, so it is what tells a retry from a genuinely new message.
-    if (input.providerMessageId) {
-        const seen = await fastify.prisma.message.findFirst({
-            where: { conversationId: conversation.id, whatsappMsgId: input.providerMessageId },
-            select: { id: true },
+    // Only a HANDLED row is a duplicate; a stored-but-unhandled one means an
+    // earlier attempt died mid-turn and must be answered now (inbound-store.ts).
+    let slot = await findInbound(fastify.prisma, conversation.id, input.providerMessageId);
+    if (slot?.handled) return;
+    const reused = Boolean(slot);
+    if (!slot) {
+        slot = await insertInbound(fastify.prisma, conversation.id, input.providerMessageId, {
+            conversationId: conversation.id,
+            direction: 'INBOUND',
+            content: input.text,
+            messageType: 'TEXT',
+            whatsappMsgId: input.providerMessageId ?? null,
+            metadata: { channel: input.channel },
         });
-        if (seen) return;
-    }
-
-    try {
-        await fastify.prisma.message.create({
-            data: {
-                conversationId: conversation.id,
-                direction: 'INBOUND',
-                content: input.text,
-                messageType: 'TEXT',
-                whatsappMsgId: input.providerMessageId ?? null,
-                metadata: { channel: input.channel },
-            },
-        });
-    } catch (err) {
-        // Two redeliveries raced past the findFirst above; the unique
-        // constraint caught the loser.
-        if (isDuplicateMessageError(err)) {
+        if (slot.handled) {
             fastify.log.debug({ providerMessageId: input.providerMessageId }, 'Skipping duplicate inbound message');
             return;
         }
-        throw err;
     }
 
+    // A previous attempt may have produced a reply it could not send. Send that
+    // exact text; never re-run the agent (its tools may already have acted).
+    if (reused && await resendPendingReply(fastify, tenant, {
+        conversationId: conversation.id,
+        inboundId: slot.id,
+        channel: input.channel,
+        creds: channelCreds(tenant, input.channel),
+        recipientId: input.senderId,
+        humanActive: conversation.state === 'HUMAN_ACTIVE',
+    })) {
+        await markInboundHandled(fastify.prisma, slot.id);
+        return;
+    }
+
+    await runChannelTurn(fastify, tenant, conversation, input, slot.id);
+    await markInboundHandled(fastify.prisma, slot.id);
+}
+
+/** Everything after the inbound row is stored. Returning normally = turn complete. */
+async function runChannelTurn(
+    fastify: any,
+    tenant: any,
+    conversation: any,
+    input: { channel: 'INSTAGRAM' | 'MESSENGER'; senderId: string; text: string },
+    inboundId?: string,
+) {
     // Opens the 24-hour reply window. It applies on these channels too, but
     // without a template escape hatch once it closes.
     await fastify.prisma.conversation.update({
@@ -918,6 +1008,7 @@ async function processChannelMessage(
                 input.channel,
                 input.senderId,
                 progress,
+                inboundId,
             );
             if ((conversation.botFailureCount || 0) > 0) {
                 await fastify.prisma.conversation.update({
@@ -927,6 +1018,9 @@ async function processChannelMessage(
             }
             return;
         } catch (err) {
+            // The reply exists and is stored; the fallback must not follow it
+            // with a handoff. Let the inbox retry re-send it.
+            if (err instanceof ReplySendError) throw err;
             agentThrew = true;
             fastify.log.error(
                 { err, channel: input.channel, replySent: progress.replySent },
@@ -945,7 +1039,7 @@ async function processChannelMessage(
 }
 
 // Process incoming webhook
-async function processWebhook(
+export async function processWebhook(
     fastify: any,
     payload: WhatsAppWebhookPayload
 ) {
@@ -966,17 +1060,25 @@ async function processWebhook(
         return;
     }
 
-    for (const entry of payload.entry) {
-        for (const change of entry.changes) {
+    const errors: unknown[] = [];
+    for (const entry of payload.entry ?? []) {
+        for (const change of entry.changes ?? []) {
             if (change.field !== 'messages') continue;
 
             const value = change.value;
             const phoneNumberId = value.metadata.phone_number_id;
 
             // Find tenant by phone number ID
-            const tenant = await fastify.prisma.tenant.findFirst({
-                where: { whatsappPhoneNumberId: phoneNumberId },
-            });
+            let tenant: any;
+            try {
+                tenant = await fastify.prisma.tenant.findFirst({
+                    where: { whatsappPhoneNumberId: phoneNumberId },
+                });
+            } catch (err) {
+                errors.push(err);
+                fastify.log.error({ err, phoneNumberId }, 'Tenant lookup failed for inbound webhook');
+                continue;
+            }
 
             if (!tenant) {
                 fastify.log.warn({ phoneNumberId }, 'No tenant found for phone number');
@@ -986,7 +1088,16 @@ async function processWebhook(
             // Process messages
             if (value.messages) {
                 for (const message of value.messages) {
-                    await processMessage(fastify, tenant, message, value.contacts?.[0]);
+                    // Same customer, same lock: two messages for one conversation
+                    // never run (and reply) concurrently.
+                    await settle(errors, fastify, { msgId: message.id }, () =>
+                        withConversationLock(
+                            lockRedis(fastify),
+                            `${tenant.id}:WHATSAPP:${message.from}`,
+                            () => processMessage(fastify, tenant, message, value.contacts?.[0]),
+                            lockOpts(fastify),
+                        ),
+                    );
                 }
             }
 
@@ -994,11 +1105,14 @@ async function processWebhook(
             // and the billing category we charge from.
             if (value.statuses) {
                 for (const status of value.statuses) {
-                    await recordMessageStatus(fastify, status);
+                    await settle(errors, fastify, { statusId: status.id }, () =>
+                        recordMessageStatus(fastify, status),
+                    );
                 }
             }
         }
     }
+    throwIfAny(errors);
 }
 
 /**
@@ -1081,12 +1195,12 @@ async function processMessage(
     // this whatsappMsgId on this conversation, drop the duplicate before
     // advancing the bot state machine. Full (phoneNumberId, messageId) keying
     // is Phase 2; this kills the common-case duplicates.
+    let existing: Awaited<ReturnType<typeof findInbound>> = null;
     if (message.id) {
-        const seen = await fastify.prisma.message.findFirst({
-            where: { conversationId: conversation.id, whatsappMsgId: message.id },
-            select: { id: true },
-        });
-        if (seen) {
+        existing = await findInbound(fastify.prisma, conversation.id, message.id);
+        // Only a HANDLED row is a duplicate; an unhandled one is a turn that died
+        // mid-flight and is re-run below on the stored row (inbound-store.ts).
+        if (existing?.handled) {
             fastify.log.debug({ msgId: message.id }, 'Skipping duplicate inbound message');
             return;
         }
@@ -1150,28 +1264,51 @@ async function processMessage(
         };
     }
 
-    // Store message. The unique (conversationId, whatsappMsgId) constraint
-    // closes the race the findFirst above can't: a concurrent redelivery that
-    // passed the check loses here and is treated as a duplicate.
-    try {
-        await fastify.prisma.message.create({
-            data: {
-                conversationId: conversation.id,
-                direction: 'INBOUND',
-                content,
-                messageType,
-                whatsappMsgId: message.id,
-                ...(meta ? { metadata: meta as object } : {}),
-            },
+    // Store message (unless an earlier attempt already did). The unique
+    // (conversationId, whatsappMsgId) constraint closes the race the lookup
+    // above can't: a concurrent redelivery that passed the check re-reads the
+    // winner's row inside insertInbound instead of dropping the turn.
+    let slot = existing;
+    if (!slot) {
+        slot = await insertInbound(fastify.prisma, conversation.id, message.id, {
+            conversationId: conversation.id,
+            direction: 'INBOUND',
+            content,
+            messageType,
+            whatsappMsgId: message.id,
+            ...(meta ? { metadata: meta as object } : {}),
         });
-    } catch (err) {
-        if (isDuplicateMessageError(err)) {
+        if (slot.handled) {
             fastify.log.debug({ msgId: message.id }, 'Skipping duplicate inbound message');
             return;
         }
-        throw err;
     }
 
+    if (existing && await resendPendingReply(fastify, tenant, {
+        conversationId: conversation.id,
+        inboundId: slot.id,
+        channel: 'WHATSAPP',
+        creds: channelCreds(tenant, 'WHATSAPP'),
+        recipientId: customerPhone,
+        humanActive: conversation.state === 'HUMAN_ACTIVE',
+    })) {
+        await markInboundHandled(fastify.prisma, slot.id);
+        return;
+    }
+
+    await runWhatsAppTurn(fastify, tenant, conversation, customerPhone, content, slot.id);
+    await markInboundHandled(fastify.prisma, slot.id);
+}
+
+/** Everything after the inbound row is stored. Returning normally = turn complete. */
+async function runWhatsAppTurn(
+    fastify: any,
+    tenant: any,
+    conversation: any,
+    customerPhone: string,
+    content: string,
+    inboundId?: string,
+) {
     // Update conversation timestamps. lastInboundAt powers the WhatsApp
     // 24-hour customer-service window check on staff replies.
     const now = new Date();
@@ -1265,7 +1402,7 @@ async function processMessage(
     const handler = selectConversationHandler(tenant.vertical ?? 'APPOINTMENTS', llmEnabled);
     if (handler === 'llm_agent') {
         try {
-            await handleWithAgent(fastify, tenant, conversation, customerPhone, content, 'WHATSAPP', undefined, progress);
+            await handleWithAgent(fastify, tenant, conversation, customerPhone, content, 'WHATSAPP', undefined, progress, inboundId);
             // The assistant coped, so any earlier failures no longer count
             // against this conversation.
             if ((conversation.botFailureCount || 0) > 0) {
@@ -1276,6 +1413,7 @@ async function processMessage(
             }
             return;
         } catch (err) {
+            if (err instanceof ReplySendError) throw err; // see runChannelTurn
             agentThrew = true;
             fastify.log.error({ err, conversationId: conversation.id, replySent: progress.replySent }, 'LLM agent failed');
         }
@@ -1291,6 +1429,10 @@ async function processMessage(
 }
 
 type ChannelKind = 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
+
+function channelCreds(tenant: any, channel: ChannelKind) {
+    return resolveChannelCredentials(tenant, channel, decrypt, resolveCredentials(selectCredentialSource(tenant)));
+}
 
 /** Mutated by handleWithAgent so a failure handler knows the reply went out. */
 interface AgentProgress {
@@ -1382,6 +1524,13 @@ async function holdingSentRecently(prisma: any, conversationId: string): Promise
  * atomically, releases it if the send fails, and never throws: by the time
  * this runs the customer-facing outcome is decided, and a failure here must
  * not bubble up and fail the webhook.
+ *
+ * Deliberately NOT given the reply outbox (reply-outbox.ts). These run only
+ * after the agent already failed: 'holding' follows a successful handoff to a
+ * human (the conversation is HUMAN_ACTIVE, staff see it and reply), and 'retry'
+ * is a cosmetic "try again" nudge. Making their send failure throw would retry
+ * the turn and re-run the agent, whose tools may already have acted, which is
+ * worse than a lost courtesy message. The failure is logged at error.
  */
 async function sendSystemMessage(
     fastify: any,
@@ -1397,7 +1546,17 @@ async function sendSystemMessage(
         decrypt,
         resolveCredentials(selectCredentialSource(tenant)),
     );
-    if (!creds) return;
+    if (!creds) {
+        await raiseAlert(fastify.prisma, {
+            kind: 'outbound.no_channel',
+            severity: 'warning',
+            tenantId: tenant.id,
+            message: `Replies on ${input.channel} cannot be sent: the channel is not configured`,
+            context: { channel: input.channel },
+            dedupeKey: `outbound.no_channel:${tenant.id}:${input.channel}`,
+        });
+        return;
+    }
 
     const reservation = await tryReserveOutbound(fastify.prisma, tenant.id);
     if (!reservation.ok) {
@@ -1453,10 +1612,11 @@ async function handleWithAgent(
     /** Who to reply to on this channel — phone, PSID or IGSID. */
     recipientId?: string,
     progress: AgentProgress = { replySent: false },
+    /** The inbound Message this turn answers; links the stored reply (outbox). */
+    inboundId?: string,
 ): Promise<void> {
     const { runAgent } = await import('../../services/llm-agent.js');
-    const { checkOutboundQuota, tryReserveOutbound, rollbackOutboundReservation } =
-        await import('../../services/usage.js');
+    const { checkOutboundQuota } = await import('../../services/usage.js');
 
     // Cheap early exit so an exhausted tenant doesn't pay for an LLM call.
     // The authoritative, race-safe reservation happens just before the send.
@@ -1501,55 +1661,18 @@ async function handleWithAgent(
     const reply = result.reply.trim();
     if (!reply) return;
 
-    const creds = resolveChannelCredentials(
-        tenant,
+    // Stored PENDING before the send; a send failure throws ReplySendError so
+    // the turn is retried by re-sending this text, not by re-running the agent.
+    const outcome = await deliverReply(fastify, tenant, {
+        conversationId: conversation.id,
         channel,
-        decrypt,
-        resolveCredentials(selectCredentialSource(tenant)),
-    );
-    if (!creds) return;
-
-    // check-then-increment is not safe under concurrency (see usage.ts);
-    // reserve atomically and release on a failed send.
-    const reservation = await tryReserveOutbound(fastify.prisma, tenant.id);
-    if (!reservation.ok) {
-        fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
-        return;
-    }
-
-    let providerMessageId: string | undefined;
-    try {
-        const sent = await sendChannelText({
-            channel,
-            credentials: creds,
-            recipientId: recipientId ?? customerPhone,
-            text: reply,
-        });
-        providerMessageId = sent.messageId;
-    } catch (err) {
-        fastify.log.error({ err, channel }, 'Failed to send agent reply');
-        await rollbackOutboundReservation(fastify.prisma, tenant.id).catch(() => undefined);
-        return;
-    }
-    progress.replySent = true;
-
-    // The customer has the reply. A failure recording it must not surface as
-    // an agent failure, or the fallback would follow a real answer with a
-    // handoff.
-    try {
-        await fastify.prisma.message.create({
-            data: {
-                conversationId: conversation.id,
-                direction: 'OUTBOUND',
-                content: reply,
-                messageType: 'TEXT',
-                whatsappMsgId: providerMessageId ?? null,
-                metadata: { source: 'llm', channel, model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', tools: result.toolsUsed },
-            },
-        });
-    } catch (err) {
-        fastify.log.error({ err, conversationId: conversation.id }, 'Agent reply sent but not recorded');
-    }
+        creds: channelCreds(tenant, channel),
+        recipientId: recipientId ?? customerPhone,
+        text: reply,
+        inboundId,
+        metadata: { source: 'llm', channel, model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini', tools: result.toolsUsed },
+    });
+    progress.replySent = outcome === 'sent';
 }
 
 export default whatsappRoutes;

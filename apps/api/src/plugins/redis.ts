@@ -9,6 +9,7 @@ export const QUEUE_NAMES = {
     NOTIFICATIONS: 'notifications',
     REMINDERS: 'reminders',
     CALENDAR_SYNC: 'calendar-sync',
+    INBOUND: 'inbound',
 } as const;
 
 declare module 'fastify' {
@@ -18,6 +19,7 @@ declare module 'fastify' {
             notifications: Queue | null;
             reminders: Queue | null;
             calendarSync: Queue | null;
+            inbound: Queue | null;
         };
         hasRedis: boolean;
     }
@@ -34,6 +36,7 @@ const redisPlugin: FastifyPluginAsync = async (fastify) => {
             notifications: null,
             reminders: null,
             calendarSync: null,
+            inbound: null,
         });
         fastify.decorate('hasRedis', false);
         return;
@@ -84,12 +87,25 @@ const redisPlugin: FastifyPluginAsync = async (fastify) => {
         },
     });
 
+    // Inbound webhooks. The WebhookInbox row is the source of truth; jobs only
+    // carry its id, so they are single-attempt (retries are the row's attempts
+    // counter + the sweep) and the jobId is the row id (duplicate adds no-op).
+    const inboundQueue = new Queue(QUEUE_NAMES.INBOUND, {
+        connection: redis,
+        defaultJobOptions: {
+            removeOnComplete: true,
+            removeOnFail: true,
+            attempts: 1,
+        },
+    });
+
     // Decorate fastify with redis and queues
     fastify.decorate('redis', redis);
     fastify.decorate('queues', {
         notifications: notificationsQueue,
         reminders: remindersQueue,
         calendarSync: calendarSyncQueue,
+        inbound: inboundQueue,
     });
     fastify.decorate('hasRedis', true);
 
@@ -98,6 +114,7 @@ const redisPlugin: FastifyPluginAsync = async (fastify) => {
         await notificationsQueue.close();
         await remindersQueue.close();
         await calendarSyncQueue.close();
+        await inboundQueue.close();
         await redis.quit();
     });
 };

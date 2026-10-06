@@ -17,6 +17,8 @@ import authPlugin from './plugins/auth.js';
 import redisPlugin from './plugins/redis.js';
 import { startNotificationWorkers, stopNotificationWorkers } from './services/notification-worker.js';
 import { startHoldExpirySweeper } from './services/hold-expiry.js';
+import { startInboundWorker, stopInboundWorker } from './services/inbound-worker.js';
+import { startInboundSweeper } from './services/inbound-queue.js';
 
 // Import routes
 import authRoutes from './routes/auth/index.js';
@@ -27,7 +29,7 @@ import bookingsRoutes from './routes/bookings/index.js';
 import conversationsRoutes from './routes/conversations/index.js';
 import customersRoutes from './routes/customers/index.js';
 import dashboardRoutes from './routes/dashboard/index.js';
-import whatsappRoutes from './routes/whatsapp/index.js';
+import whatsappRoutes, { processWebhook } from './routes/whatsapp/index.js';
 import productsRoutes from './routes/products/index.js';
 import ordersRoutes from './routes/orders/index.js';
 import calendarRoutes from './routes/calendar/index.js';
@@ -192,6 +194,10 @@ async function buildApp() {
 let workers: ReturnType<typeof startNotificationWorkers> | null = null;
 // Releases booking slots whose deposit was never paid. In-process timer.
 let stopHoldSweeper: (() => void) | null = null;
+// Durable inbound webhook processing: BullMQ worker (Redis only) + a sweep that
+// re-dispatches stranded WebhookInbox rows (works with or without Redis).
+let inboundWorker: ReturnType<typeof startInboundWorker> = null;
+let stopInboundSweeper: (() => void) | null = null;
 
 async function start() {
     try {
@@ -205,6 +211,16 @@ async function start() {
         workers = startNotificationWorkers(config.redisUrl);
         stopHoldSweeper = startHoldExpirySweeper(server.prisma, server.log);
 
+        const inboundDeps = {
+            prisma: server.prisma,
+            log: server.log,
+            process: (payload: unknown) => processWebhook(server, payload as any),
+            // Delayed retries (backoff / busy conversation) are re-enqueued here.
+            queue: server.queues.inbound,
+        };
+        inboundWorker = startInboundWorker(config.redisUrl, inboundDeps);
+        stopInboundSweeper = startInboundSweeper(inboundDeps);
+
         server.log.info(`Bookly API running at http://${config.host}:${config.port}`);
     } catch (err) {
         app.log.error(err);
@@ -216,6 +232,8 @@ async function shutdown(signal: string) {
     app.log.info({ signal }, 'Shutting down gracefully');
     try {
         stopHoldSweeper?.();
+        stopInboundSweeper?.();
+        await stopInboundWorker(inboundWorker);
         if (workers) {
             await stopNotificationWorkers(workers);
         }

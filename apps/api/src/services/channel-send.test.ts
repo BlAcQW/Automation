@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { buildTextRequest, supportsOutOfWindowMessaging } from './channel-send.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildTextRequest, sendChannelText, ChannelSendError, SEND_TIMEOUT_MS, supportsOutOfWindowMessaging } from './channel-send.js';
 
 const creds = { senderId: 'SENDER1', accessToken: 'tok' };
 
@@ -68,5 +68,26 @@ describe('supportsOutOfWindowMessaging', () => {
     expect(supportsOutOfWindowMessaging('WHATSAPP')).toBe(true);
     expect(supportsOutOfWindowMessaging('INSTAGRAM')).toBe(false);
     expect(supportsOutOfWindowMessaging('MESSENGER')).toBe(false);
+  });
+});
+
+
+describe('sendChannelText timeout', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('passes an abort signal to the Graph fetch', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ messages: [{ id: 'w1' }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await sendChannelText({ channel: 'WHATSAPP', credentials: creds, recipientId: '1', text: 'x' });
+    const init = (fetchMock.mock.calls[0] as any)[1];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(SEND_TIMEOUT_MS).toBe(15_000);
+  });
+
+  it('a timed-out fetch becomes a ChannelSendError', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new DOMException('timed out', 'TimeoutError'); }));
+    await expect(
+      sendChannelText({ channel: 'WHATSAPP', credentials: creds, recipientId: '1', text: 'x' }),
+    ).rejects.toBeInstanceOf(ChannelSendError);
   });
 });

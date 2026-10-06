@@ -21,6 +21,9 @@ import type { ConversationChannel } from '@prisma/client';
 
 const GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
+/** A hung Graph call must not hold the conversation lock and a worker slot forever. */
+export const SEND_TIMEOUT_MS = 15_000;
+
 export type ChannelSendStep = 'config' | 'send';
 
 export class ChannelSendError extends Error {
@@ -98,6 +101,7 @@ export async function sendChannelText(args: SendTextArgs): Promise<{ messageId?:
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
+            signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
         });
     } catch (err) {
         throw new ChannelSendError(args.channel, 'send', `network_error: ${(err as Error).message}`);

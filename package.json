@@ -8,6 +8,7 @@
     "packages/*"
   ],
   "scripts": {
+    "test:db": "npm run test:db -w apps/api",
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
     "postinstall": "npm run db:generate -w apps/api",
     "dev:api": "npm run dev -w apps/api",

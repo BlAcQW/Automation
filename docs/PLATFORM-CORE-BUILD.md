@@ -38,21 +38,21 @@ item. See [architecture brainstorm](https://claude.ai/code/artifact/81043827-579
 
 ## During TURBO — multiple workflows
 
-- [ ] **D1. Workflow engine.** Flow definitions (data), a step catalogue,
+- [x] **D1. Workflow engine.** Flow definitions (data), a step catalogue,
       per-conversation state, idempotent per inbound message, human handoff.
       New handler kind at the conversation seam.
-- [ ] **D2. External app handler + public API v1.** A tenant's conversations
+- [x] **D2. External app handler + public API v1.** A tenant's conversations
       can be handed to an app hosted anywhere: inbound messages delivered by
       signed webhook, replies and actions through the API with a scoped key.
-- [ ] **D3. Events and outgoing webhooks.** Domain events (message.received,
+- [x] **D3. Events and outgoing webhooks.** Domain events (message.received,
       payment.succeeded, conversation.handoff, ...) with signed, retried
       delivery to subscribed URLs.
-- [ ] **D4. Notifications beyond bookings and orders.** Generic reminders and
+- [x] **D4. Notifications beyond bookings and orders.** Generic reminders and
       email fallback through Customer records.
-- [ ] **D5. Link customer records** to conversations, bookings and orders.
-- [ ] **D6. Shared app kit.** packages/ui, packages/api-client,
+- [x] **D5. Link customer records** to conversations, bookings and orders.
+- [x] **D6. Shared app kit.** packages/ui, packages/api-client,
       packages/auth-client; web app uses them.
-- [ ] **D7. Login across domains** for allowed origins, with CSRF protection.
+- [x] **D7. Login across domains** for allowed origins, with CSRF protection.
 
 ## After TURBO — before salon payments go live
 
@@ -79,3 +79,11 @@ item. See [architecture brainstorm](https://claude.ai/code/artifact/81043827-579
 | 2026-10-06 | B2 | 779e57a | Guard had NEVER run in prod (context lost after await). Now blocks; proven on real Postgres, 0 false blocks / 0 leaks. Rollback: TENANT_GUARD_MODE=warn |
 | 2026-10-06 | B1 | e15c149 | Durable inbox + per-conversation lock + reply outbox; three review rounds closed lost-reply and double-send paths |
 | 2026-10-06 | B5 | b206527 | Admin creates organisations with emailed invite; alerts page |
+| 2026-10-07 | wave 2 schema | 46516bb | Flows, external apps, API keys, events, webhooks, customer links |
+| 2026-10-07 | takeover fix | 7d75d8c | Handoff to a human had NEVER worked (takeoverAt column never existed) — fixed + schema-conformance test |
+| 2026-10-07 | D1 | 4e3627f | Workflow engine; stale-link underpay closed after security review |
+| 2026-10-07 | D3 | 3e68d19 | Events + signed webhooks, SSRF-checked at delivery, per-tenant fairness |
+| 2026-10-07 | D2 | 180e5ac | Public API v1 + developer settings; TRUST_PROXY fixes a platform-wide lockout |
+| 2026-10-07 | D4, D5 | 759b81e | Customers linked, generic reminders, double-refund race closed |
+| 2026-10-07 | D6, D7 | f637a1a | Shared UI/API/auth packages; cross-site login with CSRF |
+| 2026-10-07 | wiring | bd0793b | Per-tenant engine on all channels; payment events can't be lost; late payment no longer resurrects expired holds |

@@ -263,6 +263,18 @@ Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
       anything legitimate is ever blocked after a deploy (users see a
       generic "something went wrong"), set `TENANT_GUARD_MODE=warn` and
       restart — no code change needed — then tell me which screen failed.
+- [ ] **Run the customer backfill once after deploying** (links past
+      bookings, orders and chats to customer records). Dry run first:
+      `cd apps/api && npx tsx scripts/backfill-customers.ts --dry-run`,
+      then without `--dry-run`.
+- [ ] **Optional settings (all off/safe by default):** `TRUST_PROXY`
+      (default trusts the local nginx — leave it); `CROSS_SITE_AUTH=true`
+      only if a console like TURBO's runs on its own domain (requires
+      HTTPS everywhere — the API refuses to start otherwise); list that
+      console's address in `CORS_ORIGINS`.
+- [ ] **Public API docs for client developers:** `docs/API.md`. Keys and
+      the external-app address are set by the organisation owner under
+      Developer settings.
 - [ ] **Check the new Alerts page in the admin** after deploying. Payments
       nobody can match, failed payouts and refunds, and messages that could
       not be processed all land there.

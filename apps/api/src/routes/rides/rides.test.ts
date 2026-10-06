@@ -12,6 +12,7 @@ vi.mock('../../services/rides/operations.js', () => ({ assignRideDriver: m.assig
 vi.mock('../../services/rides/settings.js', async (orig) => ({ ...(await orig<object>()), getRideSettings: m.getRideSettings, updateRideSettings: m.updateRideSettings }));
 vi.mock('../../services/contact-privacy-policy.js', () => ({ resolveMaskPolicy: m.resolveMaskPolicy }));
 
+import { corsOptions } from '../../lib/cors-options.js';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import sensible from '@fastify/sensible';
@@ -192,7 +193,7 @@ describe('settings, drivers, destinations: reads for staff, writes for the owner
 describe('cross-site console', () => {
     it('CORS lets a configured console origin send Authorization, X-Requested-With and X-CSRF-Token (with credentials)', async () => {
         const a = Fastify();
-        await a.register(cors, { origin: ['https://console.turboghana.app'], credentials: true }); // as src/index.ts registers it
+        await a.register(cors, corsOptions(['https://console.turboghana.app'])); // the same options src/index.ts uses
         a.get('/rides/overview', async () => ({}));
         const pre = await a.inject({
             method: 'OPTIONS', url: '/rides/overview',

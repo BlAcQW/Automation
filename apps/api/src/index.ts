@@ -5,6 +5,7 @@ initSentry();
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { corsOptions } from './lib/cors-options.js';
 import cookie from '@fastify/cookie';
 import errorHandler from './plugins/error-handler.js';
 import multipart from '@fastify/multipart';
@@ -71,10 +72,7 @@ const app = Fastify({
 
 async function buildApp() {
     // Register CORS
-    await app.register(cors, {
-        origin: config.corsOrigins,
-        credentials: true,
-    });
+    await app.register(cors, corsOptions(config.corsOrigins));
 
     // Register cookie plugin
     await app.register(cookie, {

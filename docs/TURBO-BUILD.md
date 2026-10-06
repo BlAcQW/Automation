@@ -96,9 +96,10 @@ TURBO mobile app (later) ──────────────> Bookly /v1/
    Arkesel API key + sender ID, Gmail address + app password.
 4. **Paystack webhook**: in TURBO's Paystack dashboard set the webhook URL to
    `https://<bookly-api>/payments/webhook`. Without it nothing activates.
-5. **Install TURBO's flow and settings** (run by you, against production,
-   dry run first): `cd apps/api && DATABASE_URL=<prod> npx tsx
-   scripts/seed-turbo.ts --tenant <turbo-tenant-id>` then the same with `--yes`.
+5. **Install TURBO's bot and settings**: Admin → TURBO's organisation →
+   **Bot** panel → **Install TURBO rides bot** → Yes (needs the flows:write
+   admin permission; audited). The same installer is still available as
+   `scripts/seed-turbo.ts` for local or scripted use.
 6. **Console**: push `/root/home/turbo` to its own Git repo, import it into
    Vercel, set `NEXT_PUBLIC_BOOKLY_API_URL=https://<bookly-api>`, add the
    domain (e.g. `console.turboghana.app`). On Bookly set

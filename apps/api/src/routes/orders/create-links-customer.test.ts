@@ -25,7 +25,11 @@ async function build() {
                 return { id: 'o1', ...data, items: [] };
             }),
         },
-        product: { updateMany: vi.fn(async () => ({ count: 1 })) },
+        product: {
+            // Products are read inside the transaction (createOrderAtomic).
+            findMany: async () => [{ id: 'p1', name: 'Shoe', price: 10, stock: 5 }],
+            updateMany: vi.fn(async () => ({ count: 1 })),
+        },
     };
     const prisma = {
         tenant: { findUnique: async () => ({ maskCustomerContact: false, paymentCurrency: 'GHS' }) },
@@ -91,5 +95,23 @@ describe('POST /orders order.created event', () => {
         const { app } = await build();
         const res = await app.inject({ method: 'POST', url: '/orders', payload: body });
         expect(res.statusCode).toBe(200);
+    });
+});
+
+describe('POST /orders stock safety', () => {
+    it('answers 409 and creates nothing durable when stock ran out (guarded decrement matched no row)', async () => {
+        resolveCustomerIdSafe.mockResolvedValue(null);
+        const { app } = await build();
+        // Simulate the last unit being taken concurrently: the guarded
+        // decrement (stock >= quantity) updates nothing.
+        const appAny = app as any;
+        const prisma = appAny.prisma;
+        const realTx = prisma.$transaction;
+        prisma.$transaction = async (fn: any) => realTx(async (tx: any) => {
+            tx.product.updateMany = vi.fn(async () => ({ count: 0 }));
+            return fn(tx);
+        });
+        const res = await app.inject({ method: 'POST', url: '/orders', payload: body });
+        expect(res.statusCode).toBe(409);
     });
 });

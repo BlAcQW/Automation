@@ -46,9 +46,31 @@ export interface CancelBookingArgs {
 }
 
 /**
- * The booking is already CANCELLED (that flip is the claim), so a refund or
- * forfeit that throws afterwards is never retried by itself. Say so loudly,
- * with the bookingId, so a person can refund or release the money.
+ * Would cancelling this booking, as the salon, move money out to the customer?
+ *
+ * A salon cancel refunds a paid deposit, and a refund is money leaving the
+ * platform, which is an OWNER decision (staff must never be able to move
+ * money out). The dashboard uses this to let staff keep cancelling bookings
+ * where nothing moves (unpaid holds, deposits paid into the tenant's own
+ * gateway, which Bookly never held) while reserving the refunding cancel for
+ * the owner.
+ *
+ * Fails CLOSED: a paid booking whose route is missing or unknown is treated
+ * as money-moving, because wrongly letting staff through is the worse error.
+ */
+export function cancelMovesMoney(booking: {
+    paymentStatus?: string | null;
+    collectionRoute?: string | null;
+}): boolean {
+    return booking.paymentStatus === 'PAID' && booking.collectionRoute !== 'OWN_GATEWAY';
+}
+
+/**
+ * The booking is already CANCELLED (that flip is the claim), so an exception
+ * that escapes the refund or forfeit step is never retried by itself. Say so
+ * loudly, with the bookingId, so a person can refund or release the money.
+ * (A refund the PROVIDER refuses is different: the refund service parks it for
+ * the retry sweep in refund-retry.ts, and only alerts here if even that threw.)
  */
 async function reportMoneyStepFailed(
     prisma: ExtendedPrismaClient,
@@ -171,8 +193,9 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
             bookingId: booking.id,
         }).catch((err) => reportMoneyStepFailed(prisma, 'refund', booking.tenantId, booking.id, err));
         // The cancellation itself must still succeed. A provider failure is
-        // alerted inside the service; an exception that escapes it is alerted
-        // here, because the flip above means nothing will ever retry it.
+        // parked for the retry sweep inside the service; an exception that
+        // escapes it is alerted here, because the flip above means nothing
+        // else will ever retry it.
     }
 
     return {

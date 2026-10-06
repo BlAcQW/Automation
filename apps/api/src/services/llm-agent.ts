@@ -25,6 +25,8 @@ import { effectiveDeposit, HOLD_MINUTES } from './booking-deposit.js';
 import { normalizeCustomerPhone } from './customer-phone.js';
 import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from './booking-create.js';
 import { createNotification } from './notifications.js';
+import { SHOP_TOOLS, SHOP_TOOL_NAMES, isPhoneVerified, runShopTool, shopSystemPrompt } from './llm-shop-tools.js';
+import { ownedIds, rememberOwned } from './chat-ownership.js';
 
 /** Small and cheap: this is short-turn chat, not reasoning over documents. */
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
@@ -211,11 +213,42 @@ const TOOLS: ChatCompletionTool[] = [
     },
 ];
 
+/** Tools shared by both verticals. */
+const COMMON_TOOL_NAMES = new Set(['save_customer_phone', 'request_human']);
+
+/** What the model is offered, by business type. SERVICE is the original, unchanged set. */
+function toolsFor(businessType: AgentContext['businessType']): ChatCompletionTool[] {
+    if (businessType !== 'PRODUCT') return TOOLS;
+    return [...SHOP_TOOLS, ...TOOLS.filter((t) => COMMON_TOOL_NAMES.has(t.type === 'function' ? t.function.name : ''))];
+}
+
+/** Execution-time allowlist: offering is not enforcement, the model can name any tool. */
+function isToolAllowed(businessType: AgentContext['businessType'], name: string): boolean {
+    if (COMMON_TOOL_NAMES.has(name)) return true;
+    return businessType === 'PRODUCT' ? SHOP_TOOL_NAMES.has(name) : !SHOP_TOOL_NAMES.has(name);
+}
+
+type BookingScope = { customerPhone: string } | { id: { in: string[] } };
+
+/** Same rule as the shop's orderScope: verified phone, else only what this conversation created. */
+async function bookingScope(ctx: AgentContext): Promise<BookingScope | null> {
+    if (isPhoneVerified(ctx)) return { customerPhone: ctx.customerPhone };
+    const ids = await ownedIds(ctx.prisma, ctx.tenantId, ctx.conversationId, 'bookings');
+    return ids.length ? { id: { in: ids } } : null;
+}
+
 async function runTool(
     ctx: AgentContext,
     name: string,
     args: Record<string, unknown>,
 ): Promise<{ result: unknown; wantsHuman?: boolean }> {
+    if (!isToolAllowed(ctx.businessType, name)) {
+        return { result: { error: `Unknown tool ${name}: not available for this business.` } };
+    }
+    if (ctx.businessType === 'PRODUCT') {
+        const shop = await runShopTool(ctx, name, args);
+        if (shop) return shop;
+    }
     switch (name) {
         case 'list_services': {
             const services = await ctx.prisma.service.findMany({
@@ -274,8 +307,10 @@ async function runTool(
         }
 
         case 'get_my_bookings': {
+            const scope = await bookingScope(ctx);
+            if (!scope) return { result: [] };
             const bookings = await ctx.prisma.booking.findMany({
-                where: { tenantId: ctx.tenantId, customerPhone: ctx.customerPhone },
+                where: { tenantId: ctx.tenantId, ...scope },
                 orderBy: { startTime: 'desc' },
                 take: 5,
                 select: {
@@ -299,10 +334,14 @@ async function runTool(
 
         case 'get_payment_link': {
             const reference = args.reference ? String(args.reference) : undefined;
+            const scope = await bookingScope(ctx);
+            if (!scope) {
+                return { result: { error: 'No unpaid booking found for this customer — nothing to pay for right now.' } };
+            }
             const booking = await ctx.prisma.booking.findFirst({
                 where: {
                     tenantId: ctx.tenantId,
-                    customerPhone: ctx.customerPhone,
+                    ...scope,
                     paymentStatus: 'UNPAID',
                     ...(reference ? { bookingReference: reference } : {}),
                 },
@@ -365,6 +404,19 @@ async function runTool(
         }
 
         case 'save_customer_phone': {
+            // On WhatsApp the number IS the sender's, verified by Meta, and it is
+            // what orders / bookings are looked up by. A customer (or text injected
+            // into the chat) must not be able to swap it for someone else's.
+            if (isPhoneVerified(ctx)) {
+                return {
+                    result: {
+                        error:
+                            'On WhatsApp the customer\'s number is the one they are messaging from, and it cannot be changed in ' +
+                            'chat. Tell them that is the number used for their order or booking and payment link. If they need ' +
+                            'something done for a different number, call request_human.',
+                    },
+                };
+            }
             const raw = String(args.phone ?? '');
             const normalized = normalizeCustomerPhone(raw, ctx.businessPhone ?? null);
             if (!normalized) {
@@ -450,6 +502,7 @@ async function runTool(
                     startTime: start,
                     endTime: end,
                     depositAmount,
+                    linkCustomer: isPhoneVerified(ctx),
                 });
             } catch (err) {
                 if (err instanceof SlotTakenError) {
@@ -457,6 +510,9 @@ async function runTool(
                 }
                 throw err;
             }
+
+            // Instagram / Messenger: this conversation, not the typed phone, is what may look it up later.
+            if (!isPhoneVerified(ctx)) await rememberOwned(ctx.prisma, ctx.tenantId, ctx.conversationId, 'bookings', booking.id);
 
             const whenLocal = `${zonedDateString(booking.startTime, safeZone(ctx.timezone))} ${zonedTimeString(booking.startTime, safeZone(ctx.timezone))}`;
 
@@ -611,7 +667,21 @@ function channelName(channel: AgentContext['channel']): string {
 }
 
 function systemPrompt(ctx: AgentContext, input: PromptInput): string {
-    const kind = ctx.businessType === 'PRODUCT' ? 'shop' : 'business';
+    if (ctx.businessType === 'PRODUCT') {
+        return shopSystemPrompt({
+            tenantName: ctx.tenantName,
+            channelLabel: channelName(ctx.channel),
+            currency: ctx.currency,
+            timezoneLabel: safeZone(ctx.timezone),
+            today: input.today,
+            openingHours: input.openingHours,
+            hasPhone: !!ctx.customerPhone,
+            isFirstTurn: input.isFirstTurn,
+            isReturning: input.isReturning,
+            customerName: input.customerName,
+        }) + (input.memory ? `\n\nWhat you already know about this customer — use it naturally, never recite it:\n${input.memory}` : '');
+    }
+    const kind = 'business'; // PRODUCT tenants take the shop prompt above
 
     const serviceLines = input.services.length
         ? input.services.map((s) => `- ${s.name} — ${ctx.currency} ${s.price} (${s.durationMinutes} min) [id: ${s.id}]`)
@@ -697,18 +767,27 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
 // ---------------------------------------------------------------------------
 
 export async function runAgent(ctx: AgentContext, incoming: string): Promise<AgentResult> {
+    // Memory and the service list are appointment-shaped (past bookings, durations).
+    // A shop has neither, and feeding it booking history invites appointment talk.
+    const isShop = ctx.businessType === 'PRODUCT';
     const [memory, history, services, hours] = await Promise.all([
-        buildCustomerMemory(ctx.prisma, ctx.tenantId, ctx.customerPhone),
+        // Memory is keyed by phone, so it is only loaded for a VERIFIED phone: a typed
+        // number would otherwise pull a stranger's name and booking history into the prompt.
+        isShop || !isPhoneVerified(ctx)
+            ? Promise.resolve({ summary: '', isReturning: false })
+            : buildCustomerMemory(ctx.prisma, ctx.tenantId, ctx.customerPhone),
         ctx.prisma.message.findMany({
             where: { conversationId: ctx.conversationId },
             orderBy: { createdAt: 'desc' },
             take: HISTORY_TURNS,
             select: { direction: true, content: true, createdAt: true },
         }),
-        ctx.prisma.service.findMany({
-            where: { tenantId: ctx.tenantId, isActive: true },
-            select: { id: true, name: true, price: true, durationMinutes: true },
-        }),
+        isShop
+            ? Promise.resolve([] as Array<{ id: string; name: string; price: unknown; durationMinutes: number }>)
+            : ctx.prisma.service.findMany({
+                where: { tenantId: ctx.tenantId, isActive: true },
+                select: { id: true, name: true, price: true, durationMinutes: true },
+            }),
         ctx.prisma.workingHours.findMany({
             where: { tenantId: ctx.tenantId, isActive: true },
             orderBy: { dayOfWeek: 'asc' },
@@ -761,7 +840,7 @@ export async function runAgent(ctx: AgentContext, incoming: string): Promise<Age
         const completion = await getClient().chat.completions.create({
             model: MODEL,
             messages,
-            tools: TOOLS,
+            tools: toolsFor(ctx.businessType),
             temperature: 0.6,
             max_tokens: 300,
         });

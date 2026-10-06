@@ -50,3 +50,13 @@ export function bindTenantContext(ctx: TenantContext): void {
         tenantContext.enterWith({ ...ctx });
     }
 }
+
+/**
+ * Run `fn` with NO tenant in context, so the tenant guard allows a query that
+ * deliberately spans tenants. Only for checks that must be global by design
+ * (an email address owns at most one login across all tenants). Keep the body
+ * to that one lookup: everything inside is unguarded.
+ */
+export function runOutsideTenantContext<T>(fn: () => Promise<T>): Promise<T> {
+    return tenantContext.run({}, fn);
+}

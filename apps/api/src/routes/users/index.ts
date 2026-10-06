@@ -2,6 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { audit } from '../../services/audit.js';
+import { claimOwnerEmail, EmailTakenError } from '../../services/email-claim.js';
+import { runOutsideTenantContext } from '../../lib/tenant-context.js';
 
 /**
  * Tenant user (staff) management. OWNER-only. Enables a business owner to add
@@ -31,25 +33,30 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
             name: z.string().min(2),
         }).parse(request.body);
 
-        const existing = await fastify.prisma.user.findFirst({
-            where: { tenantId: request.user.tenantId, email: body.email },
-            select: { id: true },
-        });
-        if (existing) {
-            throw fastify.httpErrors.conflict('A user with that email already exists');
-        }
-
+        // Login finds a user by email alone, so the address must be free in
+        // EVERY tenant, not just this one: same advisory-lock claim as sign-up.
         const passwordHash = await bcrypt.hash(body.password, 12);
-        const user = await fastify.prisma.user.create({
-            data: {
-                tenantId: request.user.tenantId,
-                email: body.email,
-                passwordHash,
-                name: body.name,
-                role: 'STAFF',
-            },
-            select: { id: true, email: true, name: true, role: true, isActive: true, createdAt: true },
-        });
+        let user;
+        try {
+            user = await fastify.prisma.$transaction(async (tx) => {
+                await runOutsideTenantContext(() => claimOwnerEmail(tx, body.email));
+                return tx.user.create({
+                    data: {
+                        tenantId: request.user.tenantId,
+                        email: body.email,
+                        passwordHash,
+                        name: body.name,
+                        role: 'STAFF',
+                    },
+                    select: { id: true, email: true, name: true, role: true, isActive: true, createdAt: true },
+                });
+            });
+        } catch (err) {
+            if (err instanceof EmailTakenError) {
+                throw fastify.httpErrors.conflict('A user with that email already exists');
+            }
+            throw err;
+        }
 
         await audit({
             prisma: fastify.prisma,

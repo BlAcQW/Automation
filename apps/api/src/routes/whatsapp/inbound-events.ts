@@ -26,13 +26,19 @@ export interface InboundConversation {
  * Customer and link it. Once linked (`customerId` set on the loaded row) this
  * costs nothing on later messages. Mutates `conversation.customerId` so the
  * rest of the turn sees it. Returns the customer id, if known.
+ *
+ * Only WhatsApp's number is the sender's own (Meta verifies it). On Instagram
+ * and Messenger the phone is whatever the customer typed, and linking by it
+ * would hand this chat another person's customer record, so those never link here.
  */
 export async function linkCustomerOnInbound(
     fastify: any,
     tenant: any,
     conversation: InboundConversation,
+    channel: ChannelKind,
 ): Promise<string | null> {
     if (conversation.customerId) return conversation.customerId;
+    if (channel !== 'WHATSAPP') return null;
     if (!conversation.customerPhone) return null;
     try {
         const customerId = await resolveCustomerIdSafe(
@@ -86,7 +92,7 @@ export async function prepareInbound(
     handler: ConversationHandlerKind,
     inbound: InboundInfo,
 ): Promise<{ externalAppLive: boolean }> {
-    const customerId = await linkCustomerOnInbound(fastify, tenant, conversation);
+    const customerId = await linkCustomerOnInbound(fastify, tenant, conversation, inbound.channel);
 
     const externalAppLive = handler === 'external_app' ? await externalAppIsLive(fastify.prisma, tenant.id) : false;
 

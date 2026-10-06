@@ -86,6 +86,7 @@ const privacyRoutes: FastifyPluginAsync = async (fastify) => {
             fastify.prisma,
             request.user.tenantId,
             request.user.role,
+            !!request.user.support,
         );
         return { contactsMasked: masked, revealsPerHour: REVEALS_PER_HOUR };
     });

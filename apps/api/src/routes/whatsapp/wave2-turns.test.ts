@@ -457,12 +457,12 @@ describe('customer linking on inbound', () => {
         expect(resolveCustomerIdSafe).not.toHaveBeenCalled();
     });
 
-    it('links on Instagram/Messenger once the customer has given a phone', async () => {
+    it('never links on Instagram/Messenger by a typed phone (it could be someone else\'s record)', async () => {
         resolveCustomerIdSafe.mockResolvedValue('cu2');
         linkConversationToCustomer.mockResolvedValue(true);
         const { send } = build({ channel: 'INSTAGRAM', tenant: { vertical: 'APPOINTMENTS' }, conversation: { customerPhone: '+233241234567' } });
         await send('hi');
-        expect(linkConversationToCustomer).toHaveBeenCalledTimes(1);
+        expect(linkConversationToCustomer).not.toHaveBeenCalled();
     });
 
     it('an unlinkable phone leaves the conversation unlinked and the turn running', async () => {
@@ -507,5 +507,52 @@ describe('conversation.resumed on a keyword resume', () => {
         const { kit, send } = build({ tenant: { vertical: 'APPOINTMENTS' }, conversation: { state: 'HUMAN_ACTIVE' } });
         await send('menu');
         expect(kit.eventsOfType('conversation.resumed')).toHaveLength(0);
+    });
+});
+
+/**
+ * A support pause is not "quota exhausted". Both are silent for the customer
+ * (no reply), but the log must say which, so support is not chasing a quota
+ * that is fine and an owner is not told to upgrade.
+ */
+describe.each(CHANNELS)('outbound pause (%s)', (channel) => {
+    const warned = (fastify: any) => fastify.log.warn.mock.calls.map((c: any[]) => String(c[1] ?? c[0]));
+
+    it('flow turn: a paused tenant stops before any side effect and logs "paused", not quota', async () => {
+        const { kit, fastify, send } = build({ channel });
+        checkOutboundQuota.mockResolvedValue({ ok: false, paused: true, pauseReason: 'abuse' });
+        await send('hi');
+        expect(createFulfillmentPaymentLink).not.toHaveBeenCalled();
+        expect(sendChannelText).not.toHaveBeenCalled();
+        expect(warned(fastify).some((m: string) => /paused/i.test(m))).toBe(true);
+        expect(warned(fastify).some((m: string) => /quota/i.test(m))).toBe(false);
+        expect(kit.messages.find((m) => m.direction === 'INBOUND')!.handledAt).toBeInstanceOf(Date);
+    });
+
+    it('agent turn: a paused tenant never reaches the model and logs "paused", not quota', async () => {
+        const { fastify, send } = build({ channel, tenant: { vertical: 'APPOINTMENTS' } });
+        checkOutboundQuota.mockResolvedValue({ ok: false, paused: true });
+        await send('hi');
+        expect(runAgent).not.toHaveBeenCalled();
+        expect(sendChannelText).not.toHaveBeenCalled();
+        expect(warned(fastify).some((m: string) => /paused/i.test(m))).toBe(true);
+        expect(warned(fastify).some((m: string) => /quota/i.test(m))).toBe(false);
+    });
+
+    it('a reservation refused for a pause at send time is logged as a pause and suppresses the reply', async () => {
+        const { kit, fastify, send } = build({ channel });
+        tryReserveOutbound.mockResolvedValue({ ok: false, reason: 'paused', used: 0, limit: 100, planId: 'free' });
+        await send('hi');
+        expect(sendChannelText).not.toHaveBeenCalled();
+        expect(kit.outbound()).toHaveLength(0);
+        expect(warned(fastify).some((m: string) => /paused/i.test(m))).toBe(true);
+        expect(warned(fastify).some((m: string) => /quota/i.test(m))).toBe(false);
+    });
+
+    it('a real quota refusal still logs as quota', async () => {
+        const { fastify, send } = build({ channel });
+        checkOutboundQuota.mockResolvedValue({ ok: false, used: 100, limit: 100, planId: 'free' });
+        await send('hi');
+        expect(warned(fastify).some((m: string) => /quota/i.test(m))).toBe(true);
     });
 });

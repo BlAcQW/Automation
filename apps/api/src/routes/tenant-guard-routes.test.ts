@@ -185,7 +185,7 @@ const cases: Case[] = [
     { name: 'PATCH /orders/:id', method: 'PATCH', url: '/orders/o1', payload: { notes: 'x' },
       expects: { model: 'order', op: 'updateMany', where: { id: 'o1', tenantId: TENANT } }, forbids: [{ model: 'order', op: 'update' }] },
     { name: 'POST /orders/:id/cancel', method: 'POST', url: '/orders/o1/cancel',
-      expects: { model: 'order', op: 'updateMany', where: { id: 'o1', tenantId: TENANT } }, forbids: [{ model: 'order', op: 'update' }] },
+      expects: { model: 'order', op: 'updateMany', where: { id: 'o1', tenantId: TENANT, status: { notIn: ['CANCELLED', 'DELIVERED'] } } }, forbids: [{ model: 'order', op: 'update' }] },
     { name: 'POST /conversations/:id/resume-bot', method: 'POST', url: '/conversations/c1/resume-bot',
       expects: { model: 'conversation', op: 'updateMany', where: { id: 'c1', tenantId: TENANT, state: 'HUMAN_ACTIVE' } }, forbids: [{ model: 'conversation', op: 'update' }] },
     { name: 'POST /conversations/:id/activate-human', method: 'POST', url: '/conversations/c1/activate-human',

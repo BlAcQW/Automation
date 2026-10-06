@@ -48,6 +48,15 @@ async function announceHandoff(prisma: unknown, tenantId: string, conversationId
     await emitConversationHandoff(prisma, { tenantId, conversationId, reason });
 }
 
+const OUTBOUND_PAUSED_MESSAGE =
+    'Messaging is paused for this business by Bookly support. Replies cannot be sent right now; ' +
+    'contact Bookly support to have it lifted.';
+
+/** Message rows without provider metadata (raw sender number, profile name) for masked viewers. */
+function withoutMetadata<T extends { metadata?: unknown }>(messages: T[]): T[] {
+    return messages.map((m) => ({ ...m, metadata: null }));
+}
+
 const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
     // All routes require authentication
     fastify.addHook('preHandler', fastify.authenticate);
@@ -83,7 +92,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Masked before it leaves the API — never in the browser, or the real
         // number would still be sitting in the network response.
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
 
         return {
             data: conversations.map((c) => maskContact({
@@ -124,7 +133,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
 
         return {
             data: conversations.map((c) => maskContact({
@@ -156,9 +165,13 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // The whole row goes to the client here, so it must be masked too —
-        // this is the endpoint the chat screen loads.
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
-        return maskContact(conversation, mask);
+        // this is the endpoint the chat screen loads. Masking covers the
+        // top-level contact fields; botContext (flow-collected answers such as
+        // a typed phone or address) and message metadata are dropped outright.
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
+        if (!mask) return conversation;
+        const { botContext: _botContext, ...rest } = conversation as typeof conversation & { botContext?: unknown };
+        return maskContact({ ...rest, messages: withoutMetadata(conversation.messages) }, mask);
     });
 
     // GET /conversations/:id/messages - Get paginated messages
@@ -189,8 +202,13 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             take: query.limit,
         });
 
+        // Provider metadata carries raw identifiers (the sender's number, profile
+        // name) that masking does not reach, so a masked viewer gets none.
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
+        const visible = mask ? withoutMetadata(messages) : messages;
+
         return {
-            data: messages.reverse(),
+            data: visible.reverse(),
             hasMore: messages.length === query.limit,
         };
     });
@@ -241,6 +259,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         // to the upgrade flow. Staff sees this as a toast in the dashboard.
         const quota = await checkOutboundQuota(fastify.prisma, request.user.tenantId);
         if (!quota.ok) {
+            // A support pause is not a quota problem: say so (423), do not point at the plan.
+            if (quota.paused) throw fastify.httpErrors.locked(OUTBOUND_PAUSED_MESSAGE);
             throw fastify.httpErrors.paymentRequired(
                 `Monthly message quota exhausted (${quota.used}/${quota.limit} on plan ${quota.planId}). ` +
                 `Upgrade your plan in Settings → Plan & Usage.`,
@@ -355,6 +375,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
 
         const quota = await checkOutboundQuota(fastify.prisma, request.user.tenantId);
         if (!quota.ok) {
+            // A support pause is not a quota problem: say so (423), do not point at the plan.
+            if (quota.paused) throw fastify.httpErrors.locked(OUTBOUND_PAUSED_MESSAGE);
             throw fastify.httpErrors.paymentRequired(
                 `Monthly message quota exhausted (${quota.used}/${quota.limit} on plan ${quota.planId}). ` +
                 `Upgrade your plan in Settings → Plan & Usage.`,
@@ -578,6 +600,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
 
         const quota = await checkOutboundQuota(fastify.prisma, request.user.tenantId);
         if (!quota.ok) {
+            // A support pause is not a quota problem: say so (423), do not point at the plan.
+            if (quota.paused) throw fastify.httpErrors.locked(OUTBOUND_PAUSED_MESSAGE);
             throw fastify.httpErrors.paymentRequired(
                 `Monthly message quota exhausted (${quota.used}/${quota.limit} on plan ${quota.planId}).`,
             );
@@ -831,7 +855,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
 
         return {
             data: conversations.map((c) => maskContact({

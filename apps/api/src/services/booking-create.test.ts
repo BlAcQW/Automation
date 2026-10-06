@@ -64,6 +64,14 @@ describe('createBookingAtomic customer linking', () => {
         expect(order).toEqual(['customer', 'tx']);
     });
 
+    it('linkCustomer:false (a typed, unverified phone) never touches customer records', async () => {
+        resolveCustomerIdSafe.mockResolvedValue('cust-1');
+        const db = fakePrisma();
+        await createBookingAtomic({ prisma: db as any, ...base, linkCustomer: false });
+        expect(resolveCustomerIdSafe).not.toHaveBeenCalled();
+        expect(db.created[0].customerId).toBeNull();
+    });
+
     it('still creates the booking, unlinked, when no customer can be resolved', async () => {
         resolveCustomerIdSafe.mockResolvedValue(null);
         const db = fakePrisma();

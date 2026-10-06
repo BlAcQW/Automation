@@ -20,6 +20,8 @@ export type AnyPrismaClient = PrismaClient | ExtendedPrismaClient;
 
 export interface ResolveConversationArgs {
     tenantId: string;
+    /** Internal: set on the single re-resolve after a create race. */
+    _retried?: boolean;
     channel: ConversationChannel;
     /** Phone (WhatsApp) or scoped id (IGSID / PSID). Identity on this channel. */
     externalId: string;
@@ -80,7 +82,9 @@ export async function resolveConversation(
     });
 
     if (!existing) {
-        const created = await prisma.conversation.create({
+        let created;
+        try {
+        created = await prisma.conversation.create({
             data: {
                 tenantId: args.tenantId,
                 channel: args.channel,
@@ -100,6 +104,14 @@ export async function resolveConversation(
                 botFailureCount: true,
             },
         });
+        } catch (err) {
+            // Two first messages from the same sender raced: the other one
+            // created it. Re-resolve once and continue with that row.
+            if ((err as { code?: string })?.code === 'P2002' && !args._retried) {
+                return resolveConversation(prisma, { ...args, _retried: true });
+            }
+            throw err;
+        }
         return { ...created, created: true };
     }
 

@@ -110,7 +110,11 @@ export async function handleWithFlow(
     // (payment links), so do not run one whose reply could not be sent anyway.
     const quota = await checkOutboundQuota(fastify.prisma, tenant.id);
     if (!quota.ok) {
-        fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — flow turn suppressed');
+        if (quota.paused) {
+            fastify.log.warn({ tenantId: tenant.id }, 'Outbound messaging paused by support — flow turn suppressed');
+        } else {
+            fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — flow turn suppressed');
+        }
         return;
     }
 

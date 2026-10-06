@@ -40,6 +40,12 @@ export interface CreateBookingArgs {
     /** Major units. 0 means no deposit: the booking is confirmed immediately. */
     depositAmount: number;
     notes?: string | null;
+    /**
+     * Link the booking to the Customer record for this phone (default true).
+     * False when the phone is only what a customer TYPED (Instagram/Messenger):
+     * it could be anyone's, and linking would put this booking in their history.
+     */
+    linkCustomer?: boolean;
 }
 
 export interface CreatedBooking {
@@ -78,11 +84,13 @@ export async function createBookingAtomic(args: CreateBookingArgs): Promise<Crea
     // Link to the customer record. Done once, before the serializable
     // transaction: a customer insert inside it would widen the conflict window
     // for no benefit, and a failure here must never stop the booking.
-    const customerId = await resolveCustomerIdSafe(
-        prisma,
-        { tenantId, phone: args.customerPhone, name: args.customerName, email: args.customerEmail },
-        undefined,
-    );
+    const customerId = args.linkCustomer === false
+        ? null
+        : await resolveCustomerIdSafe(
+            prisma,
+            { tenantId, phone: args.customerPhone, name: args.customerName, email: args.customerEmail },
+            undefined,
+        );
 
     // The reference is globally unique; a collision is astronomically rare
     // but cheap to survive.

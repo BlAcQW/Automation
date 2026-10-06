@@ -1,17 +1,24 @@
+import { cancelOrderAndRestock } from '../../services/order-expiry.js';
+import { createOrderAtomic, OrderError, DASHBOARD_MAX_LINE_QUANTITY } from '../../services/order-create.js';
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { nanoid } from 'nanoid';
-import { generatePublicToken } from '../../lib/public-token.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
 import { orderStatusClearsFunds, clearFundsForEntity } from '../../services/wallet-clearing.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
-import { resolveCustomerIdSafe } from '../../services/customers.js';
-import { emitOrderCreated } from '../../services/events/emit.js';
+import { cancelMovesMoney } from '../../services/booking-cancel.js';
+import { refundOrderPayment, type RefundOrderResult } from '../../services/order-refund.js';
+import { raiseAlert } from '../../services/alerts.js';
 
 // Validation schemas
+// Dashboard orders may be wholesale, so the per-product cap is the dashboard one
+// (createOrderAtomic's own default of 100 is for chat). The schema and the
+// service use the same constant, so the API answers with a 400 that names the cap.
 const orderItemSchema = z.object({
     productId: z.string(),
-    quantity: z.number().int().positive(),
+    quantity: z.number().int().positive().max(
+        DASHBOARD_MAX_LINE_QUANTITY,
+        `Quantity per product must be a whole number from 1 to ${DASHBOARD_MAX_LINE_QUANTITY}.`,
+    ),
 });
 
 const createOrderSchema = z.object({
@@ -20,6 +27,22 @@ const createOrderSchema = z.object({
     items: z.array(orderItemSchema).min(1),
     deliveryAddress: z.string().optional(),
     notes: z.string().optional(),
+}).superRefine((order, ctx) => {
+    // Duplicate lines for a product are merged by createOrderAtomic, and the cap
+    // applies to the merged quantity.
+    const totals = new Map<string, number>();
+    for (const { productId, quantity } of order.items) {
+        const total = (totals.get(productId) ?? 0) + quantity;
+        totals.set(productId, total);
+        if (total > DASHBOARD_MAX_LINE_QUANTITY) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['items'],
+                message: `Combined quantity of product ${productId} exceeds ${DASHBOARD_MAX_LINE_QUANTITY} per order.`,
+            });
+            return;
+        }
+    }
 });
 
 const updateOrderSchema = z.object({
@@ -69,8 +92,9 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             fastify.prisma.order.count({ where }),
         ]);
 
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return {
-            data: orders,
+            data: maskContacts(orders, mask),
             pagination: {
                 page: query.page,
                 limit: query.limit,
@@ -95,7 +119,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return { data: maskContacts(orders, mask) };
     });
 
@@ -142,7 +166,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Order not found');
         }
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return maskContact(order, mask);
     });
 
@@ -166,103 +190,20 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Order not found');
         }
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return maskContact(order, mask);
     });
 
     // POST /orders - Create new order
     fastify.post('/', async (request) => {
-        const body = createOrderSchema.parse(request.body);
+        const parsedBody = createOrderSchema.safeParse(request.body);
+        if (!parsedBody.success) {
+            throw fastify.httpErrors.badRequest(parsedBody.error.issues.map((i) => i.message).join('; '));
+        }
+        const body = parsedBody.data;
         const tenantId = request.user.tenantId;
 
-        // Get products and validate
-        const productIds = body.items.map((item) => item.productId);
-        const products = await fastify.prisma.product.findMany({
-            where: {
-                id: { in: productIds },
-                tenantId,
-                isActive: true,
-            },
-        });
-
-        if (products.length !== productIds.length) {
-            throw fastify.httpErrors.badRequest('One or more products not found or inactive');
-        }
-
-        // Create product map for quick lookup
-        const productMap = new Map<string, any>(products.map((p: any) => [p.id, p]));
-
-        // Calculate total and prepare items
-        let totalAmount = 0;
-        const orderItems = body.items.map((item) => {
-            const product = productMap.get(item.productId)!;
-            const unitPrice = Number(product.price);
-            totalAmount += unitPrice * item.quantity;
-            return {
-                productId: item.productId,
-                quantity: item.quantity,
-                unitPrice,
-            };
-        });
-
-        // Link the order to its customer record. Outside the transaction, and
-        // never fatal: an order must not fail because a customer row could not
-        // be made (e.g. a phone that cannot be normalised stays unlinked).
-        const customerId = await resolveCustomerIdSafe(
-            fastify.prisma,
-            { tenantId, phone: body.customerPhone, name: body.customerName },
-            fastify.log,
-        );
-
-        // Create order with items in transaction
-        const order = await fastify.prisma.$transaction(async (tx: any) => {
-            // Check stock availability
-            for (const item of body.items) {
-                const product = productMap.get(item.productId)!;
-                if (product.stock < item.quantity) {
-                    throw new Error(`Insufficient stock for ${product.name}`);
-                }
-            }
-
-            // Create order
-            const newOrder = await tx.order.create({
-                data: {
-                    tenantId,
-                    orderRef: `ORD-${nanoid(8).toUpperCase()}`,
-                    customerName: body.customerName,
-                    customerPhone: body.customerPhone,
-                    customerId,
-                    totalAmount,
-                    deliveryAddress: body.deliveryAddress,
-                    notes: body.notes,
-                    publicToken: generatePublicToken(),
-                    items: {
-                        create: orderItems,
-                    },
-                },
-                include: {
-                    items: {
-                        include: { product: true },
-                    },
-                },
-            });
-
-            // Reduce stock
-            for (const item of body.items) {
-                const { count } = await tx.product.updateMany({
-                    where: { id: item.productId, tenantId },
-                    data: { stock: { decrement: item.quantity } },
-                });
-                if (count === 0) {
-                    throw fastify.httpErrors.notFound('Product not found');
-                }
-            }
-
-            return newOrder;
-        });
-
-        // After the commit (a failed event insert inside the transaction would
-        // roll the order back). The currency lookup is best-effort too.
+        // Currency for the order.created event; best-effort.
         let currency = 'GHS';
         try {
             const tenantRow = await fastify.prisma.tenant.findUnique({ where: { id: tenantId }, select: { paymentCurrency: true } });
@@ -270,15 +211,34 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (err) {
             fastify.log.warn({ err, tenantId }, 'Tenant currency lookup failed; order.created uses the default');
         }
-        await emitOrderCreated(fastify.prisma, {
-            tenantId,
-            orderId: order.id,
-            customerId: customerId ?? null,
-            total: totalAmount,
-            currency,
-        });
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        // Shared with the assistant's create_order tool. The stock decrement
+        // is guarded (stock >= quantity) inside the transaction, so two
+        // buyers can never both take the last unit and stock never goes
+        // negative; any short line rolls the whole order back.
+        let order;
+        try {
+            order = await createOrderAtomic({
+                prisma: fastify.prisma,
+                tenantId,
+                customerName: body.customerName,
+                customerPhone: body.customerPhone,
+                currency,
+                items: body.items,
+                maxLineQuantity: DASHBOARD_MAX_LINE_QUANTITY,
+                deliveryAddress: body.deliveryAddress,
+                notes: body.notes,
+                log: fastify.log,
+            });
+        } catch (err) {
+            if (err instanceof OrderError) {
+                if (err.code === 'OUT_OF_STOCK') throw fastify.httpErrors.conflict(err.message);
+                throw fastify.httpErrors.badRequest(err.message);
+            }
+            throw err;
+        }
+
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return maskContact(order, mask);
     });
 
@@ -293,6 +253,22 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
         if (!existing) {
             throw fastify.httpErrors.notFound('Order not found');
+        }
+
+        // Cancelling restocks and may refund: one path for it, never a bare status write.
+        if (body.status === 'CANCELLED') {
+            if (body.paymentStatus !== undefined || body.notes !== undefined) {
+                throw fastify.httpErrors.badRequest('Cancel the order on its own, then make other changes.');
+            }
+            return cancelFromDashboard(request, id);
+        }
+        // A cancelled order is over: delivering it would release money owed back to the customer.
+        if (body.status && existing.status === 'CANCELLED') {
+            throw fastify.httpErrors.badRequest('This order is cancelled and cannot change status.');
+        }
+        // Platform-collected payment state is written only by the payment and refund flows.
+        if (body.paymentStatus !== undefined && existing.collectionRoute === 'PLATFORM') {
+            throw fastify.httpErrors.badRequest('The payment status of an order paid through Bookly is updated automatically.');
         }
 
         const { count } = await fastify.prisma.order.updateMany({
@@ -326,13 +302,15 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             );
         }
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return maskContact(order, mask);
     });
 
-    // POST /orders/:id/cancel - Cancel order and restore stock
-    fastify.post('/:id/cancel', async (request) => {
-        const { id } = request.params as { id: string };
+    /**
+     * The one dashboard cancel, shared by POST /:id/cancel and PATCH {status:
+     * CANCELLED} (the mobile app's path): same owner rule, restock and refund.
+     */
+    async function cancelFromDashboard(request: any, id: string) {
 
         const existing = await fastify.prisma.order.findFirst({
             where: { id, tenantId: request.user.tenantId },
@@ -351,34 +329,65 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.badRequest('Cannot cancel delivered order');
         }
 
-        // Cancel and restore stock in transaction
-        const order = await fastify.prisma.$transaction(async (tx: any) => {
-            // Restore stock
-            for (const item of existing.items) {
-                const { count } = await tx.product.updateMany({
-                    where: { id: item.productId, tenantId: request.user.tenantId },
-                    data: { stock: { increment: item.quantity } },
-                });
-                if (count === 0) {
-                    throw fastify.httpErrors.notFound('Product not found');
-                }
-            }
+        // A paid PLATFORM order is refunded on cancel: money leaving the
+        // platform is OWNER only, like a paid booking. Checked before anything
+        // changes, so a refused staff cancel touches nothing.
+        const movesMoney = cancelMovesMoney(existing);
+        if (movesMoney && request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden(
+                'This order has been paid, and cancelling it refunds the customer. Only the account owner can do that. Ask the owner to cancel it.',
+            );
+        }
 
-            // Update order status
-            const { count } = await tx.order.updateMany({
-                where: { id, tenantId: request.user.tenantId },
-                data: { status: 'CANCELLED' },
-            });
-            if (count === 0) {
-                throw fastify.httpErrors.notFound('Order not found');
-            }
-            return tx.order.findFirst({
-                where: { id, tenantId: request.user.tenantId },
-            });
+        // Claim + restock in ONE transaction, guarded on the status still being
+        // cancellable: two clicks (or a click racing the expiry sweep) can only
+        // restock once. The check above is for the friendly message; this is the lock.
+        const cancelled = await cancelOrderAndRestock(fastify.prisma, {
+            tenantId: request.user.tenantId,
+            orderId: id,
+            items: existing.items,
+            guard: { status: { notIn: ['CANCELLED', 'DELIVERED'] } },
         });
+        if (!cancelled) {
+            throw fastify.httpErrors.badRequest('Order was already cancelled or delivered');
+        }
+        const order = await fastify.prisma.order.findFirst({
+            where: { id, tenantId: request.user.tenantId },
+        });
+        if (!order) {
+            throw fastify.httpErrors.notFound('Order not found');
+        }
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
-        return maskContact(order, mask);
+        // The order is already CANCELLED (that flip was the claim), so the
+        // refund runs once. A provider refusal is parked and alerted inside the
+        // refund service; anything that escapes it is alerted here.
+        let refund: RefundOrderResult | { refunded: false; reason: 'error' } | undefined;
+        if (movesMoney) {
+            try {
+                refund = await refundOrderPayment({ prisma: fastify.prisma, tenantId: request.user.tenantId, orderId: id, logger: request.log });
+            } catch (err) {
+                request.log.error({ err, orderId: id }, 'Order refund threw after cancel; customer is owed the money');
+                refund = { refunded: false, reason: 'error' };
+                await raiseAlert(fastify.prisma, {
+                    kind: 'order.refund_failed',
+                    severity: 'critical',
+                    tenantId: request.user.tenantId,
+                    message: 'A paid order was cancelled but the refund step crashed. A person must check the order and refund the customer.',
+                    context: { orderId: id },
+                    dedupeKey: `order.refund_failed:${id}`,
+                }).catch((alertErr) => request.log.error({ err: alertErr, orderId: id }, 'Could not raise order refund alert'));
+            }
+        }
+
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
+        const body = maskContact(order, mask);
+        return refund ? { ...body, refund } : body;
+    }
+
+    // POST /orders/:id/cancel - Cancel order and restore stock
+    fastify.post('/:id/cancel', async (request) => {
+        const { id } = request.params as { id: string };
+        return cancelFromDashboard(request, id);
     });
 
     // GET /orders/customer/:phone - Get orders by customer phone

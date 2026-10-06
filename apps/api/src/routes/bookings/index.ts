@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { TemplatePurpose } from '@prisma/client';
 import { scheduleNotification, cancelReminder } from '../../services/notification.js';
-import { cancelBooking } from '../../services/booking-cancel.js';
+import { cancelBooking, cancelMovesMoney } from '../../services/booking-cancel.js';
 import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from '../../services/booking-create.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
 import {
@@ -31,6 +31,46 @@ const updateBookingSchema = z.object({
 const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     // All routes require authentication
     fastify.addHook('preHandler', fastify.authenticate);
+
+    /**
+     * A salon cancel of a paid deposit refunds the customer, which is money
+     * leaving the platform: OWNER only, like withdrawing. Staff keep the
+     * ability to cancel everything where no money moves. The role is checked
+     * server-side, never taken from the client.
+     */
+    function requireOwnerIfMoneyMoves(
+        request: { user: { role: string } },
+        booking: { paymentStatus?: string | null; collectionRoute?: string | null },
+    ) {
+        if (request.user.role !== 'OWNER' && cancelMovesMoney(booking)) {
+            throw fastify.httpErrors.forbidden(
+                'This booking has a paid deposit, and cancelling it refunds the customer. Only the account owner can do that. Ask the owner to cancel it.',
+            );
+        }
+    }
+
+    /** The one dashboard cancel: same path (and same refund) from POST /cancel and PATCH. */
+    async function cancelFromDashboard(request: { user: { tenantId: string } }, id: string) {
+        const result = await cancelBooking({
+            // The dashboard is the salon. They must not keep the deposit for
+            // work they cancelled.
+            cancelledBy: 'BUSINESS',
+            prisma: fastify.prisma,
+            bookingId: id,
+            tenantId: request.user.tenantId,
+            reason: 'dashboard',
+            notificationsQueue: fastify.queues.notifications,
+            remindersQueue: fastify.queues.reminders,
+        });
+        if (!result.ok) {
+            throw fastify.httpErrors.badRequest(
+                result.reason === 'already_cancelled'
+                    ? 'Booking is already cancelled'
+                    : 'Booking cannot be cancelled',
+            );
+        }
+        return result.booking;
+    }
 
     // GET /bookings - List bookings
     fastify.get('/', async (request) => {
@@ -65,7 +105,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             fastify.prisma.booking.count({ where }),
         ]);
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
 
         return {
             data: maskContacts(bookings, mask),
@@ -96,7 +136,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return { data: maskContacts(bookings, mask) };
     });
 
@@ -115,7 +155,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Booking not found');
         }
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return maskContact(booking, mask);
     });
 
@@ -186,7 +226,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
     // PATCH /bookings/:id - Update booking
     fastify.patch('/:id', async (request) => {
         const { id } = request.params as { id: string };
-        const body = updateBookingSchema.parse(request.body);
+        let body = updateBookingSchema.parse(request.body);
 
         const existing = await fastify.prisma.booking.findFirst({
             where: { id, tenantId: request.user.tenantId },
@@ -215,10 +255,25 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             );
         }
 
-        const { count } = await fastify.prisma.booking.updateMany({
-            where: { id, tenantId: request.user.tenantId },
-            data: body,
-        });
+        // Cancelling a CONFIRMED booking is not a status flip: it must run the
+        // same cancel as POST /:id/cancel, or a salon-cancelled paid deposit is
+        // never refunded and sits in pending with no owner and no exit. The
+        // same owner-only rule applies when that cancel would refund.
+        if (body.status === 'CANCELLED' && existing.status === 'CONFIRMED') {
+            requireOwnerIfMoneyMoves(request, existing);
+            await cancelFromDashboard(request, id);
+            const { status: _status, ...rest } = body;
+            body = rest;
+        } else if (body.status === 'CANCELLED') {
+            requireOwnerIfMoneyMoves(request, existing);
+        }
+
+        const { count } = Object.keys(body).length === 0
+            ? { count: 1 }
+            : await fastify.prisma.booking.updateMany({
+                where: { id, tenantId: request.user.tenantId },
+                data: body,
+            });
         if (count === 0) {
             throw fastify.httpErrors.notFound('Booking not found');
         }
@@ -280,33 +335,18 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
         // Tenant-scope guard before handing off to the shared cancel routine.
         const existing = await fastify.prisma.booking.findFirst({
             where: { id, tenantId: request.user.tenantId },
-            select: { id: true },
+            select: { id: true, status: true, paymentStatus: true, collectionRoute: true },
         });
         if (!existing) {
             throw fastify.httpErrors.notFound('Booking not found');
         }
 
-        const result = await cancelBooking({
-            // The dashboard is the salon. They must not keep the deposit for
-            // work they cancelled.
-            cancelledBy: 'BUSINESS',
-            prisma: fastify.prisma,
-            bookingId: id,
-            tenantId: request.user.tenantId,
-            reason: 'dashboard',
-            notificationsQueue: fastify.queues.notifications,
-            remindersQueue: fastify.queues.reminders,
-        });
+        // The cancel itself refunds a paid deposit, so a cancel that would
+        // move money is the owner's, exactly like a withdrawal.
+        requireOwnerIfMoneyMoves(request, existing);
 
-        if (!result.ok) {
-            throw fastify.httpErrors.badRequest(
-                result.reason === 'already_cancelled'
-                    ? 'Booking is already cancelled'
-                    : 'Booking cannot be cancelled',
-            );
-        }
-
-        return { success: true, bookingId: result.booking.id };
+        const booking = await cancelFromDashboard(request, id);
+        return { success: true, bookingId: booking.id };
     });
 
     // GET /bookings/by-reference/:ref - Find by booking reference
@@ -325,7 +365,8 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Booking not found');
         }
 
-        return booking;
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
+        return maskContact(booking, mask);
     });
 
     // GET /bookings/customer/:phone - Get bookings by customer phone
@@ -344,7 +385,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role, !!request.user.support);
         return { data: maskContacts(bookings, mask) };
     });
 };

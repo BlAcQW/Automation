@@ -1,18 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import crypto from 'node:crypto';
-import { maskPhone } from '../../services/contact-privacy.js';
+import { maskHandle, maskPhone } from '../../services/contact-privacy.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 import { normalizeCustomerPhone } from '../../services/customer-phone.js';
-
-/**
- * A stable, non-reversible list key for a masked customer. Two customers whose
- * numbers end in the same four digits must still be distinct rows, so the
- * masked string itself cannot serve as the key.
- */
-function phoneKey(phone: string): string {
-    return crypto.createHash('sha256').update(phone).digest('hex').slice(0, 16);
-}
 
 const customersRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', fastify.authenticate);
@@ -32,7 +22,7 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
         // If searching, filter by name/phone
         // Masking is decided before the query, because it also narrows what
         // may be searched.
-        const mask = await resolveMaskPolicy(fastify.prisma, tenantId, request.user.role);
+        const mask = await resolveMaskPolicy(fastify.prisma, tenantId, request.user.role, !!request.user.support);
 
         const where: any = { tenantId };
         if (query.search) {
@@ -157,15 +147,17 @@ const customersRoutes: FastifyPluginAsync = async (fastify) => {
 
             return {
                 // The id is only a list key on the client. Handing over the raw
-                // phone here would undo the masking two lines below.
-                id: mask ? phoneKey(phone ?? c.id) : (phone ?? c.id),
+                // phone (or any hash of it: the visible prefix and last four
+                // digits leave few enough candidates to brute-force) would undo
+                // the masking, so a masked viewer gets the conversation id.
+                id: mask ? c.id : (phone ?? c.id),
                 // Separate from `id`, which is only a list key: reveal has to
-                // address a real record, and the masked id is a one-way hash.
+                // address a real record.
                 conversationId: c.id,
                 customerId: record?.id ?? null,
                 name: record?.name || c.customerName || 'Unknown',
                 phone: phone ? (mask ? maskPhone(phone) : phone) : null,
-                handle: c.customerHandle ?? null,
+                handle: c.customerHandle ? (mask ? maskHandle(c.customerHandle) : c.customerHandle) : null,
                 channel: c.channel,
                 contactMasked: mask,
                 lastActive: c.updatedAt,

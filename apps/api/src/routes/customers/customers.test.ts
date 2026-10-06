@@ -131,12 +131,20 @@ describe('GET /customers (staff, masked)', () => {
         for (const r of body.data) {
             expect(r.contactMasked).toBe(true);
             expect(r.phone).toMatch(/^\+?•+\d{4}$/);
-            expect(r.id).toMatch(/^[0-9a-f]{16}$/);
+            // The masked key is the conversation id: a hash of the phone could be
+            // brute-forced from the visible prefix and last four digits.
+            expect(r.id).toBe(r.conversationId);
         }
         const text = JSON.stringify(body);
         expect(text).not.toContain('233241234567');
         expect(text).not.toContain('233209999999');
         expect(text).not.toContain('a@x.com');
+    });
+
+    it('masks Instagram/Messenger handles too', async () => {
+        data.conversation[0] = { ...data.conversation[0], customerPhone: null, customerHandle: 'ama.mensah.official', channel: 'INSTAGRAM' };
+        const res = await (await app('STAFF')).inject({ method: 'GET', url: '/customers' });
+        expect(JSON.stringify(res.json())).not.toContain('ama.mensah.official');
     });
 
     it('does not let a masked viewer search by phone, including the customer record phone', async () => {

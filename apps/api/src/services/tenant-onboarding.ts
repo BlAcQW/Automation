@@ -8,6 +8,7 @@
  * /reset-password page is the "accept invite" page.
  */
 import { randomBytes } from 'node:crypto';
+import { claimOwnerEmail, EmailTakenError } from './email-claim.js';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
@@ -15,6 +16,7 @@ import { PLAN_IDS } from './plans.js';
 import { VERTICALS, verticalDefaults } from './verticals.js';
 import { createResetToken, RESET_TOKEN_TTL_SECONDS } from './password-reset.js';
 import { config } from '../config/index.js';
+import { createTenantWallet, newTenantMoneyDefaults } from './ledger.js';
 
 export const MAX_QUOTA_OVERRIDE = 1_000_000;
 /** Invites outlive a reset link: the owner may not read mail within the hour. */
@@ -133,6 +135,10 @@ export async function createTenantWithOwner(deps: OnboardingDeps, input: CreateT
     let created: { tenant: any; user: any };
     try {
         created = await deps.prisma.$transaction(async (tx) => {
+            // The check above is a fast path; this lock + re-check is what
+            // stops a double-submitted form creating several organisations
+            // for one owner email.
+            await claimOwnerEmail(tx, input.owner.email);
             const tenant = await tx.tenant.create({
                 data: {
                     ...verticalDefaults(input.vertical),
@@ -144,8 +150,13 @@ export async function createTenantWithOwner(deps: OnboardingDeps, input: CreateT
                     monthlyMessageQuotaOverride: input.monthlyMessageQuotaOverride ?? null,
                     // Same as self-registration: quota cycle anchored at creation.
                     quotaCycleStart: now,
+                    // Same source as self-registration (see ledger.ts): the
+                    // schema default is NGN, so it is set explicitly, and the
+                    // wallet below is created in the same currency.
+                    ...newTenantMoneyDefaults(),
                 } satisfies Prisma.TenantUncheckedCreateInput,
             });
+            await createTenantWallet(tx, tenant);
             const user = await tx.user.create({
                 data: {
                     tenantId: tenant.id,
@@ -169,7 +180,9 @@ export async function createTenantWithOwner(deps: OnboardingDeps, input: CreateT
             return { tenant, user };
         });
     } catch (err) {
-        if ((err as { code?: string })?.code === 'P2002') throw new DuplicateOwnerEmailError();
+        if (err instanceof EmailTakenError || (err as { code?: string })?.code === 'P2002') {
+            throw new DuplicateOwnerEmailError();
+        }
         throw err;
     }
 

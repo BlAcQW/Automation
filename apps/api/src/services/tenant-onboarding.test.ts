@@ -45,11 +45,17 @@ describe('createTenantSchema', () => {
 });
 
 function fakePrisma(opts: { existing?: boolean } = {}) {
-    const calls: Record<string, any[]> = { tenant: [], user: [], hours: [] };
+    const calls: Record<string, any[]> = { tenant: [], user: [], hours: [], wallet: [] };
     const tx = {
         tenant: { create: vi.fn(async (a: any) => { calls.tenant.push(a); return { id: 't1', name: a.data.name, ...a.data }; }) },
-        user: { create: vi.fn(async (a: any) => { calls.user.push(a); return { id: 'u1', ...a.data }; }) },
+        // claimOwnerEmail runs inside the transaction: advisory lock + re-check.
+        $executeRaw: vi.fn(async () => 1),
+        user: {
+            create: vi.fn(async (a: any) => { calls.user.push(a); return { id: 'u1', ...a.data }; }),
+            findFirst: vi.fn(async () => (opts.existing ? { id: 'x' } : null)),
+        },
         workingHours: { createMany: vi.fn(async (a: any) => { calls.hours.push(a); return { count: a.data.length }; }) },
+        wallet: { create: vi.fn(async (a: any) => { calls.wallet.push(a); return { id: 'w1', ...a.data }; }) },
     };
     const prisma: any = {
         user: { findFirst: vi.fn(async () => (opts.existing ? { id: 'x' } : null)) },
@@ -65,6 +71,23 @@ const baseDeps = (prisma: any, send?: any) => ({
     now: new Date('2026-01-01T00:00:00Z'),
     sendInvite: send ?? vi.fn(async () => ({ ok: true })),
     emailConfigured: send !== null,
+});
+
+describe('createTenantWithOwner money defaults', () => {
+    it('sets paymentCurrency explicitly (schema default is NGN) and creates the wallet in the SAME currency', async () => {
+        const { prisma, calls } = fakePrisma();
+        await createTenantWithOwner(baseDeps(prisma), valid);
+        expect(calls.tenant[0].data.paymentCurrency).toBe('GHS');
+        expect(calls.wallet).toHaveLength(1);
+        expect(calls.wallet[0].data).toEqual({ tenantId: 't1', currency: calls.tenant[0].data.paymentCurrency });
+    });
+
+    it('creates the wallet inside the tenant transaction (never a tenant without one)', async () => {
+        const { prisma, tx } = fakePrisma();
+        await createTenantWithOwner(baseDeps(prisma), valid);
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+        expect(tx.wallet.create).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe('createTenantWithOwner', () => {

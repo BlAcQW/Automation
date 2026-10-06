@@ -4,6 +4,7 @@ import {
     initializeTransaction,
     verifyTransaction,
     verifyWebhookSignature,
+    refundTransaction,
     PaystackError,
 } from './paystack';
 
@@ -188,5 +189,28 @@ describe('verifyWebhookSignature', () => {
 
     it('returns false when the secret is empty', () => {
         expect(verifyWebhookSignature(body, correctSig, '')).toBe(false);
+    });
+});
+
+describe('refundTransaction', () => {
+    it('sends the transaction, amount and a merchant_note (Paystack has no idempotency key on /refund)', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response(JSON.stringify({ status: true, data: { id: 7, status: 'pending', amount: 5000, currency: 'GHS' } }), { status: 200 }),
+        );
+        const r = await refundTransaction('sk_test_abc', 'ref1', 5000, { merchantNote: 'refund:order:o1' });
+        const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+        expect(String(url)).toContain('/refund');
+        const body = JSON.parse(String(init.body));
+        expect(body).toEqual({ transaction: 'ref1', amount: 5000, merchant_note: 'refund:order:o1' });
+        expect((init.headers as Record<string, string>)['Idempotency-Key']).toBeUndefined();
+        expect(r).toMatchObject({ id: '7', amountKobo: 5000 });
+    });
+
+    it('omits merchant_note when none is given', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response(JSON.stringify({ status: true, data: { id: 8 } }), { status: 200 }),
+        );
+        await refundTransaction('sk_test_abc', 'ref1', 100);
+        expect(JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body))).toEqual({ transaction: 'ref1', amount: 100 });
     });
 });

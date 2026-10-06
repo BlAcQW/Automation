@@ -8,7 +8,12 @@ vi.mock('../config/index.js', () => ({ config: { paystack: { callbackUrl: 'https
 import { initializeTransaction } from './paystack.js';
 import { createPaymentLink } from './payment-link.js';
 
-const prisma: any = { booking: { update: vi.fn() }, order: { update: vi.fn() } };
+const prisma: any = {
+    booking: { update: vi.fn() }, order: { update: vi.fn() },
+    // Platform route reads the wallet currency (no wallet yet → tenant's).
+    wallet: { findUnique: vi.fn(async () => null) },
+    tenant: { findUnique: vi.fn(async () => ({ paymentCurrency: 'GHS' })) },
+};
 const base = {
     prisma, tenantId: 't1', paystackSecretKeyEncrypted: 'enc', currency: 'GHS',
     entity: 'booking' as const, id: 'bk1', amount: 25, customerPhone: '+233 24 000 0000',
@@ -40,6 +45,25 @@ describe('createPaymentLink', () => {
                 collectionRoute: 'OWN_GATEWAY',
             },
         });
+    });
+
+    it('on the platform route, uses the WALLET currency, not the tenant setting', async () => {
+        // Platform money lands in the tenant's wallet; the ledger refuses a
+        // movement in any other currency. A tenant still set to NGN (old
+        // default) must not get an NGN link credited into a GHS wallet.
+        (initializeTransaction as any).mockResolvedValue({ authorizationUrl: 'https://pay/p', reference: 'bf_p_bk1_1', accessCode: 'ac' });
+        const withWallet: any = {
+            ...prisma,
+            wallet: { findUnique: vi.fn(async () => ({ currency: 'GHS' })) },
+        };
+        await createPaymentLink({ ...base, prisma: withWallet, paystackSecretKeyEncrypted: null, currency: 'NGN' });
+        expect((initializeTransaction as any).mock.calls[0][0].currency).toBe('GHS');
+    });
+
+    it('on the tenant\'s own gateway, keeps the tenant currency', async () => {
+        (initializeTransaction as any).mockResolvedValue({ authorizationUrl: 'https://pay/o', reference: 'bf_o_bk1_1', accessCode: 'ac' });
+        await createPaymentLink({ ...base, currency: 'NGN' });
+        expect((initializeTransaction as any).mock.calls[0][0].currency).toBe('NGN');
     });
 
     it('collects into the platform account when the tenant has no key of their own', async () => {

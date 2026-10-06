@@ -13,7 +13,21 @@
  *   FAILED      provider rejected or reversed — money returned to available
  *
  * Every transition is idempotent, because Paystack retries webhooks and a
- * transfer event can arrive more than once.
+ * transfer event can arrive more than once, and every transition is a
+ * CONDITIONAL update on the status it expects. Nothing writes a status
+ * unconditionally: that is how a late "handed to Paystack" update used to be
+ * able to drag a payout the webhook had already settled back to PROCESSING.
+ *
+ * Contradictory events (success for a payout already returned to the tenant,
+ * failure for one already settled) move NO money. They raise a critical alert,
+ * because each is a double-pay or a lost-money risk only a person can resolve.
+ *
+ * Legal moves:
+ *   REQUESTED  -> PROCESSING   (markPayoutProcessing)
+ *   REQUESTED | PROCESSING -> PAID    (markPayoutPaid, transfer.success)
+ *   REQUESTED | PROCESSING -> FAILED  (markPayoutFailed, transfer.failed / .reversed)
+ *   PAID       -> FAILED       (markPayoutReversed, transfer.reversed after success:
+ *                               the settlement is reversed back to available)
  */
 
 import type { FastifyBaseLogger } from 'fastify';
@@ -22,6 +36,7 @@ import { PaystackError } from './paystack.js';
 import {
     payoutReversed,
     payoutSettled,
+    payoutSettlementReversed,
     postMovement,
     refreshCachedBalances,
 } from './ledger.js';
@@ -75,6 +90,8 @@ export async function initiateTransfer(args: {
     secretKey: string;
     recipientCode: string;
     amountMinor: number;
+    /** The wallet currency. A payout is only ever sent in the currency it was reserved in. */
+    currency: string;
     reference: string;
     reason?: string;
 }): Promise<InitiatedTransfer> {
@@ -90,6 +107,7 @@ export async function initiateTransfer(args: {
                 source: 'balance',
                 recipient: args.recipientCode,
                 amount: args.amountMinor,
+                currency: args.currency,
                 reference: args.reference,
                 reason: args.reason ?? 'Bookly payout',
             }),
@@ -159,13 +177,52 @@ function payoutWhere(args: SettleArgs): { id: string; tenantId?: string } {
  */
 
 /**
+ * We handed the transfer to Paystack and it accepted it.
+ *
+ * The status move is guarded on REQUESTED, so it can never drag a payout back
+ * from a state a webhook already settled (the transfer webhook can beat this
+ * call home). The provider reference is recorded regardless, but only if there
+ * is none yet, so reconciliation can always find the transfer.
+ */
+export async function markPayoutProcessing(args: {
+    prisma: ExtendedPrismaClient;
+    tenantId: string;
+    payoutId: string;
+    transferCode: string;
+}): Promise<{ advanced: boolean }> {
+    const { prisma, tenantId, payoutId, transferCode } = args;
+    const advanced = await prisma.payoutRequest.updateMany({
+        where: { id: payoutId, tenantId, status: 'REQUESTED' },
+        data: { status: 'PROCESSING', providerRef: transferCode },
+    });
+    if (advanced.count === 1) return { advanced: true };
+
+    await prisma.payoutRequest.updateMany({
+        where: { id: payoutId, tenantId, providerRef: null },
+        data: { providerRef: transferCode },
+    });
+    return { advanced: false };
+}
+
+/** Current status of a payout, for explaining why a transition did not apply. */
+async function currentStatus(
+    client: ExtendedPrismaClient,
+    args: SettleArgs,
+): Promise<{ status: string; tenantId: string } | null> {
+    return client.payoutRequest.findUnique({
+        where: payoutWhere(args),
+        select: { status: true, tenantId: true },
+    });
+}
+
+/**
  * The provider confirmed the money left. Close the ledger entry that has been
  * sitting in PAYOUT_PENDING since the request.
  */
 export async function markPayoutPaid(args: SettleArgs): Promise<{ applied: boolean }> {
     const { prisma, payoutId } = args;
 
-    return prisma.$transaction(async (tx) => {
+    const outcome = await prisma.$transaction(async (tx) => {
         const client = tx as ExtendedPrismaClient;
 
         // Atomic claim — only the first delivery of a retried webhook does
@@ -174,13 +231,26 @@ export async function markPayoutPaid(args: SettleArgs): Promise<{ applied: boole
             where: { ...payoutWhere(args), status: { in: ['REQUESTED', 'PROCESSING'] } },
             data: { status: 'PAID', settledAt: new Date() },
         });
-        if (claimed.count === 0) return { applied: false };
+        if (claimed.count === 0) {
+            const was = await currentStatus(client, args);
+            // FAILED after a settlement was recorded means we saw this success
+            // already and the settlement was reversed later (transfer.reversed):
+            // this is a redelivery, not a contradiction. The ledger key is the
+            // evidence; nothing the webhook echoes is trusted for it.
+            const settledBefore = was?.status === 'FAILED'
+                ? !!(await client.ledgerMovement.findUnique({
+                    where: { idempotencyKey: `payout-settled:${payoutId}` },
+                    select: { id: true },
+                }))
+                : false;
+            return { applied: false, was, settledBefore };
+        }
 
         const payout = await client.payoutRequest.findUnique({
             where: payoutWhere(args),
             select: { tenantId: true, walletId: true, amountMinor: true, currency: true },
         });
-        if (!payout) return { applied: false };
+        if (!payout) return { applied: false, was: null, settledBefore: false };
 
         await postMovement(client, {
             tenantId: payout.tenantId,
@@ -193,8 +263,26 @@ export async function markPayoutPaid(args: SettleArgs): Promise<{ applied: boole
         });
         await refreshCachedBalances(client, payout.tenantId, payout.walletId);
 
-        return { applied: true };
+        return { applied: true, was: null, settledBefore: false };
     });
+
+    // The provider says the money LEFT, but we had already given it back to
+    // the tenant. They now hold it twice. Nothing is moved automatically: a
+    // person decides which side to claw back. Only a GENUINE contradiction: a
+    // payout that was settled and then reversed, whose success event is
+    // redelivered, stays silent. One alert per payout (dedupeKey).
+    if (!outcome.applied && outcome.was?.status === 'FAILED' && !outcome.settledBefore) {
+        await raiseAlert(prisma, {
+            kind: 'payout.paid_after_failed',
+            severity: 'critical',
+            tenantId: outcome.was.tenantId,
+            message: 'Paystack reports a transfer as SUCCESSFUL, but Bookly had already returned that payout to the tenant balance. The tenant may have been paid twice; reconcile by hand.',
+            context: { payoutId },
+            dedupeKey: `payout.paid_after_failed:${payoutId}`,
+        });
+    }
+
+    return { applied: outcome.applied };
 }
 
 /**
@@ -217,13 +305,15 @@ export async function markPayoutFailed(
                 failureReason: args.failureReason ?? 'The transfer did not go through.',
             },
         });
-        if (claimed.count === 0) return { applied: false, tenantId: null, amountMinor: 0, currency: 'GHS' };
+        if (claimed.count === 0) {
+            return { applied: false, tenantId: null, amountMinor: 0, currency: 'GHS', was: await currentStatus(client, args) };
+        }
 
         const payout = await client.payoutRequest.findUnique({
             where: payoutWhere(args),
             select: { tenantId: true, walletId: true, amountMinor: true, currency: true },
         });
-        if (!payout) return { applied: false, tenantId: null, amountMinor: 0, currency: 'GHS' };
+        if (!payout) return { applied: false, tenantId: null, amountMinor: 0, currency: 'GHS', was: null };
 
         await postMovement(client, {
             tenantId: payout.tenantId,
@@ -241,8 +331,23 @@ export async function markPayoutFailed(
             tenantId: payout.tenantId,
             amountMinor: payout.amountMinor,
             currency: payout.currency,
+            was: null,
         };
     });
+
+    // A failure event for a payout that already SETTLED contradicts what we
+    // recorded. Moving money on it could pay the tenant twice, so nothing
+    // moves; a person is told.
+    if (!result.applied && result.was?.status === 'PAID') {
+        await raiseAlert(prisma, {
+            kind: 'payout.event_conflict',
+            severity: 'critical',
+            tenantId: result.was.tenantId,
+            message: 'Paystack reported a transfer as failed, but Bookly had already recorded it as paid. No money was moved; check the transfer with Paystack.',
+            context: { payoutId, event: 'failed' },
+            dedupeKey: `payout.event_conflict:${payoutId}:failed`,
+        });
+    }
 
     // Say so out loud. Money that quietly failed to arrive is the single
     // worst silence in the product.
@@ -269,6 +374,82 @@ export async function markPayoutFailed(
     }
 
     return { applied: result.applied };
+}
+
+/**
+ * `transfer.reversed`: Paystack took a transfer back.
+ *
+ * Before success it is just another failure. AFTER success it means the money
+ * we recorded as gone came back to Bookly's balance, so the tenant is owed it
+ * again: the settlement is reversed (EXTERNAL -> AVAILABLE), the payout is
+ * marked FAILED, and a critical alert and an owner notification say so.
+ * Ignoring it, as this used to, leaves Bookly holding money the ledger says
+ * the tenant already received.
+ *
+ * Idempotent: the PAID -> FAILED claim is atomic and the movement is keyed on
+ * the payout, so a redelivery finds a FAILED payout and does nothing.
+ */
+export async function markPayoutReversed(
+    args: SettleArgs & { failureReason?: string },
+): Promise<{ applied: boolean }> {
+    const { prisma, payoutId } = args;
+    const failureReason = args.failureReason ?? 'The transfer was reversed after it was sent.';
+
+    const reversed = await prisma.$transaction(async (tx) => {
+        const client = tx as ExtendedPrismaClient;
+
+        const claimed = await client.payoutRequest.updateMany({
+            where: { ...payoutWhere(args), status: 'PAID' },
+            data: { status: 'FAILED', failureReason },
+        });
+        if (claimed.count === 0) return null;
+
+        const payout = await client.payoutRequest.findUnique({
+            where: payoutWhere(args),
+            select: { tenantId: true, walletId: true, amountMinor: true, currency: true },
+        });
+        if (!payout) return null;
+
+        await postMovement(client, {
+            tenantId: payout.tenantId,
+            walletId: payout.walletId,
+            reason: 'PAYOUT_REVERSED',
+            idempotencyKey: `payout-settlement-reversed:${payoutId}`,
+            lines: payoutSettlementReversed(payout.amountMinor),
+            currency: payout.currency,
+            payoutId,
+            note: 'transfer.reversed after the payout had settled',
+        });
+        await refreshCachedBalances(client, payout.tenantId, payout.walletId);
+        return payout;
+    });
+
+    if (!reversed) {
+        // Not settled: an ordinary failure (or a redelivery, which is a no-op).
+        return markPayoutFailed(args);
+    }
+
+    await raiseAlert(prisma, {
+        kind: 'payout.reversed_after_success',
+        severity: 'critical',
+        tenantId: reversed.tenantId,
+        message: `A payout of ${reversed.currency} ${(reversed.amountMinor / 100).toFixed(2)} was reversed by Paystack AFTER it had been sent. The settlement was reversed and the funds returned to the tenant's available balance.`,
+        context: { payoutId, amountMinor: reversed.amountMinor, currency: reversed.currency },
+        dedupeKey: `payout.reversed_after_success:${payoutId}`,
+    });
+    await createNotification(
+        prisma,
+        {
+            tenantId: reversed.tenantId,
+            type: 'SYSTEM',
+            title: 'A withdrawal was reversed',
+            message: `${reversed.currency} ${(reversed.amountMinor / 100).toFixed(2)} was sent back by the network and is in your balance again. Check your Mobile Money number and try again.`,
+            metadata: { payoutId },
+        },
+        args.logger,
+    ).catch(() => undefined);
+
+    return { applied: true };
 }
 
 /**

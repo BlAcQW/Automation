@@ -15,7 +15,7 @@ function makeTx(opts: { wallet?: { id: string; currency: string } | null; tenant
     return {
         wallet: {
             findUnique: vi.fn().mockResolvedValue(opts.wallet ?? null),
-            create: vi.fn().mockImplementation(async ({ data }) => ({ id: 'w_new', currency: data.currency })),
+            upsert: vi.fn().mockImplementation(async ({ create }) => ({ id: 'w_new', currency: create.currency })),
         },
         tenant: {
             findUnique: vi.fn().mockResolvedValue(
@@ -32,7 +32,7 @@ describe('ensureWallet', () => {
         const tx = makeTx({ wallet: { id: 'w1', currency: 'GHS' } });
         const w = await ensureWallet(tx, 't1', 'GHS');
         expect(w).toEqual({ id: 'w1', currency: 'GHS' });
-        expect(tx.wallet.create).not.toHaveBeenCalled();
+        expect(tx.wallet.upsert).not.toHaveBeenCalled();
         expect(errorLog).not.toHaveBeenCalled();
     });
 
@@ -40,8 +40,8 @@ describe('ensureWallet', () => {
         const tx = makeTx({});
         const w = await ensureWallet(tx, 't1', 'KES');
         expect(w.currency).toBe('KES');
-        expect(tx.wallet.create).toHaveBeenCalledWith(
-            expect.objectContaining({ data: { tenantId: 't1', currency: 'KES' } }),
+        expect(tx.wallet.upsert).toHaveBeenCalledWith(
+            expect.objectContaining({ create: { tenantId: 't1', currency: 'KES' } }),
         );
     });
 
@@ -69,7 +69,7 @@ describe('ensureWallet', () => {
         const tx = makeTx({ wallet: { id: 'w1', currency: 'GHS' } });
         const w = await ensureWallet(tx, 't1', 'NGN');
         expect(w).toEqual({ id: 'w1', currency: 'GHS' });
-        expect(tx.wallet.create).not.toHaveBeenCalled();
+        expect(tx.wallet.upsert).not.toHaveBeenCalled();
         expect(errorLog).toHaveBeenCalledTimes(1);
         expect(errorLog.mock.calls[0][0]).toMatchObject({
             tenantId: 't1',
@@ -91,7 +91,7 @@ describe('readWalletCurrency (read path)', () => {
         const tx = makeTx({ tenantCurrency: 'NGN' });
         const r = await readWalletCurrency(tx, 't1');
         expect(r).toEqual({ walletExists: false, currency: 'NGN' });
-        expect(tx.wallet.create).not.toHaveBeenCalled();
+        expect(tx.wallet.upsert).not.toHaveBeenCalled();
     });
 
     it('uses the wallet currency when it exists', async () => {

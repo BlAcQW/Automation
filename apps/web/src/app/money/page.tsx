@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { Loader2, Wallet, Clock, Send, ShieldCheck, AlertCircle, Check } from 'lucide-react';
 import { api } from '@/lib/api';
 import { PageHeader, Card, CardContent, Button, Badge, Modal, DashboardInput } from '@bookingflow/ui';
@@ -34,6 +34,60 @@ interface MoneyState {
 }
 
 interface Provider { code: string; name: string }
+
+const PASSWORD_PROMPT = 'Enter your password to confirm.';
+
+/**
+ * Sorts a failed money-out request into "ask for the password again" versus
+ * anything else (close the password step and show the server's message as it
+ * is). Only the server's stable password codes count as password errors: a
+ * withdrawal refusal (daily limit, paused) or the "we are checking your
+ * balance, do not try again" answer is ALSO a 400, and must neither keep the
+ * password form open nor be followed by "Nothing was sent" reassurance, which
+ * would be false when a reversal failed. A locked-out owner (PASSWORD_LOCKED)
+ * is shown the message and the step closes: retrying cannot help.
+ */
+const PASSWORD_RETRY_CODES = ['PASSWORD_REQUIRED', 'PASSWORD_INCORRECT'];
+
+function readStepUpError(err: any, fallback: string): { retryPassword: boolean; message: string } {
+    const data = err?.response?.data;
+    const message: string | undefined = typeof data?.message === 'string' ? data.message : undefined;
+    if (PASSWORD_RETRY_CODES.includes(data?.code)) {
+        return { retryPassword: true, message: message ?? 'That password is not right. Enter the password you sign in with.' };
+    }
+    return { retryPassword: false, message: message ?? fallback };
+}
+
+/** The "type your password again" box both money-out forms share. */
+function StepUpPasswordField({ inputRef, value, onChange, error, autoFocus }: {
+    inputRef: RefObject<HTMLInputElement>;
+    value: string;
+    onChange: (v: string) => void;
+    error: string | null;
+    autoFocus?: boolean;
+}) {
+    return (
+        <div className="space-y-1">
+            <DashboardInput
+                ref={inputRef}
+                id="money-stepup-password"
+                label="Enter your password to confirm"
+                type="password"
+                autoComplete="current-password"
+                autoFocus={autoFocus}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                error={error ?? undefined}
+                aria-invalid={error ? true : undefined}
+            />
+            {!error && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                    The same password you use to sign in. We ask so nobody else can move your money.
+                </p>
+            )}
+        </div>
+    );
+}
 
 /** Minor units to something a person reads. Never a float in, never one out. */
 function money(minor: number, currency: string): string {
@@ -111,6 +165,16 @@ function BalanceCard({ state, onWithdrawn, onError }: {
     const [amount, setAmount] = useState('');
     const [confirming, setConfirming] = useState(false);
     const [sending, setSending] = useState(false);
+    // Lives only for the open confirm box; cleared on every outcome.
+    const [password, setPassword] = useState('');
+    const [passwordError, setPasswordError] = useState<string | null>(null);
+    const passwordRef = useRef<HTMLInputElement>(null);
+
+    function closeConfirm() {
+        setConfirming(false);
+        setPassword('');
+        setPasswordError(null);
+    }
 
     const ready = state.readyToWithdrawMinor;
     // Parse in major units, commit in minor. Rounding here rather than
@@ -120,16 +184,35 @@ function BalanceCard({ state, onWithdrawn, onError }: {
     const canWithdraw =
         !!state.destination?.usable && ready > 0 && amountMinor > 0 && amountMinor <= ready;
 
-    async function send() {
+    async function send(e?: FormEvent) {
+        e?.preventDefault();
+        if (sending) return;
+        if (!password) {
+            setPasswordError(PASSWORD_PROMPT);
+            passwordRef.current?.focus();
+            return;
+        }
         setSending(true);
+        const typed = password;
+        setPassword('');
         try {
-            const res = await api.post('/money/withdraw', { amountMinor });
-            setConfirming(false);
+            const res = await api.post('/money/withdraw', { amountMinor, password: typed });
+            closeConfirm();
             setAmount('');
             onWithdrawn(res.data.message ?? 'On the way.');
         } catch (err: any) {
-            setConfirming(false);
-            onError(err?.response?.data?.message ?? 'That did not go through. Your money is still in your balance.');
+            const { retryPassword, message } = readStepUpError(
+                err,
+                'That did not go through. Your money is still in your balance.',
+            );
+            if (retryPassword) {
+                setPasswordError(`${message} Nothing was sent. Your money is still in your balance.`);
+                // Focus after React re-enables the field.
+                setTimeout(() => passwordRef.current?.focus(), 0);
+            } else {
+                closeConfirm();
+                onError(message);
+            }
         } finally {
             setSending(false);
         }
@@ -217,8 +300,8 @@ function BalanceCard({ state, onWithdrawn, onError }: {
             {/* Restate the amount AND the destination before committing. An
                 irreversible money action should never rest on a number the
                 person typed a moment ago and can no longer see. */}
-            <Modal isOpen={confirming} onClose={() => setConfirming(false)} title="Send this money?">
-                <div className="space-y-4">
+            <Modal isOpen={confirming} onClose={() => { if (!sending) closeConfirm(); }} title="Send this money?">
+                <form className="space-y-4" onSubmit={send} noValidate>
                     <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-700/30 space-y-2">
                         <Row label="Amount" value={money(amountMinor, state.currency)} strong />
                         <Row label="To" value={state.destination?.accountName ?? ''} />
@@ -228,16 +311,23 @@ function BalanceCard({ state, onWithdrawn, onError }: {
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                         Mobile Money usually arrives within a few minutes.
                     </p>
+                    <StepUpPasswordField
+                        inputRef={passwordRef}
+                        value={password}
+                        onChange={(v) => { setPassword(v); setPasswordError(null); }}
+                        error={passwordError}
+                        autoFocus
+                    />
                     <div className="flex gap-3">
-                        <Button onClick={send} disabled={sending} className="min-h-[44px]">
+                        <Button type="submit" disabled={sending} className="min-h-[44px]">
                             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                             Yes, send it
                         </Button>
-                        <Button variant="outline" onClick={() => setConfirming(false)} disabled={sending} className="min-h-[44px]">
+                        <Button type="button" variant="outline" onClick={closeConfirm} disabled={sending} className="min-h-[44px]">
                             Not now
                         </Button>
                     </div>
-                </div>
+                </form>
             </Modal>
         </Card>
     );
@@ -266,6 +356,16 @@ function DestinationCard({ state, onSaved, onError }: {
     const [resolvedName, setResolvedName] = useState<string | null>(null);
     const [checking, setChecking] = useState(false);
     const [saving, setSaving] = useState(false);
+    // Lives only while the form is open; cleared on every outcome.
+    const [password, setPassword] = useState('');
+    const [passwordError, setPasswordError] = useState<string | null>(null);
+    const passwordRef = useRef<HTMLInputElement>(null);
+
+    function closeForm() {
+        setOpen(false);
+        setPassword('');
+        setPasswordError(null);
+    }
 
     useEffect(() => {
         if (!open || providers.length) return;
@@ -289,15 +389,27 @@ function DestinationCard({ state, onSaved, onError }: {
         }
     }
 
-    async function save() {
+    const canSave = number.replace(/\D/g, '').length >= 6 && !!provider;
+
+    async function save(e?: FormEvent) {
+        e?.preventDefault();
+        if (saving || !canSave) return;
+        if (!password) {
+            setPasswordError(PASSWORD_PROMPT);
+            passwordRef.current?.focus();
+            return;
+        }
         setSaving(true);
+        const typed = password;
+        setPassword('');
         try {
             const res = await api.post('/money/destination', {
                 accountNumber: number,
                 provider,
                 accountName: resolvedName ?? undefined,
+                password: typed,
             });
-            setOpen(false);
+            closeForm();
             setNumber('');
             setResolvedName(null);
             onSaved(
@@ -306,7 +418,14 @@ function DestinationCard({ state, onSaved, onError }: {
                     : 'Saved. You can withdraw to this number now.',
             );
         } catch (err: any) {
-            onError(err?.response?.data?.message ?? 'We could not save that number.');
+            const { retryPassword, message } = readStepUpError(err, 'We could not save that number.');
+            if (retryPassword) {
+                setPasswordError(`${message} Your number has not been changed.`);
+                setTimeout(() => passwordRef.current?.focus(), 0);
+            } else {
+                closeForm();
+                onError(message);
+            }
         } finally {
             setSaving(false);
         }
@@ -349,8 +468,8 @@ function DestinationCard({ state, onSaved, onError }: {
                 )}
             </CardContent>
 
-            <Modal isOpen={open} onClose={() => setOpen(false)} title="Where should we send your money?">
-                <div className="space-y-4">
+            <Modal isOpen={open} onClose={() => { if (!saving) closeForm(); }} title="Where should we send your money?">
+                <form className="space-y-4" onSubmit={save} noValidate>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">
                             Network
@@ -382,8 +501,16 @@ function DestinationCard({ state, onSaved, onError }: {
                         </div>
                     )}
 
+                    <StepUpPasswordField
+                        inputRef={passwordRef}
+                        value={password}
+                        onChange={(v) => { setPassword(v); setPasswordError(null); }}
+                        error={passwordError}
+                    />
+
                     <div className="flex flex-wrap gap-3">
                         <Button
+                            type="button"
                             variant="outline"
                             onClick={check}
                             disabled={checking || number.replace(/\D/g, '').length < 6}
@@ -393,15 +520,15 @@ function DestinationCard({ state, onSaved, onError }: {
                             Check this number
                         </Button>
                         <Button
-                            onClick={save}
-                            disabled={saving || number.replace(/\D/g, '').length < 6 || !provider}
+                            type="submit"
+                            disabled={saving || !canSave}
                             className="min-h-[44px]"
                         >
                             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                             Save
                         </Button>
                     </div>
-                </div>
+                </form>
             </Modal>
         </Card>
     );

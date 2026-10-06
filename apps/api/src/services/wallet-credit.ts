@@ -15,10 +15,12 @@ import type { FastifyBaseLogger } from 'fastify';
 import { config } from '../config/index.js';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import {
+    LedgerCurrencyMismatchError,
     depositReceived,
     ensureWallet,
     postMovement,
     refreshCachedBalances,
+    reportCurrencyMismatch,
     splitFee,
 } from './ledger.js';
 
@@ -73,7 +75,7 @@ export interface CreditDepositArgs {
 export interface CreditDepositResult {
     credited: boolean;
     /** Set when skipped, so the caller can log a reason rather than a silence. */
-    skippedReason?: 'not_platform_collected' | 'already_credited' | 'invalid_amount';
+    skippedReason?: 'not_platform_collected' | 'already_credited' | 'invalid_amount' | 'currency_mismatch';
     netMinor?: number;
     feeMinor?: number;
 }
@@ -105,6 +107,25 @@ export async function creditDepositToWallet(
     // One transaction: wallet, movement and cached balances move together or
     // not at all, so a crash cannot leave a credited ledger with a stale
     // balance or an orphaned wallet.
+    try {
+        return await postCredit(args, feeMinor, netMinor);
+    } catch (err) {
+        // A charge in a different currency from the wallet is never summed
+        // into it. The refusal rolled the transaction back, so the alert is
+        // raised here on the root client, where it survives.
+        if (err instanceof LedgerCurrencyMismatchError) {
+            await reportCurrencyMismatch(args.prisma, err);
+            return { credited: false, skippedReason: 'currency_mismatch' };
+        }
+        throw err;
+    }
+}
+
+async function postCredit(
+    args: CreditDepositArgs,
+    feeMinor: number,
+    netMinor: number,
+): Promise<CreditDepositResult> {
     return args.prisma.$transaction(async (tx) => {
         const wallet = await ensureWallet(tx as ExtendedPrismaClient, args.tenantId, args.currency);
 

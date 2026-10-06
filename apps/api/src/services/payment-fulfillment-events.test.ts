@@ -42,6 +42,8 @@ function fastify(claimCount = 1) {
             booking: { updateMany: vi.fn(async () => ({ count: claimCount })) },
             order: { updateMany: vi.fn(async () => ({ count: claimCount })) },
             notification: { create: vi.fn() },
+            tenant: { findUnique: vi.fn(async () => ({ paymentCurrency: 'GHS' })) },
+            wallet: { findUnique: vi.fn(async () => ({ currency: 'GHS' })) },
         },
         events,
         queues: { notifications: null, reminders: null },
@@ -113,7 +115,7 @@ describe('booking charge events', () => {
     it('an underpayment publishes payment.failed with the reason and confirms nothing', async () => {
         const f = fastify();
         const r = await fulfillBookingCharge({ fastify: f, logger: f.log, tenantId: 't1', booking, verified: verified({ amountKobo: 100 }), reference: 'ref2' });
-        expect(r).toEqual({ applied: false });
+        expect(r).toEqual({ applied: false, rejected: 'underpaid' });
         expect(f.prisma.booking.updateMany).not.toHaveBeenCalled();
         expect(publish).toHaveBeenCalledTimes(1);
         expect(publish.mock.calls[0][1]).toEqual({
@@ -142,7 +144,7 @@ describe('booking charge events', () => {
         const f = fastify();
         const args = { fastify: f, logger: f.log, tenantId: 't1', booking, verified: verified({ amountKobo: 100 }), reference: 'ref9' };
         await expect(fulfillBookingCharge(args)).rejects.toThrow('events db down');
-        expect(await fulfillBookingCharge(args)).toEqual({ applied: false });
+        expect(await fulfillBookingCharge(args)).toEqual({ applied: false, rejected: 'underpaid' });
         expect(f.events.filter((e: any) => e.type === 'payment.failed')).toHaveLength(1);
     });
 });

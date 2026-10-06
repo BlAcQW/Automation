@@ -5,7 +5,8 @@ import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
 import { fulfillBookingCharge, fulfillOrderCharge, republishPaymentSucceeded } from '../../services/payment-fulfillment.js';
 import { dispatchFulfillment } from '../../services/payment-fulfillers.js';
-import { markPayoutFailed, markPayoutPaid } from '../../services/payout-transfer.js';
+import { markPayoutFailed, markPayoutPaid, markPayoutReversed } from '../../services/payout-transfer.js';
+import { DEFAULT_PAYMENT_CURRENCY } from '../../services/ledger.js';
 import { raiseAlert } from '../../services/alerts.js';
 import {
     initializeTransaction,
@@ -19,7 +20,9 @@ const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD'] as const;
 const connectSchema = z.object({
     publicKey: z.string().min(1).max(200),
     secretKey: z.string().min(1).max(200),
-    currency: z.enum(SUPPORTED_CURRENCIES).default('NGN'),
+    // One source for the default (see DEFAULT_PAYMENT_CURRENCY): the schema
+    // still defaults Tenant.paymentCurrency to NGN, so it is always set here.
+    currency: z.enum(SUPPORTED_CURRENCIES).default(DEFAULT_PAYMENT_CURRENCY),
 });
 
 export type KeyValidation =
@@ -273,7 +276,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         return {
             connected: !!tenant?.paystackSecretKey,
             publicKey: tenant?.paystackPublicKey ?? null,
-            currency: tenant?.paymentCurrency ?? 'NGN',
+            currency: tenant?.paymentCurrency ?? DEFAULT_PAYMENT_CURRENCY,
         };
     });
 
@@ -521,9 +524,19 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
 
             if (event.event === 'transfer.success') {
                 await markPayoutPaid({ prisma: fastify.prisma, payoutId, logger: request.log });
+            } else if (event.event === 'transfer.reversed') {
+                // Before success this is a failure; AFTER success the money came
+                // back to Bookly, so the settlement is reversed and a person is
+                // told. Ignoring it would leave the ledger saying the tenant was
+                // paid while Bookly still holds the money.
+                await markPayoutReversed({
+                    prisma: fastify.prisma,
+                    payoutId,
+                    failureReason: 'The transfer was sent back. Check your Mobile Money number and try again.',
+                    logger: request.log,
+                });
             } else {
-                // failed OR reversed — either way the money goes back so the
-                // owner can try again.
+                // failed — the money goes back so the owner can try again.
                 await markPayoutFailed({
                     prisma: fastify.prisma,
                     payoutId,
@@ -546,8 +559,14 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             where: { id: tenantId },
             select: { id: true, paystackSecretKey: true },
         });
+        // An unknown tenant is answered EXACTLY like a known tenant whose
+        // signature does not verify (and like one with nothing to verify
+        // against, below). Anything else lets an unauthenticated caller test
+        // which tenant ids exist: 200 for "no such tenant", 401 for "exists".
+        // The cause is logged for us, never returned.
         if (!tenant) {
-            return reply.code(200).send({ ignored: 'unknown_tenant' });
+            request.log.warn({ tenantId }, 'Paystack webhook for an unknown tenant');
+            throw fastify.httpErrors.unauthorized('Invalid Paystack signature');
         }
 
         // Which account collected this, as recorded when the link was made.
@@ -574,7 +593,8 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                     : undefined;
 
         if (!secretKey) {
-            return reply.code(200).send({ ignored: 'no_verifying_key' });
+            request.log.warn({ tenantId, storedRoute }, 'Paystack webhook with no key to verify against');
+            throw fastify.httpErrors.unauthorized('Invalid Paystack signature');
         }
 
         if (!verifyWebhookSignature(rawBody, signature, secretKey)) {
@@ -633,7 +653,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Flip UNPAID → PAID + side effects (template, reminder, calendar,
             // audit). Idempotent — a concurrent delivery gets `applied: false`.
-            const { applied } = await fulfillBookingCharge({
+            const { applied, rejected } = await fulfillBookingCharge({
                 fastify,
                 logger: request.log,
                 tenantId,
@@ -641,6 +661,13 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                 verified,
                 reference,
             });
+            if (rejected) {
+                // Underpaid / wrong currency: recorded and alerted inside the
+                // fulfilment. 200 on purpose: re-delivering the same event can
+                // only reach the same verdict, so a retry changes nothing. (A
+                // failure to RECORD it throws above and does get retried.)
+                return reply.code(200).send({ ok: true, rejected });
+            }
             if (!applied) {
                 return reply.code(200).send({ ok: true, idempotent: true });
             }
@@ -722,13 +749,17 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Flip UNPAID → PAID + side effects (confirmation template, audit).
         // Idempotent — same TOCTOU guard as the booking branch.
-        const { applied } = await fulfillOrderCharge({
+        const { applied, rejected } = await fulfillOrderCharge({
             fastify,
             tenantId,
             order,
             verified,
             reference,
         });
+        if (rejected) {
+            // See the booking branch: 200 is deliberate.
+            return reply.code(200).send({ ok: true, rejected });
+        }
         if (!applied) {
             return reply.code(200).send({ ok: true, idempotent: true });
         }

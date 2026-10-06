@@ -223,11 +223,20 @@ export interface RefundResult {
  * and standing with Paystack. Refunding voluntarily is strictly cheaper.
  *
  * `amountKobo` omitted refunds the full transaction.
+ *
+ * NO IDEMPOTENCY KEY: Paystack's POST /refund takes only transaction, amount,
+ * currency, customer_note and merchant_note, so there is nothing to make a
+ * replay a provider-side no-op. Replay safety therefore rests on two things:
+ * the provider refuses a transaction that is already fully reversed (callers
+ * treat that error as success, see `isAlreadyRefundedError`) and the ledger
+ * movement is keyed per entity (`refund:booking:<id>`, `refund:order:<id>`).
+ * `merchantNote` is only a traceability label shown on the Paystack dashboard.
  */
 export async function refundTransaction(
     secretKey: string,
     reference: string,
     amountKobo?: number,
+    opts: { merchantNote?: string } = {},
 ): Promise<RefundResult> {
     const data = await paystackRequest<{
         id?: number | string;
@@ -245,6 +254,7 @@ export async function refundTransaction(
             body: JSON.stringify({
                 transaction: reference,
                 ...(amountKobo !== undefined ? { amount: amountKobo } : {}),
+                ...(opts.merchantNote ? { merchant_note: opts.merchantNote.slice(0, 200) } : {}),
             }),
         },
         'refund',

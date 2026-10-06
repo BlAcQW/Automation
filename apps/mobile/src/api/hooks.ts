@@ -440,7 +440,13 @@ export function usePreviewDestination() {
 export function useSaveDestination() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { accountNumber: string; provider: string; accountName?: string }) =>
+    mutationFn: async (input: {
+      accountNumber: string;
+      provider: string;
+      accountName?: string;
+      /** Step-up: the owner's sign-in password, re-typed. Never stored. */
+      password: string;
+    }) =>
       (await api.post('/money/destination', input)).data as {
         coolingOffHours: number;
       },
@@ -451,7 +457,11 @@ export function useSaveDestination() {
 export function useWithdraw() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { amountMinor: number }) =>
+    mutationFn: async (input: {
+      amountMinor: number;
+      /** Step-up: the owner's sign-in password, re-typed. Never stored. */
+      password: string;
+    }) =>
       (await api.post('/money/withdraw', input)).data as { message: string },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['money'] }),
   });

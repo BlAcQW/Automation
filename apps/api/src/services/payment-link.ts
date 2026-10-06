@@ -16,6 +16,7 @@ import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { decrypt } from './crypto.js';
 import { initializeTransaction } from './paystack.js';
 import { resolveCollectionRoute } from './collection-route.js';
+import { readWalletCurrency } from './ledger.js';
 import { isRegisteredFulfillmentKind } from './payment-fulfillers.js';
 import { scoped } from '../lib/logger.js';
 
@@ -48,6 +49,13 @@ export async function createPaymentLink(args: PaymentLinkArgs): Promise<string |
 
     try {
         const secretKey = route.secretKey;
+        // Platform-collected money is credited to the tenant's wallet, and
+        // the ledger refuses any other currency — so charge in the wallet's
+        // currency. Own-gateway money never touches the wallet.
+        const currency =
+            route.route === 'PLATFORM'
+                ? (await readWalletCurrency(args.prisma, args.tenantId)).currency
+                : args.currency;
         const digits = args.customerPhone.replace(/[^0-9]/g, '');
         const callbackUrl =
             config.paystack.callbackUrl ??
@@ -59,7 +67,7 @@ export async function createPaymentLink(args: PaymentLinkArgs): Promise<string |
             // TLD for this placeholder (the customer never sees it).
             email: `${digits || 'customer'}@customer.bookingflow.app`,
             amountKobo: Math.round(args.amount * 100),
-            currency: args.currency,
+            currency,
             // The route is carried on the reference AND the metadata. The
             // webhook needs to know whether this money landed in our balance
             // before it credits anyone's wallet, and metadata alone can be

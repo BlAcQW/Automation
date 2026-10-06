@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/theme';
 import {
@@ -14,6 +14,63 @@ import {
 import { AppHeader } from '@/components/AppHeader';
 import { Text, Card, Badge, Button, Field, QueryState } from '@/components/ui';
 import { useBottomInset } from '@/lib/layout';
+
+const PASSWORD_PROMPT = 'Enter your password to confirm.';
+
+/**
+ * Sorts a failed money-out request into "ask for the password again" versus
+ * anything else (close the password step and show the server's message as it
+ * is). Only the server's stable password codes count as password errors: a
+ * withdrawal refusal (daily limit, paused) or the "we are checking your
+ * balance, do not try again" answer is ALSO a 400, and must neither keep the
+ * password form open nor be followed by "Nothing was sent" reassurance, which
+ * would be false when a reversal failed. A locked-out owner (PASSWORD_LOCKED)
+ * is shown the message and the step closes: retrying cannot help.
+ */
+const PASSWORD_RETRY_CODES = ['PASSWORD_REQUIRED', 'PASSWORD_INCORRECT'];
+
+function readStepUpError(err: any, fallback: string): { retryPassword: boolean; message: string } {
+    const data = err?.response?.data;
+    const message: string | undefined = typeof data?.message === 'string' ? data.message : undefined;
+    if (PASSWORD_RETRY_CODES.includes(data?.code)) {
+        return { retryPassword: true, message: message ?? 'That password is not right. Enter the password you sign in with.' };
+    }
+    return { retryPassword: false, message: message ?? fallback };
+}
+
+/**
+ * The "type your password again" box both money-out forms share. Field does
+ * not forward a ref, so bumping `focusKey` remounts it with autoFocus to put
+ * the cursor back after a wrong password.
+ */
+function StepUpPasswordField({ value, onChange, error, focusKey, autoFocus, onSubmit }: {
+    value: string;
+    onChange: (v: string) => void;
+    error: string | null;
+    focusKey: number;
+    autoFocus?: boolean;
+    onSubmit: () => void;
+}) {
+    return (
+        <Field
+            key={focusKey}
+            label="Enter your password to confirm"
+            value={value}
+            onChangeText={onChange}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="current-password"
+            textContentType="password"
+            returnKeyType="done"
+            onSubmitEditing={onSubmit}
+            autoFocus={autoFocus || focusKey > 0}
+            accessibilityLabel="Enter your password to confirm"
+            error={error ?? undefined}
+            hint="The same password you use to sign in. We ask so nobody else can move your money."
+        />
+    );
+}
 
 /** Minor units to something a person reads. No float in, no float out. */
 function money(minor: number, currency: string): string {
@@ -35,6 +92,17 @@ export default function MoneyScreen() {
     const [problem, setProblem] = useState<string | null>(null);
 
     const withdraw = useWithdraw();
+    // Lives only while the confirm sheet is open; cleared on every outcome.
+    const [password, setPassword] = useState('');
+    const [passwordError, setPasswordError] = useState<string | null>(null);
+    const [passwordFocusKey, setPasswordFocusKey] = useState(0);
+
+    function closeConfirm() {
+        setConfirming(false);
+        setPassword('');
+        setPasswordError(null);
+        setPasswordFocusKey(0);
+    }
 
     const ready = data?.readyToWithdrawMinor ?? 0;
     // Typed in cedis, committed in pesewas. Rounding at the boundary keeps
@@ -44,18 +112,32 @@ export default function MoneyScreen() {
         !!data?.destination?.usable && ready > 0 && amountMinor > 0 && amountMinor <= ready;
 
     async function send() {
+        if (withdraw.isPending) return;
+        if (!password) {
+            setPasswordError(PASSWORD_PROMPT);
+            setPasswordFocusKey((k) => k + 1);
+            return;
+        }
         setProblem(null);
+        const typed = password;
+        setPassword('');
         try {
-            const res = await withdraw.mutateAsync({ amountMinor });
-            setConfirming(false);
+            const res = await withdraw.mutateAsync({ amountMinor, password: typed });
+            closeConfirm();
             setAmount('');
             setNotice(res.message);
         } catch (err: any) {
-            setConfirming(false);
-            setProblem(
-                err?.response?.data?.message ??
+            const { retryPassword, message } = readStepUpError(
+                err,
                 'That did not go through. Your money is still in your balance.',
             );
+            if (retryPassword) {
+                setPasswordError(`${message} Nothing was sent. Your money is still in your balance.`);
+                setPasswordFocusKey((k) => k + 1);
+            } else {
+                closeConfirm();
+                setProblem(message);
+            }
         }
     }
 
@@ -159,7 +241,8 @@ export default function MoneyScreen() {
             {/* Confirm restates amount AND destination. An irreversible money
                 action must not rest on a number she can no longer see. */}
             {confirming && data?.destination ? (
-                <View
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                     style={{
                         position: 'absolute', left: 0, right: 0, bottom: 0, top: 0,
                         backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end',
@@ -181,6 +264,14 @@ export default function MoneyScreen() {
                         <Text variant="caption" tone="muted">
                             Mobile Money usually arrives within a few minutes.
                         </Text>
+                        <StepUpPasswordField
+                            value={password}
+                            onChange={(v) => { setPassword(v); setPasswordError(null); }}
+                            error={passwordError}
+                            focusKey={passwordFocusKey}
+                            autoFocus
+                            onSubmit={send}
+                        />
                         <Button
                             label="Yes, send it"
                             fullWidth
@@ -192,10 +283,10 @@ export default function MoneyScreen() {
                             variant="secondary"
                             fullWidth
                             disabled={withdraw.isPending}
-                            onPress={() => setConfirming(false)}
+                            onPress={closeConfirm}
                         />
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             ) : null}
         </View>
     );
@@ -247,6 +338,17 @@ function DestinationBlock({ state, editing, setEditing, onSaved, onProblem }: {
     const [provider, setProvider] = useState('');
     const [number, setNumber] = useState('');
     const [resolvedName, setResolvedName] = useState<string | null>(null);
+    // Lives only while the form is open; cleared on every outcome.
+    const [password, setPassword] = useState('');
+    const [passwordError, setPasswordError] = useState<string | null>(null);
+    const [passwordFocusKey, setPasswordFocusKey] = useState(0);
+
+    function closeForm() {
+        setEditing(false);
+        setPassword('');
+        setPasswordError(null);
+        setPasswordFocusKey(0);
+    }
 
     const chosen = provider || providers?.[0]?.code || '';
 
@@ -258,14 +360,25 @@ function DestinationBlock({ state, editing, setEditing, onSaved, onProblem }: {
         setResolvedName(res?.accountName ?? null);
     }
 
+    const canSave = number.replace(/\D/g, '').length >= 6 && !!chosen;
+
     async function persist() {
+        if (save.isPending || !canSave) return;
+        if (!password) {
+            setPasswordError(PASSWORD_PROMPT);
+            setPasswordFocusKey((k) => k + 1);
+            return;
+        }
+        const typed = password;
+        setPassword('');
         try {
             const res = await save.mutateAsync({
                 accountNumber: number,
                 provider: chosen,
                 accountName: resolvedName ?? undefined,
+                password: typed,
             });
-            setEditing(false);
+            closeForm();
             setNumber('');
             setResolvedName(null);
             onSaved(
@@ -274,7 +387,14 @@ function DestinationBlock({ state, editing, setEditing, onSaved, onProblem }: {
                     : 'Saved. You can withdraw to this number now.',
             );
         } catch (err: any) {
-            onProblem(err?.response?.data?.message ?? 'We could not save that number.');
+            const { retryPassword, message } = readStepUpError(err, 'We could not save that number.');
+            if (retryPassword) {
+                setPasswordError(`${message} Your number has not been changed.`);
+                setPasswordFocusKey((k) => k + 1);
+            } else {
+                closeForm();
+                onProblem(message);
+            }
         }
     }
 
@@ -346,6 +466,14 @@ function DestinationBlock({ state, editing, setEditing, onSaved, onProblem }: {
                         </View>
                     ) : null}
 
+                    <StepUpPasswordField
+                        value={password}
+                        onChange={(v) => { setPassword(v); setPasswordError(null); }}
+                        error={passwordError}
+                        focusKey={passwordFocusKey}
+                        onSubmit={persist}
+                    />
+
                     <Button
                         label="Check this number"
                         variant="secondary"
@@ -358,10 +486,10 @@ function DestinationBlock({ state, editing, setEditing, onSaved, onProblem }: {
                         label="Save"
                         fullWidth
                         loading={save.isPending}
-                        disabled={number.replace(/\D/g, '').length < 6 || !chosen}
+                        disabled={!canSave}
                         onPress={persist}
                     />
-                    <Button label="Cancel" variant="secondary" fullWidth onPress={() => setEditing(false)} />
+                    <Button label="Cancel" variant="secondary" fullWidth disabled={save.isPending} onPress={closeForm} />
                 </View>
             )}
 

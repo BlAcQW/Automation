@@ -16,7 +16,7 @@
  */
 
 import { FastifyInstance, FastifyBaseLogger } from 'fastify';
-import { TemplatePurpose } from '@prisma/client';
+import { TemplatePurpose, type OrderStatus } from '@prisma/client';
 import { audit } from './audit.js';
 import { scheduleNotification, scheduleReminder } from './notification.js';
 import { createNotification } from './notifications.js';
@@ -25,6 +25,8 @@ import type { VerifyResult } from './paystack.js';
 import { creditDepositToWallet } from './wallet-credit.js';
 import { publishEventOnce } from './events/emit.js';
 import { raiseAlert } from './alerts.js';
+import { refundOrderPayment } from './order-refund.js';
+import { DEFAULT_PAYMENT_CURRENCY, readWalletCurrency } from './ledger.js';
 
 /** Minimal booking shape the fulfillment needs (matches the webhook select). */
 export interface FulfillableBooking {
@@ -107,6 +109,10 @@ async function creditForPlatformPayment(opts: {
         });
         if (credit.skippedReason === 'invalid_amount') {
             opts.logger.error({ reference: opts.reference }, 'Payment landed but the amount was unusable — wallet NOT credited');
+        }
+        if (credit.skippedReason === 'currency_mismatch') {
+            // The alert was already raised by the ledger layer.
+            opts.logger.error({ reference: opts.reference }, 'Payment landed in a different currency from the wallet — wallet NOT credited');
         }
     } catch (err) {
         // Loud, because money arrived that nobody has been credited for. The
@@ -263,14 +269,14 @@ export async function ensurePaymentSucceededOnReturn(args: {
  */
 async function recordPaymentFailed(
     prisma: unknown,
-    args: { tenantId: string; reference: string; verified: VerifyResult; extra: Record<string, unknown> },
+    args: { tenantId: string; reference: string; verified: VerifyResult; extra: Record<string, unknown>; reason: RejectedReason },
 ): Promise<void> {
     await publishEventOnce(
         prisma,
         {
             tenantId: args.tenantId,
             type: 'payment.failed',
-            payload: { ...paymentEventPayload(args.verified, args.reference, args.extra), reason: 'underpaid' },
+            payload: { ...paymentEventPayload(args.verified, args.reference, args.extra), reason: args.reason },
         },
         { field: 'reference', equals: args.reference },
     );
@@ -280,6 +286,113 @@ async function recordPaymentFailed(
 function settle(result: FulfillResult, eventError: unknown | null): FulfillResult {
     if (eventError) throw eventError;
     return result;
+}
+
+export type RejectedReason = 'underpaid' | 'currency_mismatch';
+
+/**
+ * The currency this charge was supposed to be in.
+ *
+ * Platform-collected money lands in the tenant's wallet, so the wallet's
+ * currency is what must match (a wallet is never re-denominated). Money
+ * collected into the tenant's own gateway never touches a wallet, so it is
+ * judged against the tenant's payment currency: what the link asked for.
+ */
+async function expectedChargeCurrency(
+    prisma: FastifyInstance['prisma'],
+    tenantId: string,
+    route: string | null,
+): Promise<string> {
+    if (route === 'PLATFORM') {
+        return (await readWalletCurrency(prisma, tenantId)).currency.toUpperCase();
+    }
+    const tenant = await prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { paymentCurrency: true },
+    });
+    return (tenant?.paymentCurrency ?? DEFAULT_PAYMENT_CURRENCY).toUpperCase();
+}
+
+/** Why this charge must not be accepted, or null if it is fine. Currency first: amounts in different currencies are not comparable. */
+async function chargeProblem(opts: {
+    fastify: FastifyInstance;
+    tenantId: string;
+    expectedAmount: unknown;
+    route: string | null;
+    verified: VerifyResult;
+}): Promise<{ reason: RejectedReason; expectedCurrency?: string } | null> {
+    const expectedCurrency = await expectedChargeCurrency(opts.fastify.prisma, opts.tenantId, opts.route);
+    if (String(opts.verified.currency ?? '').toUpperCase() !== expectedCurrency) {
+        return { reason: 'currency_mismatch', expectedCurrency };
+    }
+    if (!isSufficientPayment(opts.verified.amountKobo, opts.expectedAmount)) {
+        return { reason: 'underpaid' };
+    }
+    return null;
+}
+
+/**
+ * A verified charge we refuse to confirm or credit: underpaid, or in the wrong
+ * currency.
+ *
+ * ANSWERING PAYSTACK: the caller returns 200, deliberately. Both conditions are
+ * deterministic: redelivering the same event re-computes the same answer, so a
+ * non-2xx only makes Paystack hammer the endpoint for three days (and flag the
+ * webhook as failing) without ever changing the outcome. What retrying CAN
+ * fix is a failure to RECORD the rejection, so that one still throws: the
+ * durable `payment.failed` event is written last, and if it fails the webhook
+ * answers 5xx and the redelivery writes it. The person-facing record (the
+ * critical alert, deduped per reference) goes first, because raising it never
+ * throws and a crash between the steps must not lose it.
+ *
+ * The money itself is NOT credited and NOT refunded here: for a
+ * platform-collected charge it sits in Bookly's Paystack balance with no ledger
+ * entry, and the alert is what asks a person to refund the customer.
+ */
+async function handleRejectedCharge(opts: {
+    fastify: FastifyInstance;
+    logger: FastifyBaseLogger;
+    tenantId: string;
+    entity: { kind: 'booking' | 'order'; id: string; ref: string };
+    expectedAmount: unknown;
+    problem: { reason: RejectedReason; expectedCurrency?: string };
+    verified: VerifyResult;
+    reference: string;
+}): Promise<FulfillResult> {
+    const { fastify, logger, tenantId, entity, problem, verified, reference } = opts;
+    const idKey = entity.kind === 'booking' ? 'bookingId' : 'orderId';
+    const expectedMinor = Math.round(Number(opts.expectedAmount) * 100);
+    const what = problem.reason === 'underpaid' ? 'less than was asked' : `in ${verified.currency}, not ${problem.expectedCurrency}`;
+
+    logger.error(
+        { [idKey]: entity.id, reference, paidMinor: verified.amountKobo, currency: verified.currency, reason: problem.reason },
+        `Payment is ${what} — NOT confirming or crediting`,
+    );
+    await raiseAlert(fastify.prisma, {
+        kind: `payment.${problem.reason}`,
+        severity: 'critical',
+        tenantId,
+        message: `A payment for ${entity.kind} ${entity.ref} was ${what}. It was not confirmed or credited; the customer's money is held at the provider, so refund them or ask them to pay again.`,
+        context: {
+            [idKey]: entity.id, reference, paidMinor: verified.amountKobo, currency: verified.currency,
+            expectedMinor: Number.isFinite(expectedMinor) ? expectedMinor : null,
+            expectedCurrency: problem.expectedCurrency ?? null,
+        },
+        dedupeKey: `payment.${problem.reason}:${tenantId}:${reference}`,
+    });
+    await audit({
+        prisma: fastify.prisma,
+        action: 'payments.charge.rejected',
+        actorType: 'SYSTEM',
+        tenantId,
+        targetType: entity.kind === 'booking' ? 'Booking' : 'Order',
+        targetId: entity.id,
+        metadata: { entity: entity.kind, reference, reason: problem.reason, amountKobo: verified.amountKobo, currency: verified.currency },
+    });
+    await recordPaymentFailed(fastify.prisma, {
+        tenantId, reference, verified, extra: { [idKey]: entity.id }, reason: problem.reason,
+    });
+    return { applied: false, rejected: problem.reason };
 }
 
 /**
@@ -336,6 +449,11 @@ async function handleLatePayment(opts: {
 /** `applied` is true iff this call performed the UNPAID → PAID flip. */
 export interface FulfillResult {
     applied: boolean;
+    /**
+     * Set when the charge was refused outright (not confirmed, not credited).
+     * The caller still answers the provider 200: see `handleRejectedCharge`.
+     */
+    rejected?: RejectedReason;
 }
 
 /**
@@ -355,15 +473,18 @@ export async function fulfillBookingCharge(opts: {
 
     const entityCollectionRoute = booking.collectionRoute ?? null;
 
-    // Refuse to confirm a booking that was underpaid. Marking it PAID would
-    // hold the slot and credit the salon for money that never arrived.
-    if (!isSufficientPayment(verified.amountKobo, booking.depositAmount)) {
-        logger.error(
-            { bookingId: booking.id, reference, paidMinor: verified.amountKobo },
-            'Payment is less than the deposit asked for — NOT confirming or crediting',
-        );
-        await recordPaymentFailed(fastify.prisma, { tenantId, reference, verified, extra: { bookingId: booking.id } });
-        return { applied: false };
+    // Refuse to confirm a booking that was underpaid or paid in the wrong
+    // currency. Marking it PAID would hold the slot and credit the salon for
+    // money that never arrived (or arrived as something else).
+    const problem = await chargeProblem({
+        fastify, tenantId, expectedAmount: booking.depositAmount, route: entityCollectionRoute, verified,
+    });
+    if (problem) {
+        return handleRejectedCharge({
+            fastify, logger, tenantId, problem, verified, reference,
+            entity: { kind: 'booking', id: booking.id, ref: booking.bookingReference },
+            expectedAmount: booking.depositAmount,
+        });
     }
 
     // The success fact first (see recordPaymentSucceeded), whatever the claim does.
@@ -503,6 +624,76 @@ export async function fulfillBookingCharge(opts: {
     return settle({ applied: true }, eventError);
 }
 
+/** Order states that can still legitimately receive a payment once past PENDING. */
+const LIVE_ORDER_STATUSES_AFTER_PENDING: OrderStatus[] = ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+
+/**
+ * A verified payment for an order that was CANCELLED while the customer's
+ * payment was in flight. Mirrors `handleLatePayment` for bookings.
+ *
+ * Not confirmed, not re-opened: staff cancelled it for a reason and stock may
+ * already be gone. The row is marked PAID (status untouched) so the payment is
+ * traceable. The customer paid for something that no longer exists, so the
+ * money goes back: it is credited to the wallet as PENDING (never withdrawable,
+ * and a CANCELLED order never reaches DELIVERED, the only thing that clears
+ * it) and then `refundOrderPayment` refunds it at once on the STORED collection
+ * route and reverses that credit (ledger key `refund:order:<id>`).
+ *
+ * If the provider refund fails there is no automatic retry (Order has no retry
+ * columns): the money stays pending, the order is parked REFUND_PENDING and
+ * `order.refund_failed` (critical, carries orderId) tells a person to retry it.
+ *
+ * Alert first: the claim is what makes this run once, so a crash after it
+ * must not lose the only thing that tells a person. (raiseAlert never throws.)
+ */
+async function handleLateOrderPayment(opts: {
+    fastify: FastifyInstance;
+    tenantId: string;
+    order: FulfillableOrder;
+    verified: VerifyResult;
+    reference: string;
+    storedRoute: string | null;
+}): Promise<void> {
+    const { fastify, tenantId, order, verified, reference } = opts;
+    fastify.log.error(
+        { orderId: order.id, reference },
+        'Payment arrived for a cancelled order — order NOT re-opened; refund the customer',
+    );
+    await raiseAlert(fastify.prisma, {
+        kind: 'payment.after_order_cancelled',
+        severity: 'critical',
+        tenantId,
+        message: `A payment arrived for order ${order.orderRef} after it was cancelled. The order was not re-opened; the customer is being refunded automatically. If an order.refund_failed alert follows, retry that refund by hand.`,
+        context: { orderId: order.id, orderRef: order.orderRef, reference, amountMinor: verified.amountKobo, currency: verified.currency },
+        dedupeKey: `payment.after_order_cancelled:${tenantId}:${reference}`,
+    });
+    await creditForPlatformPayment({
+        fastify, logger: fastify.log, tenantId, verified, reference, storedRoute: opts.storedRoute, orderId: order.id,
+    });
+    await audit({
+        prisma: fastify.prisma,
+        action: 'payments.charge.after_order_cancelled',
+        actorType: 'SYSTEM',
+        tenantId,
+        targetType: 'Order',
+        targetId: order.id,
+        metadata: { entity: 'order', reference, amountKobo: verified.amountKobo, currency: verified.currency },
+    });
+    // Last, and never allowed to fail the webhook: the alert above is already out
+    // and the claim means this branch runs once. refundOrderPayment raises its
+    // own critical alert on a provider or ledger failure.
+    try {
+        const refund = await refundOrderPayment({
+            prisma: fastify.prisma, tenantId, orderId: order.id, logger: fastify.log, reference,
+        });
+        if (!refund.refunded) {
+            fastify.log.error({ orderId: order.id, reference, reason: refund.reason }, 'Late order payment was NOT refunded automatically');
+        }
+    } catch (err) {
+        fastify.log.error({ err, orderId: order.id, reference }, 'Refunding a late order payment threw — refund by hand');
+    }
+}
+
 /**
  * Flip an order to PAID and run its post-payment side effects.
  * Safe to call repeatedly — see `fulfillBookingCharge`.
@@ -518,29 +709,47 @@ export async function fulfillOrderCharge(opts: {
 
     const entityCollectionRoute = order.collectionRoute ?? null;
 
-    if (!isSufficientPayment(verified.amountKobo, order.totalAmount)) {
-        fastify.log.error(
-            { orderId: order.id, reference, paidMinor: verified.amountKobo },
-            'Payment is less than the order total — NOT fulfilling or crediting',
-        );
-        await recordPaymentFailed(fastify.prisma, { tenantId, reference, verified, extra: { orderId: order.id } });
-        return { applied: false };
+    const problem = await chargeProblem({
+        fastify, tenantId, expectedAmount: order.totalAmount, route: entityCollectionRoute, verified,
+    });
+    if (problem) {
+        return handleRejectedCharge({
+            fastify, logger: fastify.log, tenantId, problem, verified, reference,
+            entity: { kind: 'order', id: order.id, ref: order.orderRef },
+            expectedAmount: order.totalAmount,
+        });
     }
 
     const eventError = await recordPaymentSucceeded(fastify.prisma, fastify.log, {
         tenantId, reference, verified, extra: { orderId: order.id },
     });
 
-    // Atomic claim: same TOCTOU guard as the booking branch.
-    const claimed = await fastify.prisma.order.updateMany({
-        where: { id: order.id, paymentStatus: 'UNPAID' },
-        data: {
-            paymentStatus: 'PAID',
-            paidAt: verified.paidAt ?? new Date(),
-            status: 'CONFIRMED',
-        },
+    // Atomic claim: same TOCTOU guard as the booking branch, and the same
+    // refusal to resurrect. A PENDING order is confirmed as it is paid. An
+    // order staff already moved on (processing, shipped...) is only marked
+    // paid: forcing it back to CONFIRMED would undo their progress. A CANCELLED
+    // order is dead: the money is held and a person is told (see below).
+    const paidAt = verified.paidAt ?? new Date();
+    let claimed = await fastify.prisma.order.updateMany({
+        where: { id: order.id, paymentStatus: 'UNPAID', status: 'PENDING' },
+        data: { paymentStatus: 'PAID', paidAt, status: 'CONFIRMED' },
     });
     if (claimed.count === 0) {
+        claimed = await fastify.prisma.order.updateMany({
+            where: { id: order.id, paymentStatus: 'UNPAID', status: { in: LIVE_ORDER_STATUSES_AFTER_PENDING } },
+            data: { paymentStatus: 'PAID', paidAt },
+        });
+    }
+    if (claimed.count === 0) {
+        const late = await fastify.prisma.order.updateMany({
+            where: { id: order.id, paymentStatus: 'UNPAID', status: 'CANCELLED' },
+            data: { paymentStatus: 'PAID', paidAt },
+        });
+        if (late.count === 1) {
+            await handleLateOrderPayment({
+                fastify, tenantId, order, verified, reference, storedRoute: entityCollectionRoute,
+            });
+        }
         return settle({ applied: false }, eventError);
     }
 

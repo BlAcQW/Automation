@@ -34,7 +34,18 @@ import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { scoped } from '../lib/logger.js';
 import { raiseAlert } from './alerts.js';
 
+const log = scoped('ledger');
+
 export type AnyPrismaClient = PrismaClient | ExtendedPrismaClient;
+
+/**
+ * THE one place a new tenant's currency comes from. `Tenant.paymentCurrency`
+ * still defaults to NGN in the schema, so tenant creation (self-register and
+ * admin onboarding) sets it from this constant explicitly, and the wallet is
+ * created from the same constant. A tenant therefore cannot be born with a
+ * payment currency that disagrees with its wallet.
+ */
+export const DEFAULT_PAYMENT_CURRENCY = 'GHS';
 
 /** One side of a movement. */
 export interface LedgerLine {
@@ -68,6 +79,51 @@ export class LedgerImbalanceError extends Error {
         super(`ledger_imbalance: ${details}`);
         this.name = 'LedgerImbalanceError';
     }
+}
+
+/**
+ * A movement in one currency was aimed at a wallet held in another.
+ *
+ * Balances never mix currencies: summing GHS and NGN pesewas gives a number
+ * that means nothing and can be withdrawn as either. The movement is refused
+ * outright. It is thrown (not alerted) here because this runs inside the
+ * caller's transaction, which the throw rolls back along with any alert row
+ * written through it; the caller raises the alert from OUTSIDE with
+ * `reportCurrencyMismatch`.
+ */
+export class LedgerCurrencyMismatchError extends Error {
+    constructor(
+        public readonly tenantId: string,
+        public readonly walletCurrency: string,
+        public readonly movementCurrency: string,
+        public readonly idempotencyKey: string,
+    ) {
+        super(`ledger_currency_mismatch: wallet is ${walletCurrency}, movement is ${movementCurrency}`);
+        this.name = 'LedgerCurrencyMismatchError';
+    }
+}
+
+/** Page a human about a refused cross-currency movement. Call with the ROOT client, not a transaction. */
+export async function reportCurrencyMismatch(
+    prisma: unknown,
+    err: LedgerCurrencyMismatchError,
+): Promise<void> {
+    log.error(
+        { tenantId: err.tenantId, walletCurrency: err.walletCurrency, movementCurrency: err.movementCurrency, key: err.idempotencyKey },
+        'Refused a ledger movement in a different currency from the wallet',
+    );
+    await raiseAlert(prisma as never, {
+        kind: 'ledger.currency_mismatch',
+        severity: 'critical',
+        tenantId: err.tenantId,
+        message: `A ${err.movementCurrency} movement was refused: the wallet is ${err.walletCurrency}. Nothing was recorded; reconcile the money by hand.`,
+        context: {
+            walletCurrency: err.walletCurrency,
+            movementCurrency: err.movementCurrency,
+            idempotencyKey: err.idempotencyKey,
+        },
+        dedupeKey: `ledger.currency_mismatch:${err.tenantId}:${err.idempotencyKey}`,
+    });
 }
 
 /** Total of the lines posted to one account. */
@@ -202,6 +258,20 @@ export function payoutReversed(amountMinor: number): LedgerLine[] {
 }
 
 /**
+ * The provider reversed a transfer that had ALREADY been settled: the money
+ * came back to Bookly's balance, so the tenant is owed it again.
+ */
+export function payoutSettlementReversed(amountMinor: number): LedgerLine[] {
+    requirePositive(amountMinor, 'payout amount');
+    const lines: LedgerLine[] = [
+        { account: 'EXTERNAL', amountMinor: -amountMinor },
+        { account: 'TENANT_AVAILABLE', amountMinor: amountMinor },
+    ];
+    assertBalanced(lines);
+    return lines;
+}
+
+/**
  * Money went back to the customer.
  *
  * `from` says which of the tenant's buckets it comes out of — pending if the
@@ -297,64 +367,73 @@ export async function postMovement(
     // movements cannot each see the same balance and both spend it.
     await lockWallet(tx, args.walletId);
 
-    const currency = args.currency ?? 'GHS';
-
-    // The unique index on idempotencyKey is the guard. Checking first and then
-    // inserting has a race between the two, and retry storms find it.
-    try {
-        const movement = await tx.ledgerMovement.create({
-            data: {
-                tenantId: args.tenantId,
-                reason: args.reason,
-                idempotencyKey: args.idempotencyKey,
-                currency,
-                bookingId: args.bookingId ?? null,
-                orderId: args.orderId ?? null,
-                payoutId: args.payoutId ?? null,
-                note: args.note ?? null,
-                entries: {
-                    create: args.lines.map((l) => ({
-                        walletId: args.walletId,
-                        tenantId: args.tenantId,
-                        account: l.account,
-                        amountMinor: l.amountMinor,
-                        currency,
-                    })),
-                },
-            },
-            select: { id: true },
-        });
-        // Re-derive AFTER writing, inside the same transaction. If this
-        // movement overdrew a pot, throwing rolls the whole thing back — the
-        // rows above included. A negative balance is always a bug, never
-        // something to clamp away.
-        const after = await deriveBalances(tx, args.tenantId);
-        const resulting: Record<string, number> = {
-            TENANT_PENDING: after.pendingMinor,
-            TENANT_AVAILABLE: after.availableMinor,
-            PAYOUT_PENDING: after.payoutPendingMinor,
-        };
-        for (const account of NON_NEGATIVE_ACCOUNTS) {
-            if (resulting[account] < 0) {
-                throw new LedgerOverdrawError(account, resulting[account]);
-            }
-        }
-
-        return { movementId: movement.id, duplicate: false };
-    } catch (err) {
-        if (isUniqueViolation(err)) {
-            return { movementId: null, duplicate: true };
-        }
-        throw err;
+    // The wallet decides the currency. Scoped by tenant, so a wallet id from
+    // somewhere else cannot be written to.
+    const wallet = await tx.wallet.findFirst({
+        where: { id: args.walletId, tenantId: args.tenantId },
+        select: { id: true, currency: true },
+    });
+    if (!wallet) {
+        throw new Error(`ledger_wallet_not_found: wallet ${args.walletId} does not belong to tenant ${args.tenantId}`);
     }
-}
+    const currency = args.currency ?? wallet.currency;
+    if (currency !== wallet.currency) {
+        throw new LedgerCurrencyMismatchError(args.tenantId, wallet.currency, currency, args.idempotencyKey);
+    }
 
-function isUniqueViolation(err: unknown): boolean {
-    return (
-        typeof err === 'object' &&
-        err !== null &&
-        (err as { code?: string }).code === 'P2002'
-    );
+    // Idempotency. The wallet lock above serialises every writer for this
+    // tenant, so looking the key up INSIDE it cannot race another writer of the
+    // same wallet. Catching the unique violation instead is not an option: a
+    // failed statement aborts a Postgres transaction, and every query after
+    // it (the caller's cache refresh, its payout update) would fail with
+    // "current transaction is aborted". The unique index stays as the backstop
+    // for the one case this lookup cannot see: the same key held by a
+    // DIFFERENT tenant, which must be loud rather than a silent skip.
+    const existing = await tx.ledgerMovement.findFirst({
+        where: { idempotencyKey: args.idempotencyKey, tenantId: args.tenantId },
+        select: { id: true },
+    });
+    if (existing) return { movementId: null, duplicate: true };
+
+    const movement = await tx.ledgerMovement.create({
+        data: {
+            tenantId: args.tenantId,
+            reason: args.reason,
+            idempotencyKey: args.idempotencyKey,
+            currency,
+            bookingId: args.bookingId ?? null,
+            orderId: args.orderId ?? null,
+            payoutId: args.payoutId ?? null,
+            note: args.note ?? null,
+            entries: {
+                create: args.lines.map((l) => ({
+                    walletId: args.walletId,
+                    tenantId: args.tenantId,
+                    account: l.account,
+                    amountMinor: l.amountMinor,
+                    currency,
+                })),
+            },
+        },
+        select: { id: true },
+    });
+
+    // Re-derive AFTER writing, inside the same transaction. If this movement
+    // overdrew a pot, throwing rolls the whole thing back — the rows above
+    // included. A negative balance is always a bug, never something to clamp.
+    const after = await deriveBalances(tx, args.tenantId, wallet.currency);
+    const resulting: Record<string, number> = {
+        TENANT_PENDING: after.pendingMinor,
+        TENANT_AVAILABLE: after.availableMinor,
+        PAYOUT_PENDING: after.payoutPendingMinor,
+    };
+    for (const account of NON_NEGATIVE_ACCOUNTS) {
+        if (resulting[account] < 0) {
+            throw new LedgerOverdrawError(account, resulting[account]);
+        }
+    }
+
+    return { movementId: movement.id, duplicate: false };
 }
 
 export interface WalletBalances {
@@ -368,11 +447,22 @@ export interface WalletBalances {
  *
  * This is the authority. The cached columns on `Wallet` are for rendering a
  * dashboard; a withdrawal re-derives from here, inside its own transaction.
+ *
+ * ONE CURRENCY ONLY. Entries are filtered to the wallet's currency, so a stray
+ * entry in another currency can neither inflate nor mask a balance. Callers
+ * that already know the wallet currency pass it; otherwise it is read from the
+ * wallet, and with no wallet there is nothing to sum.
  */
 export async function deriveBalances(
     tx: AnyPrismaClient,
     tenantId: string,
+    currency?: string,
 ): Promise<WalletBalances> {
+    const walletCurrency =
+        currency ??
+        (await tx.wallet.findUnique({ where: { tenantId }, select: { currency: true } }))?.currency;
+    if (!walletCurrency) return { availableMinor: 0, pendingMinor: 0, payoutPendingMinor: 0 };
+
     // Summed in JS rather than with groupBy: the tenant-guard `$extends`
     // widens the client enough that groupBy's overloads stop resolving, and a
     // raw query would bypass that guard entirely — not a trade worth making in
@@ -380,7 +470,7 @@ export async function deriveBalances(
     // years of trading); if that ever changes, add a periodic rollup rather
     // than reaching for raw SQL.
     const rows = await tx.ledgerEntry.findMany({
-        where: { tenantId },
+        where: { tenantId, currency: walletCurrency },
         select: { account: true, amountMinor: true },
     });
 
@@ -401,7 +491,11 @@ export async function refreshCachedBalances(
     tenantId: string,
     walletId: string,
 ): Promise<WalletBalances> {
-    const balances = await deriveBalances(tx, tenantId);
+    const wallet = await tx.wallet.findFirst({
+        where: { id: walletId, tenantId },
+        select: { currency: true },
+    });
+    const balances = await deriveBalances(tx, tenantId, wallet?.currency);
     await tx.wallet.update({
         where: { id: walletId, tenantId },
         data: {
@@ -413,8 +507,6 @@ export async function refreshCachedBalances(
     return balances;
 }
 
-const log = scoped('ledger');
-const FALLBACK_CURRENCY = 'GHS';
 
 /**
  * Read-only: what currency a tenant's money screen should show. Never creates
@@ -431,7 +523,31 @@ export async function readWalletCurrency(
         where: { id: tenantId },
         select: { paymentCurrency: true },
     });
-    return { walletExists: false, currency: tenant?.paymentCurrency ?? FALLBACK_CURRENCY };
+    return { walletExists: false, currency: tenant?.paymentCurrency ?? DEFAULT_PAYMENT_CURRENCY };
+}
+
+/**
+ * Money defaults for a tenant being created. Spread into `tenant.create` data
+ * so the payment currency is always set explicitly (the schema default is
+ * still NGN) and always from DEFAULT_PAYMENT_CURRENCY.
+ */
+export function newTenantMoneyDefaults(): { paymentCurrency: string } {
+    return { paymentCurrency: DEFAULT_PAYMENT_CURRENCY };
+}
+
+/**
+ * Create the wallet for a tenant that was just created, in the SAME
+ * transaction. The currency is read off the created tenant, not re-derived, so
+ * the wallet and `Tenant.paymentCurrency` cannot disagree from day one.
+ */
+export async function createTenantWallet(
+    tx: AnyPrismaClient,
+    tenant: { id: string; paymentCurrency?: string | null },
+): Promise<{ id: string; currency: string }> {
+    return tx.wallet.create({
+        data: { tenantId: tenant.id, currency: tenant.paymentCurrency ?? DEFAULT_PAYMENT_CURRENCY },
+        select: { id: true, currency: true },
+    });
 }
 
 /**
@@ -440,7 +556,11 @@ export async function readWalletCurrency(
  * A new wallet takes `currency` if given, else the tenant's paymentCurrency.
  * An existing wallet's currency is never changed; a request for a different
  * currency is logged at error so the mismatch is visible, and the existing
- * wallet is returned unchanged.
+ * wallet is returned unchanged (postMovement then refuses the movement).
+ *
+ * Creation is an UPSERT, not create-then-catch-P2002: two first-ever payments
+ * landing together would otherwise have the loser's unique violation abort the
+ * transaction before it could read the winner's wallet.
  */
 export async function ensureWallet(
     tx: AnyPrismaClient,
@@ -452,47 +572,42 @@ export async function ensureWallet(
         select: { id: true, currency: true },
     });
     if (existing) {
-        if (currency && currency !== existing.currency) {
-            log.error(
-                { tenantId, walletId: existing.id, walletCurrency: existing.currency, requestedCurrency: currency },
-                'Wallet currency mismatch: keeping the existing wallet currency',
-            );
-            await raiseAlert(tx as never, {
-                kind: 'wallet.currency_mismatch',
-                severity: 'critical',
-                tenantId,
-                message: `Wallet is ${existing.currency} but a ${currency} movement was requested; kept ${existing.currency}.`,
-                context: { walletId: existing.id, walletCurrency: existing.currency, requestedCurrency: currency },
-                dedupeKey: `wallet.currency_mismatch:${tenantId}:${currency}`,
-            });
-        }
+        await flagWalletCurrencyMismatch(tx, tenantId, existing, currency);
         return existing;
     }
 
     const newCurrency = currency ?? (await readWalletCurrency(tx, tenantId)).currency;
+    const wallet = await tx.wallet.upsert({
+        where: { tenantId },
+        create: { tenantId, currency: newCurrency },
+        // Must NOT be empty: Prisma only issues an atomic INSERT ... ON
+        // CONFLICT when the update is non-empty. With `{}` it falls back to
+        // find-then-create, and two first payments racing make one throw
+        // P2002 (proven on a real database). Touching updatedAt is harmless.
+        update: { updatedAt: new Date() },
+        select: { id: true, currency: true },
+    });
+    await flagWalletCurrencyMismatch(tx, tenantId, wallet, newCurrency);
+    return wallet;
+}
 
-    try {
-        return await tx.wallet.create({
-            data: { tenantId, currency: newCurrency },
-            select: { id: true, currency: true },
-        });
-    } catch (err) {
-        // Two first-ever payments landing together both try to create it.
-        if (isUniqueViolation(err)) {
-            const w = await tx.wallet.findUnique({
-                where: { tenantId },
-                select: { id: true, currency: true },
-            });
-            if (w) {
-                if (w.currency !== newCurrency) {
-                    log.error(
-                        { tenantId, walletId: w.id, walletCurrency: w.currency, requestedCurrency: newCurrency },
-                        'Wallet currency mismatch: keeping the existing wallet currency',
-                    );
-                }
-                return w;
-            }
-        }
-        throw err;
-    }
+async function flagWalletCurrencyMismatch(
+    tx: AnyPrismaClient,
+    tenantId: string,
+    wallet: { id: string; currency: string },
+    requested: string | undefined,
+): Promise<void> {
+    if (!requested || requested === wallet.currency) return;
+    log.error(
+        { tenantId, walletId: wallet.id, walletCurrency: wallet.currency, requestedCurrency: requested },
+        'Wallet currency mismatch: keeping the existing wallet currency',
+    );
+    await raiseAlert(tx as never, {
+        kind: 'wallet.currency_mismatch',
+        severity: 'critical',
+        tenantId,
+        message: `Wallet is ${wallet.currency} but a ${requested} movement was requested; kept ${wallet.currency}.`,
+        context: { walletId: wallet.id, walletCurrency: wallet.currency, requestedCurrency: requested },
+        dedupeKey: `wallet.currency_mismatch:${tenantId}:${requested}`,
+    });
 }

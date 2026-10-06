@@ -1,12 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
+import bcrypt from 'bcryptjs';
 
 const mocks = vi.hoisted(() => ({
     initiateTransfer: vi.fn(),
     reportTransferUncertain: vi.fn(),
     markPayoutFailed: vi.fn(),
+    markPayoutProcessing: vi.fn(),
     createWithdrawal: vi.fn(),
+    isPayoutsPaused: vi.fn(),
 }));
 
 vi.mock('../../config/index.js', async (orig) => {
@@ -21,8 +24,10 @@ vi.mock('../../services/payout-transfer.js', async (orig) => {
         initiateTransfer: mocks.initiateTransfer,
         reportTransferUncertain: mocks.reportTransferUncertain,
         markPayoutFailed: mocks.markPayoutFailed,
+        markPayoutProcessing: mocks.markPayoutProcessing,
     };
 });
+vi.mock('../../services/platform-switches.js', () => ({ isPayoutsPaused: mocks.isPayoutsPaused }));
 
 vi.mock('../../services/payout-request.js', async (orig) => {
     const real = await orig<typeof import('../../services/payout-request.js')>();
@@ -33,7 +38,9 @@ vi.mock('../../services/audit.js', () => ({ audit: vi.fn(async () => undefined) 
 
 const TENANT = 'tenant-aaa';
 let app: FastifyInstance;
+const PASSWORD = 'correct horse battery';
 const prisma = {
+    user: { findFirst: vi.fn(async () => ({ passwordHash: bcrypt.hashSync(PASSWORD, 4) })) },
     payoutRecipient: { findFirst: vi.fn(async () => ({ providerCode: 'RCP_1' })) },
     payoutRequest: { updateMany: vi.fn(async () => ({ count: 1 })) },
 };
@@ -58,13 +65,17 @@ afterAll(async () => {
 
 beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createWithdrawal.mockResolvedValue({ payoutId: 'po_1', amountMinor: 5000, currency: 'GHS' });
+    mocks.createWithdrawal.mockResolvedValue({
+        payoutId: 'po_1', amountMinor: 5000, currency: 'GHS', recipientId: 'rcp_1', recipientCode: 'RCP_1',
+    });
+    mocks.isPayoutsPaused.mockResolvedValue({ paused: false });
+    mocks.markPayoutProcessing.mockResolvedValue({ advanced: true });
     mocks.reportTransferUncertain.mockResolvedValue(undefined);
     mocks.markPayoutFailed.mockResolvedValue({ applied: true });
 });
 
 const withdraw = () =>
-    app.inject({ method: 'POST', url: '/money/withdraw', payload: { amountMinor: 5000 } });
+    app.inject({ method: 'POST', url: '/money/withdraw', payload: { amountMinor: 5000, password: PASSWORD } });
 
 describe('POST /money/withdraw transfer outcomes', () => {
     it('reverses a rejected transfer scoped to the caller\'s tenant', async () => {

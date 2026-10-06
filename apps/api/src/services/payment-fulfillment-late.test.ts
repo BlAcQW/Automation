@@ -55,6 +55,8 @@ function world(row: { status: string; paymentStatus: string }) {
                 }),
             },
             notification: { create: vi.fn() },
+            tenant: { findUnique: vi.fn(async () => ({ paymentCurrency: 'GHS' })) },
+            wallet: { findUnique: vi.fn(async () => ({ currency: 'GHS' })) },
         },
         queues: { notifications: null, reminders: null },
         log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },

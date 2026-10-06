@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TemplatePurpose } from '@prisma/client';
-import { scheduleNotification, scheduleReminder, cancelReminder } from './notification';
+import { scheduleNotification, scheduleReminder, cancelReminder, cancelEntityReminder } from './notification';
 
 describe('Notification Service', () => {
     describe('scheduleNotification', () => {
@@ -125,5 +125,55 @@ describe('Notification Service', () => {
             const result = await cancelReminder(mockQueue as any, 'booking-456');
             expect(result).toBe(false);
         });
+    });
+});
+
+describe('generic reminders', () => {
+    it('schedules a reminder for a non-booking entity with its own jobId and name', async () => {
+        const mockQueue = { add: vi.fn().mockResolvedValue({ id: 'j' }) };
+        await scheduleReminder({
+            queue: mockQueue as any,
+            tenantId: 't1',
+            entityType: 'ride',
+            entityId: 'r9',
+            purpose: TemplatePurpose.BOOKING_REMINDER,
+            customerPhone: '+233241234567',
+            customerId: 'c1',
+            variables: ['08:00'],
+            sendAt: new Date(Date.now() + 3600_000),
+        } as any);
+        expect(mockQueue.add).toHaveBeenCalledWith(
+            'ride_reminder',
+            expect.objectContaining({ entityType: 'ride', entityId: 'r9', customerId: 'c1', variables: ['08:00'] }),
+            expect.objectContaining({ jobId: 'reminder-ride-r9' }),
+        );
+        expect(mockQueue.add.mock.calls[0][1].bookingId).toBeUndefined();
+    });
+
+    it('keeps booking reminders readable by a worker that predates the generic payload', async () => {
+        const mockQueue = { add: vi.fn().mockResolvedValue({ id: 'j' }) };
+        await scheduleReminder({
+            queue: mockQueue as any, tenantId: 't1', bookingId: 'b1',
+            customerPhone: '+233241234567', variables: ['a', 'b'], sendAt: new Date(Date.now() + 3600_000),
+        });
+        expect(mockQueue.add.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ bookingId: 'b1', entityType: 'booking', entityId: 'b1', purpose: 'BOOKING_REMINDER' }),
+        );
+    });
+
+    it('rejects a malformed entity type or empty id rather than queueing a job nobody can check', async () => {
+        const mockQueue = { add: vi.fn() };
+        const args = { queue: mockQueue as any, tenantId: 't1', customerPhone: '+1', variables: [], sendAt: new Date(Date.now() + 3600_000), purpose: TemplatePurpose.BOOKING_REMINDER };
+        await expect(scheduleReminder({ ...args, entityType: 'Bad Type', entityId: 'x' })).rejects.toThrow();
+        await expect(scheduleReminder({ ...args, entityType: 'ride', entityId: '' })).rejects.toThrow();
+        expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('cancels a generic reminder by entity', async () => {
+        const mockJob = { remove: vi.fn() };
+        const mockQueue = { getJob: vi.fn().mockResolvedValue(mockJob) };
+        expect(await cancelEntityReminder(mockQueue as any, 'ride', 'r9')).toBe(true);
+        expect(mockQueue.getJob).toHaveBeenCalledWith('reminder-ride-r9');
+        expect(await cancelEntityReminder(null, 'ride', 'r9')).toBe(false);
     });
 });

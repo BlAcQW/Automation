@@ -12,6 +12,7 @@ import {
     isAllowedBookingTransition,
 } from '../../services/wallet-clearing.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
+import { emitBookingCancelled, emitBookingCompleted } from '../../services/events/emit.js';
 
 // Validation schemas
 const createBookingSchema = z.object({
@@ -227,6 +228,15 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
         });
         if (!booking) {
             throw fastify.httpErrors.notFound('Booking not found');
+        }
+
+        // Announce a status that actually changed (best-effort, never fails the update).
+        if (body.status && body.status !== existing.status) {
+            const tenantId = request.user.tenantId;
+            if (body.status === 'COMPLETED') await emitBookingCompleted(fastify.prisma, { tenantId, bookingId: booking.id });
+            else if (body.status === 'CANCELLED') {
+                await emitBookingCancelled(fastify.prisma, { tenantId, bookingId: booking.id, reason: 'dashboard' });
+            }
         }
 
         // Marking the job done releases the deposit to the owner's wallet.

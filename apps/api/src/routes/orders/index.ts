@@ -5,6 +5,8 @@ import { generatePublicToken } from '../../lib/public-token.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
 import { orderStatusClearsFunds, clearFundsForEntity } from '../../services/wallet-clearing.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
+import { resolveCustomerIdSafe } from '../../services/customers.js';
+import { emitOrderCreated } from '../../services/events/emit.js';
 
 // Validation schemas
 const orderItemSchema = z.object({
@@ -203,6 +205,15 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             };
         });
 
+        // Link the order to its customer record. Outside the transaction, and
+        // never fatal: an order must not fail because a customer row could not
+        // be made (e.g. a phone that cannot be normalised stays unlinked).
+        const customerId = await resolveCustomerIdSafe(
+            fastify.prisma,
+            { tenantId, phone: body.customerPhone, name: body.customerName },
+            fastify.log,
+        );
+
         // Create order with items in transaction
         const order = await fastify.prisma.$transaction(async (tx: any) => {
             // Check stock availability
@@ -220,6 +231,7 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
                     orderRef: `ORD-${nanoid(8).toUpperCase()}`,
                     customerName: body.customerName,
                     customerPhone: body.customerPhone,
+                    customerId,
                     totalAmount,
                     deliveryAddress: body.deliveryAddress,
                     notes: body.notes,
@@ -247,6 +259,23 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             }
 
             return newOrder;
+        });
+
+        // After the commit (a failed event insert inside the transaction would
+        // roll the order back). The currency lookup is best-effort too.
+        let currency = 'GHS';
+        try {
+            const tenantRow = await fastify.prisma.tenant.findUnique({ where: { id: tenantId }, select: { paymentCurrency: true } });
+            currency = tenantRow?.paymentCurrency ?? currency;
+        } catch (err) {
+            fastify.log.warn({ err, tenantId }, 'Tenant currency lookup failed; order.created uses the default');
+        }
+        await emitOrderCreated(fastify.prisma, {
+            tenantId,
+            orderId: order.id,
+            customerId: customerId ?? null,
+            total: totalAmount,
+            currency,
         });
 
         const mask = await resolveMaskPolicy(fastify.prisma, request.user.tenantId, request.user.role);

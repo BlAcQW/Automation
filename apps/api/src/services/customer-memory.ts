@@ -13,6 +13,7 @@
  */
 
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
+import { normalizeCustomerPhone } from './customer-phone.js';
 
 export interface CustomerMemory {
     /** Rendered block injected into the system prompt. Empty for a stranger. */
@@ -32,6 +33,27 @@ function daysSince(d: Date): number {
 }
 
 /**
+ * The Customer record for a phone, if any. Never throws: memory is context for
+ * the assistant, and a failed lookup should leave it with the phone match.
+ */
+async function findCustomerRecord(
+    prisma: ExtendedPrismaClient,
+    tenantId: string,
+    phone: string,
+): Promise<{ id: string; name: string | null } | null> {
+    const normalised = normalizeCustomerPhone(phone, null);
+    const forms = normalised && normalised !== phone ? [phone, normalised] : [phone];
+    try {
+        return await prisma.customer.findFirst({
+            where: { tenantId, phone: { in: forms } },
+            select: { id: true, name: true },
+        });
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Build the memory block for one customer of one tenant.
  *
  * Returns plain prose rather than JSON: models follow natural-language context
@@ -41,10 +63,19 @@ export async function buildCustomerMemory(
     prisma: ExtendedPrismaClient,
     tenantId: string,
     customerPhone: string,
+    customerId?: string | null,
 ): Promise<CustomerMemory> {
+    // The customer record is the identity when there is one. History that
+    // predates linking still carries only the phone, so both are matched.
+    const customer = customerId ? null : await findCustomerRecord(prisma, tenantId, customerPhone);
+    const resolvedId = customerId ?? customer?.id ?? null;
+    const who = resolvedId
+        ? { tenantId, OR: [{ customerId: resolvedId }, { customerPhone }] }
+        : { tenantId, customerPhone };
+
     const [bookings, orders, conversation] = await Promise.all([
         prisma.booking.findMany({
-            where: { tenantId, customerPhone },
+            where: who,
             orderBy: { startTime: 'desc' },
             take: RECENT_BOOKINGS,
             select: {
@@ -57,13 +88,13 @@ export async function buildCustomerMemory(
             },
         }),
         prisma.order.findMany({
-            where: { tenantId, customerPhone },
+            where: who,
             orderBy: { createdAt: 'desc' },
             take: 3,
             select: { orderRef: true, createdAt: true, status: true, totalAmount: true },
         }),
         prisma.conversation.findFirst({
-            where: { tenantId, customerPhone },
+            where: who,
             select: { customerName: true, createdAt: true },
         }),
     ]);
@@ -72,7 +103,8 @@ export async function buildCustomerMemory(
         return { summary: '', isReturning: false };
     }
 
-    const name = bookings[0]?.customerName || conversation?.customerName || null;
+    const name =
+        bookings[0]?.customerName || customer?.name || conversation?.customerName || null;
     const lines: string[] = [];
 
     if (name) lines.push(`Name: ${name}.`);

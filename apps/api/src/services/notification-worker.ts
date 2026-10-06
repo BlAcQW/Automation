@@ -9,7 +9,8 @@
 import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient, TemplatePurpose } from '@prisma/client';
-import { QUEUE_NAMES, NotificationJob, ReminderJob } from '../plugins/redis.js';
+import { QUEUE_NAMES, NotificationJob } from '../plugins/redis.js';
+import type { ReminderJobPayload } from './notification.js';
 import { decrypt } from './crypto.js';
 import { sendTemplateMessage } from './whatsapp-templates.js';
 import {
@@ -26,7 +27,13 @@ import { sendEmail, resolveGmailCreds } from './gmail-smtp.js';
 import { buildTextBundle, type TextBundle, type MessageLinks } from './notification-text.js';
 import { config } from '../config/index.js';
 import { scoped } from '../lib/logger.js';
-import { OUT_OF_WINDOW_PURPOSES, purposeEntity } from './notification-purposes.js';
+import {
+    OUT_OF_WINDOW_PURPOSES,
+    purposeEntity,
+    normalizeReminderJob,
+    reminderStillApplies,
+} from './notification-purposes.js';
+import { resolveCustomerEmail } from './customers.js';
 
 const log = scoped('notification-worker');
 
@@ -109,6 +116,14 @@ async function alertDashboard(
     });
 }
 
+/** Optional facts about the entity a send is for. */
+interface SendContext {
+    /** Booking reminders: builds the self-service cancel link. */
+    bookingId?: string;
+    /** Linked Customer record, preferred over a phone match for the email fallback. */
+    customerId?: string | null;
+}
+
 /**
  * Common send path. Returns:
  *   - 'ok'        : message sent (or skipped due to misconfiguration that
@@ -120,8 +135,9 @@ async function sendByPurpose(
     purpose: TemplatePurpose,
     customerPhone: string,
     variables: string[],
-    bookingId?: string,
+    ctx: SendContext = {},
 ): Promise<'ok' | 'retry'> {
+    const { bookingId } = ctx;
     // Master toggle — if the tenant has switched off out-of-window messages,
     // skip reminders + order updates entirely (no send, no quota burn).
     if (OUT_OF_WINDOW_PURPOSES.has(purpose)) {
@@ -214,11 +230,18 @@ async function sendByPurpose(
         await auditFallback(tenantId, 'fallback.sms.success', { purpose });
         return 'ok';
     }
-    const email = await tryEmailFallback({ tenantId, purpose, customerPhone, bundle });
+    const email = await tryEmailFallback({
+        tenantId,
+        purpose,
+        customerPhone,
+        customerId: ctx.customerId,
+        bundle,
+    });
     if (email.outcome === 'sent') {
         await auditFallback(tenantId, 'fallback.email.success', {
             purpose,
             source: email.source,
+            addressSource: email.addressSource,
         });
         return 'ok';
     }
@@ -307,13 +330,17 @@ async function countPlatformSms(tenantId: string): Promise<void> {
 
 interface EmailFallbackResult {
     outcome: FallbackOutcome;
+    /** Which gmail account sent it. */
     source?: 'tenant' | 'platform';
+    /** Where the address came from. */
+    addressSource?: 'customer' | 'booking' | 'order';
 }
 
 async function tryEmailFallback(args: {
     tenantId: string;
     purpose: TemplatePurpose;
     customerPhone: string;
+    customerId?: string | null;
     bundle: TextBundle | null;
 }): Promise<EmailFallbackResult> {
     if (!args.bundle) return { outcome: 'no_body' };
@@ -332,13 +359,10 @@ async function tryEmailFallback(args: {
     });
     if (!creds) return { outcome: 'not_configured' };
 
-    // Resolve the customer email by looking up the latest matching source
-    // record. Which entity to probe is decided by purposeEntity().
-    const entity = purposeEntity(args.purpose);
-    if (!entity) {
-        // A purpose we cannot map is a code bug (new enum value not wired up),
-        // not a customer without an email. Log loudly but do not throw — a
-        // throw would crash-loop the job.
+    // A purpose we cannot map is a code bug (new enum value not wired up),
+    // not a customer without an email. Log loudly but do not throw — a
+    // throw would crash-loop the job.
+    if (!purposeEntity(args.purpose)) {
         log.error(
             { purpose: args.purpose, tenantId: args.tenantId },
             'Email fallback: unknown purpose, cannot determine which entity to look up',
@@ -351,25 +375,21 @@ async function tryEmailFallback(args: {
             context: { purpose: String(args.purpose) },
             dedupeKey: `notification.unknown_purpose:${String(args.purpose)}`,
         });
-        return { outcome: 'no_email' };
     }
-    const customerEmail =
-        entity === 'order'
-            ? (await prisma.order.findFirst({
-                  where: { tenantId: args.tenantId, customerPhone: args.customerPhone },
-                  orderBy: { createdAt: 'desc' },
-                  select: { customerEmail: true },
-              }))?.customerEmail
-            : (await prisma.booking.findFirst({
-                  where: { tenantId: args.tenantId, customerPhone: args.customerPhone },
-                  orderBy: { createdAt: 'desc' },
-                  select: { customerEmail: true },
-              }))?.customerEmail;
+
+    // Customer record first, then the latest booking/order for the phone.
+    const resolved = await resolveCustomerEmail(prisma, {
+        tenantId: args.tenantId,
+        purpose: args.purpose,
+        customerPhone: args.customerPhone,
+        customerId: args.customerId,
+    });
+    const customerEmail = resolved.email;
 
     if (!customerEmail) {
-        // Normal: the entity exists (or not) but carries no email address.
+        // Normal: the customer carries no email address.
         log.debug(
-            { purpose: args.purpose, tenantId: args.tenantId, entity },
+            { purpose: args.purpose, tenantId: args.tenantId },
             'Email fallback: no customer email on file',
         );
         return { outcome: 'no_email' };
@@ -388,6 +408,7 @@ async function tryEmailFallback(args: {
     return {
         outcome: res.ok ? 'sent' : 'send_failed',
         source: creds.source,
+        addressSource: resolved.source ?? undefined,
     };
 }
 
@@ -424,22 +445,40 @@ async function processNotification(job: Job<NotificationJob>): Promise<void> {
     }
 }
 
-async function processReminder(job: Job<ReminderJob>): Promise<void> {
-    const { purpose, tenantId, bookingId, customerPhone, variables } = job.data;
-    log.info(`Processing reminder for booking ${bookingId}`);
+async function processReminder(job: Job<ReminderJobPayload>): Promise<void> {
+    // Accepts both the generic payload and jobs queued before it, which carry
+    // only a bookingId.
+    const reminder = normalizeReminderJob(job.data);
+    if (!reminder) {
+        log.error({ jobId: job.id }, 'Reminder job names no entity — dropping');
+        return;
+    }
+    const { purpose, tenantId, entityType, entityId, customerPhone, variables } = reminder;
+    log.info(`Processing reminder for ${entityType} ${entityId}`);
 
-    // Re-check that the booking is still active before sending the reminder.
-    const booking = await prisma.booking.findUnique({
-        where: { id: bookingId },
-        select: { status: true, tenantId: true },
-    });
-
-    if (!booking || booking.tenantId !== tenantId || booking.status !== 'CONFIRMED') {
-        log.info('Booking no longer active, skipping reminder');
+    // Re-check that the entity is still in a state the reminder applies to.
+    const state = await reminderStillApplies(prisma, { entityType, entityId, tenantId });
+    if (state === 'unknown_entity') {
+        log.error({ entityType, tenantId }, 'Reminder for an unregistered entity type — skipping');
+        await raiseAlert(prisma, {
+            kind: 'notification.unknown_reminder_entity',
+            severity: 'warning',
+            tenantId,
+            message: `A reminder for entity type "${entityType}" was skipped: no check is registered for it.`,
+            context: { entityType },
+            dedupeKey: `notification.unknown_reminder_entity:${entityType}`,
+        });
+        return;
+    }
+    if (state === 'skip') {
+        log.info({ entityType, entityId }, 'Entity no longer eligible, skipping reminder');
         return;
     }
 
-    const outcome = await sendByPurpose(tenantId, purpose, customerPhone, variables, bookingId);
+    const outcome = await sendByPurpose(tenantId, purpose, customerPhone, variables, {
+        bookingId: reminder.bookingId,
+        customerId: reminder.customerId,
+    });
     if (outcome === 'retry') {
         throw new Error(`Failed to send reminder template — BullMQ will retry`);
     }

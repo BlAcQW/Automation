@@ -19,6 +19,11 @@ import { clearFundsForEntity, depositOutcomeOnCancel, type CancelledBy } from '.
 import { refundDepositForBooking } from './wallet-refund.js';
 import { scheduleNotification, cancelReminder } from './notification.js';
 import { deleteCalendarEvent } from './calendar.js';
+import { emitBookingCancelled } from './events/emit.js';
+import { raiseAlert } from './alerts.js';
+import { scoped } from '../lib/logger.js';
+
+const log = scoped('booking-cancel');
 
 export type CancelBookingResult =
     | { ok: true; booking: { id: string; bookingReference: string; serviceName: string } }
@@ -38,6 +43,31 @@ export interface CancelBookingArgs {
     cancelledBy: CancelledBy;
     notificationsQueue?: Queue | null;
     remindersQueue?: Queue | null;
+}
+
+/**
+ * The booking is already CANCELLED (that flip is the claim), so a refund or
+ * forfeit that throws afterwards is never retried by itself. Say so loudly,
+ * with the bookingId, so a person can refund or release the money.
+ */
+async function reportMoneyStepFailed(
+    prisma: ExtendedPrismaClient,
+    step: 'refund' | 'forfeit',
+    tenantId: string,
+    bookingId: string,
+    err: unknown,
+): Promise<void> {
+    log.error({ err, bookingId, tenantId }, `Booking cancelled but the ${step} step FAILED — a person must act`);
+    await raiseAlert(prisma, {
+        kind: `${step}.after_cancel_failed`,
+        severity: 'critical',
+        tenantId,
+        message: step === 'refund'
+            ? 'A paid booking was cancelled but the deposit refund failed. The customer is owed money.'
+            : 'A paid booking was cancelled by the customer but releasing the forfeited deposit failed.',
+        context: { bookingId, error: err instanceof Error ? err.message : String(err) },
+        dedupeKey: `${step}.after_cancel_failed:${bookingId}`,
+    });
 }
 
 /**
@@ -64,10 +94,18 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
         return { ok: false, reason: 'not_cancellable' };
     }
 
-    await prisma.booking.updateMany({
-        where: { id: bookingId, tenantId },
+    // The flip is the claim. Guarded on the status checked above, so of two
+    // racing cancels exactly one sees count === 1; the loser stops here, before
+    // the event, the notifications and, above all, the refund / forfeit.
+    const { count } = await prisma.booking.updateMany({
+        where: { id: bookingId, tenantId, status: 'CONFIRMED' },
         data: { status: 'CANCELLED' },
     });
+    if (count !== 1) {
+        return { ok: false, reason: 'already_cancelled' };
+    }
+
+    await emitBookingCancelled(prisma, { tenantId, bookingId, reason });
 
     // Best-effort: drop the linked Google Calendar event.
     if (booking.calendarEventId) {
@@ -114,10 +152,10 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
             prisma,
             tenantId: booking.tenantId,
             bookingId: booking.id,
-        }).catch(() => {
-            // Never block the cancellation on the ledger — the booking really
-            // is cancelled. Releasing the funds can be replayed safely.
-        });
+        }).catch((err) => reportMoneyStepFailed(prisma, 'forfeit', booking.tenantId, booking.id, err));
+        // Never block the cancellation on the ledger — the booking really is
+        // cancelled. But a failure here is not silent: the status flip was the
+        // claim, so nothing retries this, and a person has to act.
     } else {
         // The salon cancelled, so the customer gets their money back —
         // automatically, not as a held balance waiting for someone to notice.
@@ -131,10 +169,10 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
             prisma,
             tenantId: booking.tenantId,
             bookingId: booking.id,
-        }).catch(() => {
-            // The cancellation itself must still succeed. A failed refund is
-            // logged inside the service and can be retried.
-        });
+        }).catch((err) => reportMoneyStepFailed(prisma, 'refund', booking.tenantId, booking.id, err));
+        // The cancellation itself must still succeed. A provider failure is
+        // alerted inside the service; an exception that escapes it is alerted
+        // here, because the flip above means nothing will ever retry it.
     }
 
     return {

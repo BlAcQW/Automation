@@ -12,6 +12,7 @@ import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { HOLD_MINUTES } from './booking-deposit.js';
 import { createNotification } from './notifications.js';
 import { publish } from './realtime.js';
+import { emitBookingCancelled } from './events/emit.js';
 
 const SWEEP_EVERY_MS = 60_000;
 
@@ -47,6 +48,7 @@ export async function releaseExpiredHolds(
             message: `${b.customerName}'s booking ${b.bookingReference} was released: the deposit was not paid in ${HOLD_MINUTES} minutes.`,
             metadata: { bookingId: b.id, reason: 'deposit_timeout' },
         }, log).catch(() => undefined);
+        await emitBookingCancelled(prisma, { tenantId: b.tenantId, bookingId: b.id, reason: 'deposit_timeout' });
         publish(b.tenantId, { type: 'booking' });
     }
 

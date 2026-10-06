@@ -7,7 +7,7 @@
 
 import { Queue } from 'bullmq';
 import { TemplatePurpose } from '@prisma/client';
-import { NotificationJob, ReminderJob } from '../plugins/redis.js';
+import type { NotificationJob } from '../plugins/redis.js';
 import { scoped } from '../lib/logger.js';
 
 const log = scoped('notification');
@@ -49,16 +49,61 @@ export async function scheduleNotification(
     return added.id ?? null;
 }
 
-export interface ScheduleReminderOptions {
-    queue: Queue | null;
-    purpose?: TemplatePurpose; // defaults to BOOKING_REMINDER
+/**
+ * What a queued reminder carries. Reminders are about an entity (a booking
+ * today; a pack's own records tomorrow), not about bookings specifically.
+ *
+ * Jobs queued before this change carry only `bookingId`, and a booking job
+ * still carries it so a worker that predates this change can read it during a
+ * rolling deploy. `normalizeReminderJob` (notification-purposes.ts) turns
+ * either shape into the generic one.
+ */
+export interface ReminderJobPayload {
+    purpose: TemplatePurpose;
     tenantId: string;
-    bookingId: string;
+    /** Registry key, e.g. 'booking'. Absent only on legacy booking jobs. */
+    entityType?: string;
+    entityId?: string;
+    /** Legacy field: set on booking reminders, and the only id on old jobs. */
+    bookingId?: string;
+    customerId?: string | null;
     customerPhone: string;
-    /** Positional template variables — typically [serviceName, time]. */
+    variables: string[];
+}
+
+interface ScheduleReminderBase {
+    queue: Queue | null;
+    tenantId: string;
+    customerPhone: string;
+    customerId?: string | null;
+    /** Positional template variables, e.g. [serviceName, time]. */
     variables: string[];
     /** Absolute send time. The job is scheduled with the corresponding delay. */
     sendAt: Date;
+}
+
+export type ScheduleReminderOptions = ScheduleReminderBase &
+    (
+        | {
+              /** Booking reminder (the original form). purpose defaults to BOOKING_REMINDER. */
+              bookingId: string;
+              purpose?: TemplatePurpose;
+              entityType?: undefined;
+              entityId?: undefined;
+          }
+        | {
+              entityType: string;
+              entityId: string;
+              purpose: TemplatePurpose;
+              bookingId?: undefined;
+          }
+    );
+
+const ENTITY_TYPE_RE = /^[a-z][a-z0-9_]*$/;
+
+/** Stable per entity so a reminder can be replaced or cancelled without its lead time. */
+export function reminderJobId(entityType: string, entityId: string): string {
+    return entityType === 'booking' ? `reminder-${entityId}` : `reminder-${entityType}-${entityId}`;
 }
 
 export async function scheduleReminder(
@@ -69,43 +114,54 @@ export async function scheduleReminder(
         return null;
     }
 
+    const entityType = options.entityType ?? 'booking';
+    const entityId = options.entityId ?? options.bookingId;
+    if (!ENTITY_TYPE_RE.test(entityType) || !entityId) {
+        throw new Error('scheduleReminder: a valid entityType and entityId are required');
+    }
+
     const delay = options.sendAt.getTime() - Date.now();
     if (delay <= 0) {
         log.warn('Reminder time already passed - not scheduling');
         return null;
     }
 
-    const job: ReminderJob = {
+    const job: ReminderJobPayload = {
         purpose: options.purpose ?? TemplatePurpose.BOOKING_REMINDER,
         tenantId: options.tenantId,
-        bookingId: options.bookingId,
+        entityType,
+        entityId,
+        ...(entityType === 'booking' ? { bookingId: entityId } : {}),
+        ...(options.customerId ? { customerId: options.customerId } : {}),
         customerPhone: options.customerPhone,
         variables: options.variables,
     };
 
-    const jobId = `reminder-${options.bookingId}`;
-
-    const added = await options.queue.add('booking_reminder', job, {
+    const added = await options.queue.add(`${entityType}_reminder`, job, {
         delay,
-        jobId,
+        jobId: reminderJobId(entityType, entityId),
     });
 
     return added.id ?? null;
 }
 
-/**
- * Cancel a scheduled reminder by bookingId. The jobId scheme is stable per
- * booking (`reminder-<bookingId>`), so we no longer have to know the
- * reminder lead-time.
- */
-export async function cancelReminder(queue: Queue | null, bookingId: string): Promise<boolean> {
+/** Cancel a scheduled reminder for any entity. Returns whether one was removed. */
+export async function cancelEntityReminder(
+    queue: Queue | null,
+    entityType: string,
+    entityId: string,
+): Promise<boolean> {
     if (!queue) return false;
 
-    const jobId = `reminder-${bookingId}`;
-    const job = await queue.getJob(jobId);
+    const job = await queue.getJob(reminderJobId(entityType, entityId));
     if (job) {
         await job.remove();
         return true;
     }
     return false;
+}
+
+/** Cancel a booking's reminder. The jobId is stable per booking (`reminder-<bookingId>`). */
+export async function cancelReminder(queue: Queue | null, bookingId: string): Promise<boolean> {
+    return cancelEntityReminder(queue, 'booking', bookingId);
 }

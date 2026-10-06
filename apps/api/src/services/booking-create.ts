@@ -18,6 +18,8 @@ import { syncBookingToCalendar } from './calendar.js';
 import { createNotification } from './notifications.js';
 import { safeZone, zonedDateString, zonedTimeString } from './timezone.js';
 import { maxConcurrentDuring } from './availability.js';
+import { resolveCustomerIdSafe } from './customers.js';
+import { emitBookingCreated } from './events/emit.js';
 
 export class SlotTakenError extends Error {
     constructor(public readonly conflictingBookingId: string) {
@@ -48,6 +50,8 @@ export interface CreatedBooking {
     endTime: Date;
     customerName: string;
     customerPhone: string;
+    /** The Customer record this booking is linked to, when one could be made. */
+    customerId?: string | null;
     depositAmount: Prisma.Decimal | null;
 }
 
@@ -71,11 +75,20 @@ export async function createBookingAtomic(args: CreateBookingArgs): Promise<Crea
     const { prisma, tenantId, startTime, endTime } = args;
     const held = args.depositAmount > 0;
 
+    // Link to the customer record. Done once, before the serializable
+    // transaction: a customer insert inside it would widen the conflict window
+    // for no benefit, and a failure here must never stop the booking.
+    const customerId = await resolveCustomerIdSafe(
+        prisma,
+        { tenantId, phone: args.customerPhone, name: args.customerName, email: args.customerEmail },
+        undefined,
+    );
+
     // The reference is globally unique; a collision is astronomically rare
     // but cheap to survive.
     for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-            return await prisma.$transaction(async (tx) => {
+            const created = await prisma.$transaction(async (tx) => {
                 // Capacity: a salon with three chairs may run three bookings
                 // at once. Read inside the transaction so a capacity change
                 // cannot race with the check.
@@ -112,6 +125,7 @@ export async function createBookingAtomic(args: CreateBookingArgs): Promise<Crea
                         customerName: args.customerName,
                         customerPhone: args.customerPhone,
                         customerEmail: args.customerEmail ?? null,
+                        customerId,
                         startTime,
                         endTime,
                         status: held ? 'PENDING_PAYMENT' : 'CONFIRMED',
@@ -128,10 +142,21 @@ export async function createBookingAtomic(args: CreateBookingArgs): Promise<Crea
                         endTime: true,
                         customerName: true,
                         customerPhone: true,
+                        customerId: true,
                         depositAmount: true,
                     },
                 });
             }, { isolationLevel: 'Serializable' }) as CreatedBooking;
+
+            // After the commit, never inside it: a failed event insert would
+            // abort the serializable transaction and lose the booking. Best-effort.
+            await emitBookingCreated(prisma, {
+                tenantId,
+                bookingId: created.id,
+                customerId: created.customerId ?? null,
+                startsAt: created.startTime,
+            });
+            return created;
         } catch (err) {
             const unique = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
             if (!unique || attempt === 2) throw err;
@@ -146,7 +171,7 @@ export interface ConfirmedSideEffectsArgs {
     log?: FastifyBaseLogger;
     tenantId: string;
     timezone: string | null | undefined;
-    booking: Pick<CreatedBooking, 'id' | 'bookingReference' | 'startTime' | 'customerName' | 'customerPhone'>;
+    booking: Pick<CreatedBooking, 'id' | 'bookingReference' | 'startTime' | 'customerName' | 'customerPhone' | 'customerId'>;
     service: { name: string };
 }
 
@@ -176,6 +201,7 @@ export async function afterBookingConfirmed(args: ConfirmedSideEffectsArgs): Pro
         queue: remindersQueue,
         tenantId,
         bookingId: booking.id,
+        customerId: booking.customerId,
         customerPhone: booking.customerPhone,
         variables: [service.name, timeStr],
         sendAt: new Date(booking.startTime.getTime() - 60 * 60 * 1000),

@@ -134,7 +134,10 @@ customer until Meta grants Advanced Access. Business Verification is already
 done from the WhatsApp round, which is normally the slowest part.
 
 Full runbook with the screencast rules and the use-case text is in
-[futurefeature.md](futurefeature.md) section 0. The prerequisites that fail
+[futurefeature.md](futurefeature.md) section 0. Step-by-step dashboard settings
+(webhook URL and fields, Facebook Login domains, privacy and data-deletion
+URLs), the reviewer login script and a shot list per permission are in
+[docs/meta-app-review/SCREENCASTS.md](docs/meta-app-review/SCREENCASTS.md). The prerequisites that fail
 **silently** if missed:
 
 - [ ] **Make one real API call with each permission first** — required within
@@ -148,11 +151,13 @@ Full runbook with the screencast rules and the use-case text is in
 - [ ] **Give your test Facebook account a role on the app.** In dev mode only
       app-role users can message the IG account, so without it you cannot even
       record the demo.
-- [ ] **Update the privacy policy.** It currently says "Meta" but never names
-      Instagram, Facebook or Messenger, or what data we receive. That is a
-      documented rejection cause.
-- [ ] **Create a test Bookly account for the reviewer** with nothing connected.
-      They test with their own accounts and will not use your credentials.
+- [x] **Update the privacy policy.** Done (6 Oct): names Instagram, Facebook
+      and Messenger, what we receive and why, OpenAI and Sentry, and a data
+      deletion section at /privacy#data-deletion. Deploy it before submitting.
+- [ ] **Create a test Bookly account for the reviewer** with nothing connected:
+      `cd apps/api && npx tsx scripts/create-reviewer-account.ts --api
+      https://bookly.ikieguy.online/api --web https://bookly.ikieguy.online
+      --email meta-review@<your-domain>` (prints the login and the reviewer notes).
 - [ ] Record **one screencast per permission**, each showing the Facebook
       consent screen with the scopes visible. A general product tour that never
       isolates the permission is the most common way these fail.

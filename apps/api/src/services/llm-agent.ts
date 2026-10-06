@@ -38,6 +38,13 @@ const MAX_TOOL_ROUNDS = 4;
 /** Silence longer than this starts a new session — and a fresh welcome. */
 const SESSION_GAP_MS = 8 * 60 * 60 * 1000;
 
+/**
+ * Bound every model call: the SDK default is 10 minutes x 2 retries, which
+ * would keep the conversation lock (and its lease renewal) busy for a very
+ * long time on a hung connection.
+ */
+export const OPENAI_CLIENT_OPTIONS = { timeout: 60_000, maxRetries: 1 } as const;
+
 let client: OpenAI | null = null;
 
 export function isLlmEnabled(): boolean {
@@ -46,7 +53,7 @@ export function isLlmEnabled(): boolean {
 
 function getClient(): OpenAI {
     if (!client) {
-        client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, ...OPENAI_CLIENT_OPTIONS });
     }
     return client;
 }
@@ -373,7 +380,7 @@ async function runTool(
             // Stored on the conversation so it survives the turn, and so a
             // returning customer is never asked twice.
             await ctx.prisma.conversation.update({
-                where: { id: ctx.conversationId },
+                where: { id: ctx.conversationId, tenantId: ctx.tenantId },
                 data: { customerPhone: normalized },
             });
             ctx.customerPhone = normalized;
@@ -494,7 +501,7 @@ async function runTool(
                 // failed). Holding the slot with no way to pay would just strand
                 // the customer, so confirm it, and tell the owner why.
                 await ctx.prisma.booking.update({
-                    where: { id: booking.id },
+                    where: { id: booking.id, tenantId: ctx.tenantId },
                     data: { status: 'CONFIRMED' },
                 });
                 await afterBookingConfirmed({

@@ -84,9 +84,9 @@ export async function createPaymentLink(args: PaymentLinkArgs): Promise<string |
             collectionRoute: route.route,
         };
         if (args.entity === 'order') {
-            await args.prisma.order.update({ where: { id: args.id }, data });
+            await args.prisma.order.update({ where: { id: args.id, tenantId: args.tenantId }, data });
         } else {
-            await args.prisma.booking.update({ where: { id: args.id }, data });
+            await args.prisma.booking.update({ where: { id: args.id, tenantId: args.tenantId }, data });
         }
 
         return init.authorizationUrl;

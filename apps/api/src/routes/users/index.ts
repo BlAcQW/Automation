@@ -91,14 +91,20 @@ const usersRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.badRequest('The owner account cannot be deactivated');
         }
 
-        const user = await fastify.prisma.user.update({
-            where: { id },
+        const { count } = await fastify.prisma.user.updateMany({
+            where: { id, tenantId: request.user.tenantId },
             data: {
                 ...(body.name !== undefined && { name: body.name }),
                 ...(body.isActive !== undefined && { isActive: body.isActive }),
             },
+        });
+        if (count === 0) throw fastify.httpErrors.notFound('User not found');
+
+        const user = await fastify.prisma.user.findFirst({
+            where: { id, tenantId: request.user.tenantId },
             select: { id: true, email: true, name: true, role: true, isActive: true, createdAt: true },
         });
+        if (!user) throw fastify.httpErrors.notFound('User not found');
 
         await audit({
             prisma: fastify.prisma,

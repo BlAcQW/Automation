@@ -262,8 +262,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/me', {
         preHandler: [fastify.authenticate],
     }, async (request) => {
-        const user = await fastify.prisma.user.findUnique({
-            where: { id: request.user.userId },
+        const user = await fastify.prisma.user.findFirst({
+            where: { id: request.user.userId, tenantId: request.user.tenantId },
             include: { tenant: true },
         });
 
@@ -376,10 +376,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Update user name if provided
         if (body.name) {
-            await fastify.prisma.user.update({
-                where: { id: request.user.userId },
+            const updated = await fastify.prisma.user.updateMany({
+                where: { id: request.user.userId, tenantId: request.user.tenantId },
                 data: { name: body.name },
             });
+            if (updated.count === 0) {
+                throw fastify.httpErrors.notFound('User not found');
+            }
         }
 
         // Update tenant (business) settings if provided
@@ -426,8 +429,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             newPassword: z.string().min(8),
         }).parse(request.body);
 
-        const user = await fastify.prisma.user.findUnique({
-            where: { id: request.user.userId },
+        const user = await fastify.prisma.user.findFirst({
+            where: { id: request.user.userId, tenantId: request.user.tenantId },
         });
 
         if (!user) {
@@ -440,10 +443,13 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const passwordHash = await bcrypt.hash(body.newPassword, 12);
-        await fastify.prisma.user.update({
-            where: { id: request.user.userId },
+        const updated = await fastify.prisma.user.updateMany({
+            where: { id: request.user.userId, tenantId: request.user.tenantId },
             data: { passwordHash },
         });
+        if (updated.count === 0) {
+            throw fastify.httpErrors.notFound('User not found');
+        }
 
         return { success: true };
     });
@@ -481,8 +487,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         preHandler: fastify.authenticate,
         config: { rateLimit: { max: 3, timeWindow: '15 minutes' } },
     }, async (request) => {
-        const user = await fastify.prisma.user.findUnique({
-            where: { id: request.user.userId },
+        const user = await fastify.prisma.user.findFirst({
+            where: { id: request.user.userId, tenantId: request.user.tenantId },
             select: { id: true, email: true, name: true, emailVerifiedAt: true, tenant: { select: { name: true } } },
         });
         if (!user) throw fastify.httpErrors.notFound('User not found');
@@ -512,8 +518,8 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             data: { deletionRequestedAt: new Date() },
             select: { id: true, name: true, deletionRequestedAt: true },
         });
-        const user = await fastify.prisma.user.findUnique({
-            where: { id: request.user.userId },
+        const user = await fastify.prisma.user.findFirst({
+            where: { id: request.user.userId, tenantId: request.user.tenantId },
             select: { email: true, name: true },
         });
 

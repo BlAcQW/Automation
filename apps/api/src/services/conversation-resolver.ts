@@ -107,7 +107,10 @@ export async function resolveConversation(
     if (args.customerPhone && !existing.customerPhone) patch.customerPhone = args.customerPhone;
 
     if (Object.keys(patch).length > 0) {
-        await prisma.conversation.update({ where: { id: existing.id }, data: patch });
+        await prisma.conversation.update({
+            where: { id: existing.id, tenantId: args.tenantId },
+            data: patch,
+        });
     }
 
     return {

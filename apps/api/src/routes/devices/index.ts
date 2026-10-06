@@ -40,7 +40,7 @@ const devicesRoutes: FastifyPluginAsync = async (fastify) => {
         const { token } = request.params as { token: string };
 
         await fastify.prisma.deviceToken.deleteMany({
-            where: { token, userId: request.user.userId },
+            where: { token, userId: request.user.userId, tenantId: request.user.tenantId },
         });
 
         return { success: true };

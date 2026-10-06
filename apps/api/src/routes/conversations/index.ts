@@ -225,8 +225,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                     messageType: 'TEXT',
                 },
             }),
-            fastify.prisma.conversation.update({
-                where: { id },
+            fastify.prisma.conversation.updateMany({
+                where: { id, tenantId: request.user.tenantId },
                 data: {
                     state: 'HUMAN_ACTIVE',
                     updatedAt: new Date(),
@@ -443,8 +443,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                     } as Prisma.InputJsonValue,
                 },
             }),
-            fastify.prisma.conversation.update({
-                where: { id },
+            fastify.prisma.conversation.updateMany({
+                where: { id, tenantId: request.user.tenantId },
                 data: { state: 'HUMAN_ACTIVE', updatedAt: new Date() },
             }),
         ]);
@@ -638,8 +638,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         if (!isReaction) {
-            await fastify.prisma.conversation.update({
-                where: { id },
+            await fastify.prisma.conversation.updateMany({
+                where: { id, tenantId: request.user.tenantId },
                 data: { state: 'HUMAN_ACTIVE', updatedAt: new Date() },
             });
         }
@@ -670,8 +670,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.forbidden('Not authorized to resume bot');
         }
 
-        const updated = await fastify.prisma.conversation.update({
-            where: { id },
+        const { count } = await fastify.prisma.conversation.updateMany({
+            where: { id, tenantId: request.user.tenantId },
             data: {
                 state: 'BOT_ACTIVE',
                 botContext: Prisma.JsonNull, // Reset bot context
@@ -681,6 +681,9 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                 updatedAt: new Date(),
             },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Conversation not found');
+        }
 
         // Create system message
         await fastify.prisma.message.create({
@@ -694,8 +697,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         return {
-            id: updated.id,
-            state: updated.state,
+            id,
+            state: 'BOT_ACTIVE',
             message: 'Bot resumed successfully',
         };
     });
@@ -712,17 +715,20 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Conversation not found');
         }
 
-        const updated = await fastify.prisma.conversation.update({
-            where: { id },
+        const { count } = await fastify.prisma.conversation.updateMany({
+            where: { id, tenantId: request.user.tenantId },
             data: {
                 state: 'HUMAN_ACTIVE',
                 updatedAt: new Date(),
             },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Conversation not found');
+        }
 
         return {
-            id: updated.id,
-            state: updated.state,
+            id,
+            state: 'HUMAN_ACTIVE',
         };
     });
 
@@ -746,17 +752,20 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.conflict('Conversation already assigned to another agent');
         }
 
-        const updated = await fastify.prisma.conversation.update({
-            where: { id },
+        const { count } = await fastify.prisma.conversation.updateMany({
+            where: { id, tenantId: request.user.tenantId },
             data: {
                 assignedUserId: request.user.userId,
                 assignedAt: new Date(),
             },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Conversation not found');
+        }
 
         return {
-            id: updated.id,
-            assignedUserId: updated.assignedUserId,
+            id,
+            assignedUserId: request.user.userId,
             message: 'Conversation assigned successfully',
         };
     });

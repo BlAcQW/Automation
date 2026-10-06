@@ -109,11 +109,19 @@ const servicesRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Service not found');
         }
 
-        const service = await fastify.prisma.service.update({
-            where: { id },
+        const tenantId = request.user.tenantId;
+        const { count } = await fastify.prisma.service.updateMany({
+            where: { id, tenantId },
             data: body,
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Service not found');
+        }
 
+        const service = await fastify.prisma.service.findFirst({ where: { id, tenantId } });
+        if (!service) {
+            throw fastify.httpErrors.notFound('Service not found');
+        }
         return service;
     });
 
@@ -132,21 +140,24 @@ const servicesRoutes: FastifyPluginAsync = async (fastify) => {
 
         // Check for existing bookings
         const bookingsCount = await fastify.prisma.booking.count({
-            where: { serviceId: id },
+            where: { serviceId: id, tenantId: request.user.tenantId },
         });
 
         if (bookingsCount > 0) {
             // Soft delete by deactivating
-            await fastify.prisma.service.update({
-                where: { id },
+            await fastify.prisma.service.updateMany({
+                where: { id, tenantId: request.user.tenantId },
                 data: { isActive: false },
             });
             return { deleted: false, deactivated: true };
         }
 
-        await fastify.prisma.service.delete({
-            where: { id },
+        const { count } = await fastify.prisma.service.deleteMany({
+            where: { id, tenantId: request.user.tenantId },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Service not found');
+        }
 
         return { deleted: true };
     });
@@ -163,11 +174,19 @@ const servicesRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Service not found');
         }
 
-        const service = await fastify.prisma.service.update({
-            where: { id },
+        const tenantId = request.user.tenantId;
+        const { count } = await fastify.prisma.service.updateMany({
+            where: { id, tenantId },
             data: { isActive: !existing.isActive },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Service not found');
+        }
 
+        const service = await fastify.prisma.service.findFirst({ where: { id, tenantId } });
+        if (!service) {
+            throw fastify.httpErrors.notFound('Service not found');
+        }
         return service;
     });
 };

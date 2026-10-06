@@ -30,7 +30,7 @@ describe('createPaymentLink', () => {
         expect(call.email).toBe('233240000000@customer.bookingflow.app');
         expect(call.metadata).toMatchObject({ tenantId: 't1', bookingId: 'bk1' });
         expect(prisma.booking.update).toHaveBeenCalledWith({
-            where: { id: 'bk1' },
+            where: { id: 'bk1', tenantId: 't1' },
             data: {
                 paymentReference: 'bf_bk1_1',
                 paymentAuthorizationUrl: 'https://pay/x',

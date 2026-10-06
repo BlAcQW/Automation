@@ -27,6 +27,8 @@ export type CancelBookingResult =
 export interface CancelBookingArgs {
     prisma: ExtendedPrismaClient;
     bookingId: string;
+    /** Owning tenant. Every booking query is scoped by it (tenant guard). */
+    tenantId: string;
     /** Free-text reason recorded on the in-app notification metadata. */
     reason: string;
     /**
@@ -44,10 +46,10 @@ export interface CancelBookingArgs {
  * than throwing, so callers can render a friendly "already cancelled" state.
  */
 export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBookingResult> {
-    const { prisma, bookingId, reason, cancelledBy } = args;
+    const { prisma, bookingId, tenantId, reason, cancelledBy } = args;
 
-    const booking = await prisma.booking.findUnique({
-        where: { id: bookingId },
+    const booking = await prisma.booking.findFirst({
+        where: { id: bookingId, tenantId },
         include: { service: { select: { name: true } } },
     });
 
@@ -62,8 +64,8 @@ export async function cancelBooking(args: CancelBookingArgs): Promise<CancelBook
         return { ok: false, reason: 'not_cancellable' };
     }
 
-    await prisma.booking.update({
-        where: { id: bookingId },
+    await prisma.booking.updateMany({
+        where: { id: bookingId, tenantId },
         data: { status: 'CANCELLED' },
     });
 

@@ -2,7 +2,7 @@ import { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import jwtPlugin from '@fastify/jwt';
 import { config } from '../config/index.js';
-import { tenantContext } from '../lib/tenant-context.js';
+import { bindTenantContext, tenantContextOnRequest } from '../lib/tenant-context.js';
 
 // =============================================================
 // Type augmentation
@@ -47,6 +47,11 @@ export interface AdminJWTPayload {
 // =============================================================
 
 const authPlugin: FastifyPluginAsync = async (fastify) => {
+    // Open the per-request tenant-context store before any auth hook runs.
+    // bindTenantContext() below mutates it; webhook/public routes never bind,
+    // so they keep an empty store (guard: allow).
+    fastify.addHook('onRequest', tenantContextOnRequest);
+
     // User token namespace (default). Backwards-compatible decorators:
     //   request.jwtVerify(), fastify.jwt.sign(...)
     await fastify.register(jwtPlugin, {
@@ -83,7 +88,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
             };
             // Bind tenant context for the rest of this request — used by the
             // Prisma $extends guard to detect cross-tenant query attempts.
-            tenantContext.enterWith({
+            bindTenantContext({
                 tenantId: decoded.tenantId,
                 userId: decoded.userId,
             });
@@ -129,7 +134,7 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
         };
         // Admin context — adminId set, tenantId omitted so the Prisma guard
         // knows this is a platform-admin call and skips the tenant filter check.
-        tenantContext.enterWith({
+        bindTenantContext({
             adminId: admin.id,
         });
         request.log = request.log.child({

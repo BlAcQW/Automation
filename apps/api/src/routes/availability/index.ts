@@ -75,7 +75,7 @@ const availabilityRoutes: FastifyPluginAsync = async (fastify) => {
 
         if (existing) {
             return await fastify.prisma.workingHours.update({
-                where: { id: existing.id },
+                where: { tenantId_dayOfWeek: { tenantId, dayOfWeek: day } },
                 data: body,
             });
         } else {
@@ -158,9 +158,12 @@ const availabilityRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Blackout date not found');
         }
 
-        await fastify.prisma.blackoutDate.delete({
-            where: { id },
+        const { count } = await fastify.prisma.blackoutDate.deleteMany({
+            where: { id, tenantId: request.user.tenantId },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Blackout date not found');
+        }
 
         return { deleted: true };
     });

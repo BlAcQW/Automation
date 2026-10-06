@@ -2,6 +2,13 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { FastifyPluginAsync } from 'fastify';
 import fp from 'fastify-plugin';
 import { getTenantContext } from '../lib/tenant-context.js';
+import {
+    GuardMode,
+    TenantGuardError,
+    guardDecision,
+    hasTenantFilter,
+    resolveGuardMode,
+} from './tenant-guard.js';
 
 declare module 'fastify' {
     interface FastifyInstance {
@@ -9,9 +16,17 @@ declare module 'fastify' {
     }
 }
 
-// Tenant-scoped models. Operations on these models that omit a tenantId
-// filter — while a tenant context is active — trigger a warning (warn-only;
-// blocking is a later, staged change).
+// Tenant-scoped models. An operation on one of these models that omits a
+// tenantId filter, while a tenant context is active, is BLOCKED: the guard
+// throws TenantGuardError (generic 500 to the client, model + operation logged,
+// no row data). Decision logic lives in ./tenant-guard.ts.
+//
+// Instant rollback: set TENANT_GUARD_MODE=warn and restart. The guard then
+// only logs `cross_tenant_query_attempt` and lets the query run. The mode is
+// read once at startup; unknown values fail closed to block.
+//
+// No context (webhooks, workers, OAuth callbacks) and admin context are never
+// guarded.
 //
 // INVARIANT: this set must equal every model with a `tenantId` field in
 // schema.prisma. prisma.test.ts enforces that via Prisma.dmmf, so adding a
@@ -29,6 +44,7 @@ declare module 'fastify' {
 // platform rows or other tenants' rows, so it should warn.
 export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
     'User',
+    'PlatformAlert',
     'DeviceToken',
     'Booking',
     'Service',
@@ -51,68 +67,59 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
     'Customer',
 ]);
 
-const GUARDED_OPERATIONS = new Set([
-    'findMany',
-    'findFirst',
-    'findFirstOrThrow',
-    'findUnique',
-    'findUniqueOrThrow',
-    'update',
-    'updateMany',
-    'delete',
-    'deleteMany',
-    'count',
-    'aggregate',
-    'groupBy',
-]);
+export { hasTenantFilter };
 
-/**
- * Returns true if the `where` clause includes a tenantId filter, either at
- * the top level or via a `tenantId_*` compound unique key.
- */
-export function hasTenantFilter(where: unknown): boolean {
-    if (!where || typeof where !== 'object') return false;
-    const w = where as Record<string, unknown>;
-    if (typeof w.tenantId === 'string' || (w.tenantId && typeof w.tenantId === 'object')) {
-        return true;
-    }
-    for (const k of Object.keys(w)) {
-        if (k.startsWith('tenantId_')) return true;
-    }
-    return false;
+export interface GuardQueryParams {
+    model: string;
+    operation: string;
+    args: unknown;
+    query: (args: any) => Promise<unknown>;
 }
 
-function buildExtendedClient(base: PrismaClient) {
+/**
+ * The guard applied to every Prisma operation. Exported so tests can drive it
+ * without a database connection.
+ */
+export function runGuardedQuery(
+    { model, operation, args, query }: GuardQueryParams,
+    mode: GuardMode,
+    log: (entry: Record<string, unknown>) => void = (entry) =>
+        // eslint-disable-next-line no-console
+        console.warn(JSON.stringify(entry)),
+): Promise<unknown> {
+    const ctx = getTenantContext();
+    const decision = guardDecision({
+        model,
+        operation,
+        where: (args as { where?: unknown } | undefined)?.where,
+        ctx,
+        mode,
+        scopedModels: TENANT_SCOPED_MODELS,
+    });
+    if (decision !== 'allow') {
+        // Log model/operation/tenant only. Never args or row data.
+        log({
+            msg: 'cross_tenant_query_attempt',
+            cross_tenant_query_attempt: true,
+            blocked: decision === 'block',
+            model,
+            operation,
+            contextTenantId: ctx?.tenantId,
+        });
+        if (decision === 'block') {
+            return Promise.reject(new TenantGuardError(model, operation));
+        }
+    }
+    return query(args);
+}
+
+function buildExtendedClient(base: PrismaClient, mode: GuardMode) {
     return base.$extends({
         name: 'tenant-context-guard',
         query: {
             $allModels: {
                 async $allOperations({ model, operation, args, query }) {
-                    if (
-                        TENANT_SCOPED_MODELS.has(model) &&
-                        GUARDED_OPERATIONS.has(operation)
-                    ) {
-                        const ctx = getTenantContext();
-                        // Skip when the call is from a platform admin (admins
-                        // legitimately query across tenants) or from
-                        // unauthenticated paths (webhook, OAuth callback).
-                        if (ctx?.tenantId && !ctx.adminId) {
-                            const where = (args as { where?: unknown } | undefined)?.where;
-                            if (!hasTenantFilter(where)) {
-                                // eslint-disable-next-line no-console
-                                console.warn(
-                                    JSON.stringify({
-                                        msg: 'cross_tenant_query_attempt',
-                                        cross_tenant_query_attempt: true,
-                                        model,
-                                        operation,
-                                        contextTenantId: ctx.tenantId,
-                                    }),
-                                );
-                            }
-                        }
-                    }
-                    return query(args);
+                    return runGuardedQuery({ model, operation, args, query }, mode);
                 },
             },
         },
@@ -131,7 +138,9 @@ const prismaPlugin: FastifyPluginAsync = async (fastify) => {
 
     await base.$connect();
 
-    const prisma = buildExtendedClient(base);
+    const mode = resolveGuardMode(process.env.TENANT_GUARD_MODE);
+    fastify.log.info({ tenantGuardMode: mode }, 'tenant guard mode');
+    const prisma = buildExtendedClient(base, mode);
 
     fastify.decorate('prisma', prisma);
 

@@ -161,10 +161,18 @@ const templatesRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
-            return await fastify.prisma.messageTemplate.update({
-                where: { id },
+            const { count } = await fastify.prisma.messageTemplate.updateMany({
+                where: { id, tenantId },
                 data: body,
             });
+            if (count === 0) {
+                throw fastify.httpErrors.notFound('Template not found');
+            }
+            const updated = await fastify.prisma.messageTemplate.findFirst({ where: { id, tenantId } });
+            if (!updated) {
+                throw fastify.httpErrors.notFound('Template not found');
+            }
+            return updated;
         } catch (err) {
             if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
                 throw fastify.httpErrors.conflict(
@@ -192,7 +200,10 @@ const templatesRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Template not found');
         }
 
-        await fastify.prisma.messageTemplate.delete({ where: { id } });
+        const { count } = await fastify.prisma.messageTemplate.deleteMany({ where: { id, tenantId } });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Template not found');
+        }
 
         return { deleted: true };
     });

@@ -171,8 +171,8 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
             },
         });
 
-        await fastify.prisma.booking.update({
-            where: { id: booking.id },
+        await fastify.prisma.booking.updateMany({
+            where: { id: booking.id, tenantId },
             data: { calendarEventId: event.data.id },
         });
 
@@ -202,8 +202,8 @@ const calendarRoutes: FastifyPluginAsync = async (fastify) => {
             eventId: booking.calendarEventId,
         });
 
-        await fastify.prisma.booking.update({
-            where: { id: bookingId },
+        await fastify.prisma.booking.updateMany({
+            where: { id: bookingId, tenantId },
             data: { calendarEventId: null },
         });
 

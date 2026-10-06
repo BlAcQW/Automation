@@ -237,10 +237,13 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
 
             // Reduce stock
             for (const item of body.items) {
-                await tx.product.update({
-                    where: { id: item.productId },
+                const { count } = await tx.product.updateMany({
+                    where: { id: item.productId, tenantId },
                     data: { stock: { decrement: item.quantity } },
                 });
+                if (count === 0) {
+                    throw fastify.httpErrors.notFound('Product not found');
+                }
             }
 
             return newOrder;
@@ -263,15 +266,24 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Order not found');
         }
 
-        const order = await fastify.prisma.order.update({
-            where: { id },
+        const { count } = await fastify.prisma.order.updateMany({
+            where: { id, tenantId: request.user.tenantId },
             data: body,
+        });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Order not found');
+        }
+        const order = await fastify.prisma.order.findFirst({
+            where: { id, tenantId: request.user.tenantId },
             include: {
                 items: {
                     include: { product: true },
                 },
             },
         });
+        if (!order) {
+            throw fastify.httpErrors.notFound('Order not found');
+        }
 
         // Delivered means the work is done, so the money is theirs.
         if (body.status && orderStatusClearsFunds(body.status)) {
@@ -314,16 +326,25 @@ const ordersRoutes: FastifyPluginAsync = async (fastify) => {
         const order = await fastify.prisma.$transaction(async (tx: any) => {
             // Restore stock
             for (const item of existing.items) {
-                await tx.product.update({
-                    where: { id: item.productId },
+                const { count } = await tx.product.updateMany({
+                    where: { id: item.productId, tenantId: request.user.tenantId },
                     data: { stock: { increment: item.quantity } },
                 });
+                if (count === 0) {
+                    throw fastify.httpErrors.notFound('Product not found');
+                }
             }
 
             // Update order status
-            return tx.order.update({
-                where: { id },
+            const { count } = await tx.order.updateMany({
+                where: { id, tenantId: request.user.tenantId },
                 data: { status: 'CANCELLED' },
+            });
+            if (count === 0) {
+                throw fastify.httpErrors.notFound('Order not found');
+            }
+            return tx.order.findFirst({
+                where: { id, tenantId: request.user.tenantId },
             });
         });
 

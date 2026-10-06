@@ -129,6 +129,7 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
             cancelledBy: 'CUSTOMER',
             prisma: fastify.prisma,
             bookingId: booking.id,
+            tenantId: booking.tenantId,
             reason: 'customer_sms_link',
             notificationsQueue: fastify.queues.notifications,
             remindersQueue: fastify.queues.reminders,

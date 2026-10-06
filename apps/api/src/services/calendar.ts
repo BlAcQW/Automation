@@ -119,8 +119,8 @@ export async function syncBookingToCalendar({
             },
         });
 
-        await prisma.booking.update({
-            where: { id: bookingId },
+        await prisma.booking.updateMany({
+            where: { id: bookingId, tenantId },
             data: { calendarEventId: event.data.id },
         });
 
@@ -197,8 +197,8 @@ export async function deleteCalendarEvent(
             eventId: booking.calendarEventId,
         });
 
-        await prisma.booking.update({
-            where: { id: bookingId },
+        await prisma.booking.updateMany({
+            where: { id: bookingId, tenantId },
             data: { calendarEventId: null },
         });
 

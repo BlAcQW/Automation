@@ -63,11 +63,19 @@ const notificationsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Notification not found');
         }
 
-        const updated = await fastify.prisma.notification.update({
-            where: { id },
+        const tenantId = request.user.tenantId;
+        const { count } = await fastify.prisma.notification.updateMany({
+            where: { id, tenantId },
             data: { isRead: true },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Notification not found');
+        }
 
+        const updated = await fastify.prisma.notification.findFirst({ where: { id, tenantId } });
+        if (!updated) {
+            throw fastify.httpErrors.notFound('Notification not found');
+        }
         return updated;
     });
 

@@ -133,11 +133,19 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Product not found');
         }
 
-        const product = await fastify.prisma.product.update({
-            where: { id },
+        const tenantId = request.user.tenantId;
+        const { count } = await fastify.prisma.product.updateMany({
+            where: { id, tenantId },
             data: body,
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Product not found');
+        }
 
+        const product = await fastify.prisma.product.findFirst({ where: { id, tenantId } });
+        if (!product) {
+            throw fastify.httpErrors.notFound('Product not found');
+        }
         return product;
     });
 
@@ -153,11 +161,19 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Product not found');
         }
 
-        const product = await fastify.prisma.product.update({
-            where: { id },
+        const tenantId = request.user.tenantId;
+        const { count } = await fastify.prisma.product.updateMany({
+            where: { id, tenantId },
             data: { isActive: !existing.isActive },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Product not found');
+        }
 
+        const product = await fastify.prisma.product.findFirst({ where: { id, tenantId } });
+        if (!product) {
+            throw fastify.httpErrors.notFound('Product not found');
+        }
         return product;
     });
 
@@ -176,11 +192,19 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Product not found');
         }
 
-        const product = await fastify.prisma.product.update({
-            where: { id },
+        const tenantId = request.user.tenantId;
+        const { count } = await fastify.prisma.product.updateMany({
+            where: { id, tenantId },
             data: { stock: body.stock },
         });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Product not found');
+        }
 
+        const product = await fastify.prisma.product.findFirst({ where: { id, tenantId } });
+        if (!product) {
+            throw fastify.httpErrors.notFound('Product not found');
+        }
         return product;
     });
 
@@ -196,7 +220,12 @@ const productsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Product not found');
         }
 
-        await fastify.prisma.product.delete({ where: { id } });
+        const { count } = await fastify.prisma.product.deleteMany({
+            where: { id, tenantId: request.user.tenantId },
+        });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Product not found');
+        }
 
         return { success: true };
     });

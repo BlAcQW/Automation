@@ -176,8 +176,8 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             service,
         });
 
-        return fastify.prisma.booking.findUnique({
-            where: { id: created.id },
+        return fastify.prisma.booking.findFirst({
+            where: { id: created.id, tenantId },
             include: { service: true },
         });
     });
@@ -214,11 +214,20 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             );
         }
 
-        const booking = await fastify.prisma.booking.update({
-            where: { id },
+        const { count } = await fastify.prisma.booking.updateMany({
+            where: { id, tenantId: request.user.tenantId },
             data: body,
+        });
+        if (count === 0) {
+            throw fastify.httpErrors.notFound('Booking not found');
+        }
+        const booking = await fastify.prisma.booking.findFirst({
+            where: { id, tenantId: request.user.tenantId },
             include: { service: true },
         });
+        if (!booking) {
+            throw fastify.httpErrors.notFound('Booking not found');
+        }
 
         // Marking the job done releases the deposit to the owner's wallet.
         // Idempotent, so re-saving a completed booking cannot pay them twice.
@@ -273,6 +282,7 @@ const bookingsRoutes: FastifyPluginAsync = async (fastify) => {
             cancelledBy: 'BUSINESS',
             prisma: fastify.prisma,
             bookingId: id,
+            tenantId: request.user.tenantId,
             reason: 'dashboard',
             notificationsQueue: fastify.queues.notifications,
             remindersQueue: fastify.queues.reminders,

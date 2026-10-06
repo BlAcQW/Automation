@@ -3,8 +3,8 @@
 import { type ReactNode } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { NumberTicker } from '@/components/primitives/number-ticker';
-import { cn } from '@/lib/cn';
+import { NumberTicker } from './number-ticker';
+import { cn } from '../cn';
 
 interface StatCardProps {
     name: string;
@@ -47,7 +47,7 @@ export function StatCard({ name, value, icon, className, index = 0, change }: St
             )}
         >
             <div className="flex items-start justify-between gap-2">
-                <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-bookly-emerald-500/10 text-bookly-emerald-400 [&_svg]:!text-bookly-emerald-400">
+                <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-accent-500/10 text-accent-400 [&_svg]:!text-accent-400">
                     {icon}
                 </div>
                 {change && change.direction !== 'neutral' && <ChangePill change={change} />}
@@ -69,7 +69,7 @@ function ChangePill({ change }: { change: NonNullable<StatCardProps['change']> }
             className={cn(
                 'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[12px] font-medium tabular-nums',
                 up
-                    ? 'bg-bookly-emerald-500/10 text-bookly-emerald-300'
+                    ? 'bg-accent-500/10 text-accent-300'
                     : 'bg-rose-500/10 text-rose-300',
             )}
         >

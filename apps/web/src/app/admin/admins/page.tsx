@@ -5,11 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { useAdmin } from '../admin-context';
 import { UserCog, ShieldOff } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/modal';
+import { Card, Badge, Button, Input, Modal } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 import toast from 'react-hot-toast';
 

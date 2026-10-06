@@ -1,0 +1,17 @@
+{
+    "name": "@bookingflow/api-client",
+    "version": "0.0.1",
+    "private": true,
+    "description": "Axios client with a bearer-token request interceptor and a 401 refresh-and-replay response interceptor. Source-only.",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": { ".": "./src/index.ts" },
+    "sideEffects": false,
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run"
+    },
+    "peerDependencies": {
+        "axios": "^1.6.7"
+    }
+}

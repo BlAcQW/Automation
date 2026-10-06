@@ -2,8 +2,7 @@
 
 import { motion } from 'framer-motion';
 
-import { cn } from '@/lib/cn';
-import { Avatar } from '@/components/ui/avatar';
+import { cn, Avatar } from '@bookingflow/ui';
 import type { Conversation } from './types';
 import { formatTime, previewText } from './utils';
 

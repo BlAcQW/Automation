@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Sun, Moon } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 /**
  * Light/dark theme toggle. Renders a placeholder until mounted so the

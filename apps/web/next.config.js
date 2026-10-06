@@ -20,6 +20,11 @@ const securityHeaders = [
 
 const nextConfig = {
     reactStrictMode: true,
+    // The shared packages (packages/*) are source-only TypeScript, resolved
+    // through the tsconfig path aliases. externalDir lets Next compile files
+    // that live outside apps/web; transpilePackages names them explicitly.
+    transpilePackages: ['@bookingflow/ui', '@bookingflow/api-client', '@bookingflow/auth-client'],
+    experimental: { externalDir: true },
     poweredByHeader: false,
     async headers() {
         return [{ source: '/:path*', headers: securityHeaders }];

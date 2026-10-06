@@ -2,7 +2,7 @@
 
 import { useMotionTemplate, useMotionValue, motion } from 'framer-motion';
 import type { MouseEvent, ReactNode } from 'react';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface Props {
     children: ReactNode;

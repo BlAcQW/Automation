@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ScrollReveal, ScrollRevealItem } from '@/components/primitives/scroll-reveal';
 import { GlowButton } from '@/components/primitives/glow-button';
 import { PRICING, formatPrice, type DisplayPlan } from '@/lib/pricing-display';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 /**
  * PricingSection — full pricing table embedded on the landing page (owner

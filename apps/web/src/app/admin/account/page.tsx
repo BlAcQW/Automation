@@ -4,9 +4,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { KeyRound } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardHeader, CardTitle, CardContent, Button, Input } from '@bookingflow/ui';
 
 export default function AdminAccountPage() {
     const [current, setCurrent] = useState('');

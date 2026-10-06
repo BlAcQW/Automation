@@ -24,7 +24,11 @@
         "paths": {
             "@/*": [
                 "./src/*"
-            ]
+            ],
+            "@bookingflow/ui": ["../../packages/ui/src/index.ts"],
+            "@bookingflow/ui/tailwind-preset": ["../../packages/ui/src/tailwind-preset.ts"],
+            "@bookingflow/api-client": ["../../packages/api-client/src/index.ts"],
+            "@bookingflow/auth-client": ["../../packages/auth-client/src/index.tsx"]
         }
     },
     "include": [

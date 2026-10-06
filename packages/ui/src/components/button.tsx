@@ -4,7 +4,7 @@ import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn } from '../cn';
 
 const buttonVariants = cva(
     'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
@@ -12,7 +12,7 @@ const buttonVariants = cva(
         variants: {
             variant: {
                 default:
-                    'bg-bookly-emerald-500 text-on-accent shadow-[0_6px_20px_-8px_rgba(16,185,129,0.55)] hover:bg-bookly-emerald-400 focus-visible:ring-bookly-emerald-500',
+                    'bg-accent-500 text-on-accent shadow-[0_6px_20px_-8px_rgb(var(--accent-500-rgb)/0.55)] hover:bg-accent-400 focus-visible:ring-accent-500',
                 secondary:
                     'bg-ink-800 text-ink-100 hover:bg-ink-700 focus-visible:ring-ink-500',
                 outline:
@@ -24,7 +24,7 @@ const buttonVariants = cva(
                 // Kept as an alias of `default` so existing call sites compile;
                 // the neon halo it used to draw is retired.
                 glow:
-                    'bg-bookly-emerald-500 text-on-accent shadow-[0_6px_20px_-8px_rgba(16,185,129,0.55)] hover:bg-bookly-emerald-400 focus-visible:ring-bookly-emerald-500',
+                    'bg-accent-500 text-on-accent shadow-[0_6px_20px_-8px_rgb(var(--accent-500-rgb)/0.55)] hover:bg-accent-400 focus-visible:ring-accent-500',
             },
             size: {
                 sm: 'h-9 px-3 text-sm rounded-lg',

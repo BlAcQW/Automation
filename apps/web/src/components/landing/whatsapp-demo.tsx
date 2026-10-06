@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import { Check, CheckCheck, Bot } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface ChatMessage {
     id: number;

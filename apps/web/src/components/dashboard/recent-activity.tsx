@@ -6,8 +6,7 @@ import { format } from 'date-fns';
 import { ChevronRight, MoreHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Avatar } from '@/components/ui/avatar';
-import { cn } from '@/lib/cn';
+import { Avatar, cn } from '@bookingflow/ui';
 
 interface OrderRow {
     id: string;

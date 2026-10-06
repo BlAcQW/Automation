@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import { motion } from 'framer-motion';
 import { SmilePlus } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 import type { Message } from './types';
 import { formatTime, previewText } from './utils';
 import { ChatMedia } from './chat-media';

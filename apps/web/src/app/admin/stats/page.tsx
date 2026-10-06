@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { Building2, Users, Calendar, MessageSquare, TrendingUp, CalendarCheck } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Card } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 interface StatBlockProps {

@@ -118,6 +118,26 @@
    utility from these (`rgb(var(--ink-900-rgb) / <alpha-value>)`), which is
    what lets `bg-ink-900/80` follow the theme toggle instead of being baked
    to the dark hex at build time. Keep in sync with the hex values above. */
+/* Brand accent for the shared UI kit (@bookingflow/ui). Components use
+   `accent-*`; this app's brand is the Bookly emerald scale (same values as
+   --bookly-emerald-* above, as RGB triplets so `bg-accent-500/10` works).
+   A different app sets different triplets here. Brand, not theme: the same
+   in light and dark. */
+:root {
+    --accent-50-rgb: 236 253 245;
+    --accent-100-rgb: 209 250 229;
+    --accent-200-rgb: 167 243 208;
+    --accent-300-rgb: 110 231 183;
+    --accent-400-rgb: 52 211 153;
+    --accent-500-rgb: 16 185 129;
+    --accent-600-rgb: 5 150 105;
+    --accent-700-rgb: 4 120 87;
+    --accent-800-rgb: 6 95 70;
+    --accent-900-rgb: 6 78 59;
+    --accent-950-rgb: 2 44 34;
+    --accent-alt-rgb: 20 184 166; /* teal-500: second stop of avatar gradients */
+}
+
 :root,
 .dark {
     --ink-50-rgb: 242 246 244;

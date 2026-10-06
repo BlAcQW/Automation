@@ -7,11 +7,8 @@ import {
     Calendar, Briefcase
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { DashboardInput } from '@/components/ui/input';
-import { StatCard } from '@/components/ui/stat-card';
+import { Button, DashboardInput, StatCard, PageHeader } from '@bookingflow/ui';
 import { ServiceModal } from '@/components/services/service-modal';
-import { PageHeader } from '@/components/ui/page-header';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { toast } from 'react-hot-toast';
 import { QueryState } from '@/components/query-state';

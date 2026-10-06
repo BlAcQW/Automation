@@ -2,7 +2,7 @@
 
 import { forwardRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn } from '../cn';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
     icon?: ReactNode;
@@ -34,7 +34,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                 )}
                 <div className="relative group">
                     {icon && (
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300 group-focus-within:text-bookly-emerald-400 transition-colors">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300 group-focus-within:text-accent-400 transition-colors">
                             {icon}
                         </div>
                     )}
@@ -44,7 +44,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                         type={resolvedType}
                         className={cn(
                             'w-full rounded-xl border bg-ink-900 text-ink-50 placeholder:text-ink-400 transition-colors duration-200',
-                            'focus:outline-none focus:ring-4 focus:ring-bookly-emerald-500/15 focus:border-bookly-emerald-500',
+                            'focus:outline-none focus:ring-4 focus:ring-accent-500/15 focus:border-accent-500',
                             'border-ink-700 hover:border-ink-600',
                             icon ? 'pl-12' : 'pl-4',
                             isPassword ? 'pr-12' : 'pr-4',
@@ -60,7 +60,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                             onClick={() => setRevealed((v) => !v)}
                             aria-label={revealed ? 'Hide password' : 'Show password'}
                             aria-pressed={revealed}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:text-ink-50 hover:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bookly-emerald-500 transition-colors"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:text-ink-50 hover:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 transition-colors"
                         >
                             {revealed ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         </button>
@@ -95,7 +95,7 @@ const DashboardInput = forwardRef<HTMLInputElement, DashboardInputProps>(
                 )}
                 <div className="relative group">
                     {icon && (
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 group-focus-within:text-bookly-emerald-400 transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 group-focus-within:text-accent-400 transition-colors">
                             {icon}
                         </div>
                     )}
@@ -106,7 +106,7 @@ const DashboardInput = forwardRef<HTMLInputElement, DashboardInputProps>(
                             'w-full rounded-xl border transition-colors duration-200',
                             'bg-ink-900 border-ink-700',
                             'text-ink-50 placeholder:text-ink-400',
-                            'focus:outline-none focus:ring-4 focus:ring-bookly-emerald-500/15 focus:border-bookly-emerald-500',
+                            'focus:outline-none focus:ring-4 focus:ring-accent-500/15 focus:border-accent-500',
                             'hover:border-ink-600',
                             icon ? 'pl-10 pr-4' : 'px-4',
                             'py-2.5',

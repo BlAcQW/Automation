@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, useReducedMotion } from 'framer-motion';
-import { revealVariants, staggerVariants } from '@/lib/motion';
+import { revealVariants, staggerVariants } from '@bookingflow/ui';
 import type { ReactNode } from 'react';
 
 interface ScrollRevealProps {

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { generateTokenPayload } from '../../plugins/auth.js';
 import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
+import { crossSiteClearOptions, crossSiteCookieOptions } from '../../plugins/csrf.js';
 import { extractRefreshToken, isMobileClient } from '../../lib/auth-transport.js';
 import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
 import {
@@ -37,6 +38,8 @@ const loginSchema = z.object({
 //  - Web: refresh token as an HTTP-only cookie, replayed automatically.
 //  - Mobile (`X-Client: mobile`): refresh token returned in and read from the
 //    JSON body, since native clients have no cookie jar.
+const REFRESH_COOKIE = { path: '/', maxAge: 7 * 24 * 60 * 60 }; // 7 days
+
 const authRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /auth/register - Create new tenant + owner user
     fastify.post('/register', async (request, reply) => {
@@ -131,13 +134,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         );
 
         // Set refresh token as HTTP-only cookie
-        reply.setCookie('refreshToken', refreshToken, {
-            httpOnly: true,
-            secure: config.nodeEnv === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 7 * 24 * 60 * 60, // 7 days
-        });
+        reply.setCookie('refreshToken', refreshToken, crossSiteCookieOptions(REFRESH_COOKIE));
 
         return {
             user: {
@@ -231,13 +228,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         );
 
         // Set refresh token as HTTP-only cookie
-        reply.setCookie('refreshToken', refreshToken, {
-            httpOnly: true,
-            secure: config.nodeEnv === 'production',
-            sameSite: 'lax',
-            path: '/',
-            maxAge: 7 * 24 * 60 * 60,
-        });
+        reply.setCookie('refreshToken', refreshToken, crossSiteCookieOptions(REFRESH_COOKIE));
 
         return {
             user: {
@@ -348,14 +339,14 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
 
             return { accessToken };
         } catch (err) {
-            reply.clearCookie('refreshToken', { path: '/' });
+            reply.clearCookie('refreshToken', crossSiteClearOptions('/'));
             throw fastify.httpErrors.unauthorized('Invalid refresh token');
         }
     });
 
     // POST /auth/logout - Clear refresh token
     fastify.post('/logout', async (request, reply) => {
-        reply.clearCookie('refreshToken', { path: '/' });
+        reply.clearCookie('refreshToken', crossSiteClearOptions('/'));
         return { success: true };
     });
 

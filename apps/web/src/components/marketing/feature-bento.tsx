@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { ScrollReveal, ScrollRevealItem } from '@/components/primitives/scroll-reveal';
 import { SpotlightCard } from '@/components/primitives/spotlight-card';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface FeatureCell {
     title: string;

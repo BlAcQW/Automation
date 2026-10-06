@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "lib": ["dom", "dom.iterable", "esnext"],
+        "target": "es2020",
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "jsx": "preserve",
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "isolatedModules": true,
+        "resolveJsonModule": true,
+        "paths": { "@bookingflow/api-client": ["../api-client/src/index.ts"] }
+    },
+    "include": ["src/**/*.ts", "src/**/*.tsx"],
+    "exclude": ["node_modules", "src/**/*.test.ts"]
+}

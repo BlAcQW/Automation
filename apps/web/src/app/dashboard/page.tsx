@@ -12,7 +12,7 @@ import {
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { formatMoney, useTenantCurrency } from '@/lib/use-currency';
-import { StatCard } from '@/components/ui/stat-card';
+import { StatCard } from '@bookingflow/ui';
 import { RecentActivity } from '@/components/dashboard/recent-activity';
 import { GettingStarted } from '@/components/dashboard/getting-started';
 import { VerifyEmailBanner } from '@/components/dashboard/verify-email-banner';

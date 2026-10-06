@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface BooklyIconProps extends React.SVGAttributes<SVGElement> {
     className?: string;

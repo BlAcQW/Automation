@@ -1,0 +1,18 @@
+{
+    "name": "@bookingflow/auth-client",
+    "version": "0.0.1",
+    "private": true,
+    "description": "AuthProvider/useAuth factory. Vertical-specific tenant fields are supplied by the app as a type parameter. Source-only.",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": { ".": "./src/index.ts" },
+    "sideEffects": false,
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run"
+    },
+    "peerDependencies": {
+        "@bookingflow/api-client": "*",
+        "react": "^18.2.0"
+    }
+}

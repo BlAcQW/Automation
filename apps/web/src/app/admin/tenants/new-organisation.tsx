@@ -5,9 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Copy, Plus } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { DashboardInput } from '@/components/ui/input';
+import { Card, CardHeader, CardTitle, CardContent, Button, DashboardInput } from '@bookingflow/ui';
 
 interface InviteResult {
     sent: boolean;

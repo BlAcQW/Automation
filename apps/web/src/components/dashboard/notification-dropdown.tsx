@@ -7,7 +7,7 @@ import {
     Bell, Calendar, XCircle, MessageCircle, Info,
     Check, CheckCheck, Loader2
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@bookingflow/ui';
 
 interface Notification {
     id: string;

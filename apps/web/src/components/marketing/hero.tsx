@@ -5,7 +5,7 @@ import { ArrowRight, CalendarCheck, CreditCard, BellRing } from 'lucide-react';
 import { GlowButton } from '@/components/primitives/glow-button';
 import { BlurFade, BlurFadeWords } from '@/components/primitives/blur-fade';
 import { DotPattern } from '@/components/primitives/dot-pattern';
-import { durations, ease } from '@/lib/motion';
+import { durations, ease } from '@bookingflow/ui';
 
 /**
  * Hero. One headline, one sentence, two buttons, and a real conversation

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, User, Building, ArrowRight, ArrowLeft, Package, Scissors } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Input } from '@bookingflow/ui';
 import { GlowButton } from '@/components/primitives/glow-button';
 import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
 import { PRODUCT_MODE_ENABLED } from '@/lib/feature-flags';

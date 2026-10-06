@@ -7,7 +7,7 @@ import {
     MessageCircle, Settings,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface Tab {
     name: string;

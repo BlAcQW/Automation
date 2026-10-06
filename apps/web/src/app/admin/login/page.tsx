@@ -5,9 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { adminApi } from '@/lib/api';
 import { ShieldCheck, Loader2 } from 'lucide-react';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, CardHeader, CardContent, Button, Input } from '@bookingflow/ui';
 
 export default function AdminLoginPage() {
     const router = useRouter();

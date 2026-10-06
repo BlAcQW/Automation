@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { cn } from '@/lib/cn';
+import { cn } from '../cn';
 
 interface AvatarProps {
     name?: string | null;
@@ -20,7 +20,7 @@ const sizeClasses = {
 };
 
 const statusClasses = {
-    online: 'bg-emerald-500',
+    online: 'bg-accent-500',
     offline: 'bg-slate-400',
     busy: 'bg-amber-500',
 };
@@ -52,7 +52,7 @@ export function Avatar({ name, src, size = 'md', className, status }: AvatarProp
             ) : (
                 <div
                     className={cn(
-                        'bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full flex items-center justify-center font-semibold text-white shadow-md',
+                        'bg-gradient-to-br from-accent-400 to-accent-alt rounded-full flex items-center justify-center font-semibold text-white shadow-md',
                         sizeClasses[size],
                     )}
                 >

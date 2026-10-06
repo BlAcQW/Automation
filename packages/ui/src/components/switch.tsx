@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@/lib/cn';
+import { cn } from '../cn';
 
 interface SwitchProps {
     checked: boolean;
@@ -25,9 +25,9 @@ export function Switch({ checked, onChange, disabled, label }: SwitchProps) {
             onClick={() => onChange(!checked)}
             className={cn(
                 'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2',
                 disabled && 'opacity-50 cursor-not-allowed',
-                checked ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600',
+                checked ? 'bg-accent-500' : 'bg-slate-300 dark:bg-slate-600',
             )}
         >
             <span

@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertCircle, Check, CheckCheck, Clock } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 import type { MessageStatus } from './types';
 
 /**

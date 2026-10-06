@@ -6,7 +6,7 @@ import { Mail, ArrowRight, ArrowLeft } from 'lucide-react';
 import { api } from '@/lib/api';
 import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
 import { GlowButton } from '@/components/primitives/glow-button';
-import { Input } from '@/components/ui/input';
+import { Input } from '@bookingflow/ui';
 
 /**
  * Forgot password. One field, one button. The confirmation is worded the

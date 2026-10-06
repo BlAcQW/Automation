@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface BillingStatus {
     plan: {

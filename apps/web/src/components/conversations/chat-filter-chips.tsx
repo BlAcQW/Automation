@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 import type { ChatFilter } from './types';
 
 interface ChatFilterChipsProps {

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface Step {
     key: string;

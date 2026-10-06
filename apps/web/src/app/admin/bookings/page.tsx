@@ -4,9 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card, Badge, Button } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 type BookingStatus = 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | 'NO_SHOW';

@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { cn } from '@/lib/cn';
-import { Avatar } from '@/components/ui/avatar';
+import { cn, Avatar } from '@bookingflow/ui';
 import { PlanCard } from './plan-card';
 import { motion } from 'framer-motion';
 import {

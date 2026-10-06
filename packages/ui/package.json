@@ -1,0 +1,27 @@
+{
+    "name": "@bookingflow/ui",
+    "version": "0.0.1",
+    "private": true,
+    "description": "Domain-clean UI primitives shared by every app. Source-only: consumers transpile it.",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts",
+        "./tailwind-preset": "./src/tailwind-preset.ts"
+    },
+    "sideEffects": false,
+    "scripts": {
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run"
+    },
+    "peerDependencies": {
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.0",
+        "framer-motion": "^12.0.0",
+        "lucide-react": ">=0.338.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "tailwind-merge": "^3.0.0",
+        "tailwindcss": "^3.4.1"
+    }
+}

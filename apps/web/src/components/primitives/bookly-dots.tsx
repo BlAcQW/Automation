@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, useReducedMotion } from 'framer-motion';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface BooklyDotsProps {
     /** Visual scale. xs ~ 4px dots (inline), lg ~ 10px dots (full-page). */

@@ -7,11 +7,8 @@ import {
     Box, CheckCircle, AlertCircle, Tag, Package
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { DashboardInput } from '@/components/ui/input';
-import { StatCard } from '@/components/ui/stat-card';
+import { Button, DashboardInput, StatCard, PageHeader } from '@bookingflow/ui';
 import { ProductModal } from '@/components/products/product-modal';
-import { PageHeader } from '@/components/ui/page-header';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { useProductRouteGuard } from '@/lib/use-product-route-guard';
 import { toast } from 'react-hot-toast';

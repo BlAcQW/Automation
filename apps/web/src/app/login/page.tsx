@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
 import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
 import { GlowButton } from '@/components/primitives/glow-button';
-import { Input } from '@/components/ui/input';
+import { Input } from '@bookingflow/ui';
 
 /**
  * Login — ui.md split layout. Form left, atmospheric Bookly glow right.

@@ -8,10 +8,7 @@ import {
     MessageCircle, Check, AlertCircle, Loader2,
     Smartphone, Send, Unplug, Zap, Bot, CalendarCheck, ShieldCheck, Wifi, WifiOff
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DashboardInput } from '@/components/ui/input';
+import { Card, CardHeader, CardTitle, CardContent, Button, Badge, DashboardInput } from '@bookingflow/ui';
 
 declare global {
     interface Window {

@@ -5,11 +5,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { FileText, Pencil, Trash2, Loader2, ExternalLink } from 'lucide-react';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card, Badge, Button, PageHeader } from '@bookingflow/ui';
 import { TemplateModal, TEMPLATE_VARIABLE_ORDER, type TemplateRow } from '@/components/templates/template-modal';
-import { PageHeader } from '@/components/ui/page-header';
 import { SupportLinks } from '@/components/support-links';
 
 export default function TemplatesPage() {

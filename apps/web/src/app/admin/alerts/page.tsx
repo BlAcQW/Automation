@@ -6,9 +6,7 @@ import toast from 'react-hot-toast';
 import { Bell, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { adminApi } from '@/lib/api';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card, Badge, Button } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 interface PlatformAlert {

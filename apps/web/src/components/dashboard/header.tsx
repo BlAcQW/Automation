@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { Avatar } from '@/components/ui/avatar';
+import { Avatar } from '@bookingflow/ui';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { NotificationDropdown } from './notification-dropdown';
 

@@ -4,10 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { Building2, Users, Calendar, MessageSquare, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
-import { StatCard } from '@/components/ui/stat-card';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { StatCard, Card, CardHeader, CardTitle, CardContent, Badge, Button } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 export default function AdminDashboardPage() {

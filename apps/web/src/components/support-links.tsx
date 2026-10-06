@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Mail, MessageCircle } from 'lucide-react';
 import { SUPPORT_EMAIL, hasSupportContact, supportMailto, supportWhatsAppUrl } from '@/lib/site';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 
 interface Props {
     /** Prefilled subject / opening line. */

@@ -12,11 +12,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { DashboardInput } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
+import { Card, CardHeader, CardTitle, CardContent, Button, Badge, DashboardInput, Switch } from '@bookingflow/ui';
 
 const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD'] as const;
 type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];

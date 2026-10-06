@@ -2,8 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { ArrowLeft, Bot, Phone, Loader2, MessageCircle } from 'lucide-react';
-import { Avatar } from '@/components/ui/avatar';
-import { cn } from '@/lib/cn';
+import { Avatar, cn } from '@bookingflow/ui';
 import type { Conversation, Message } from './types';
 import { MessageBubble } from './message-bubble';
 import { ChatComposer } from './chat-composer';

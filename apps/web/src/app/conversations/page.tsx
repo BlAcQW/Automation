@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Search, MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 import { ConversationListItem } from '@/components/conversations/conversation-list-item';
 import { ChatFilterChips } from '@/components/conversations/chat-filter-chips';
 import { ChatThread } from '@/components/conversations/chat-thread';

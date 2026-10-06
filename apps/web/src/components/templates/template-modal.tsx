@@ -3,9 +3,7 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
-import { Modal } from '@/components/ui/modal';
-import { Button } from '@/components/ui/button';
-import { DashboardInput } from '@/components/ui/input';
+import { Modal, Button, DashboardInput } from '@bookingflow/ui';
 
 // Mirrors apps/api/prisma/schema.prisma — keep in sync if the enum grows.
 export type TemplatePurpose =

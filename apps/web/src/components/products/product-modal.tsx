@@ -6,9 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Modal } from '@/components/ui/modal';
-import { Button } from '@/components/ui/button';
-import { DashboardInput } from '@/components/ui/input';
+import { Modal, Button, DashboardInput } from '@bookingflow/ui';
 import { useTenantCurrency } from '@/lib/use-currency';
 import { toast } from 'react-hot-toast';
 

@@ -5,11 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { motion } from 'framer-motion';
 import { Clock, Save, Loader2, Plus, Trash2, CalendarOff, Users } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
-import { DashboardInput } from '@/components/ui/input';
-import { cn } from '@/lib/cn';
+import { Card, CardHeader, CardTitle, CardContent, Button, Modal, DashboardInput, cn } from '@bookingflow/ui';
 
 interface WorkingHours {
     id: string;

@@ -5,10 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
 import { Search, Users, ChevronLeft, ChevronRight, Mail, Calendar } from 'lucide-react';
 import Link from 'next/link';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card, Badge, Button, Input } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 export default function AdminUsersPage() {

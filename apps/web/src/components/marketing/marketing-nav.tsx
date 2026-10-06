@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useScroll } from 'framer-motion';
 import { Menu, X } from 'lucide-react';
-import { cn } from '@/lib/cn';
+import { cn } from '@bookingflow/ui';
 import { BooklyWordmark } from './bookly-wordmark';
 import { GlowButton } from '@/components/primitives/glow-button';
 

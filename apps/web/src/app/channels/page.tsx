@@ -4,11 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { MessageCircle, Instagram, Facebook, Loader2, ArrowRight, Info } from 'lucide-react';
 import { api } from '@/lib/api';
-import { PageHeader } from '@/components/ui/page-header';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Modal } from '@/components/ui/modal';
+import { PageHeader, Card, CardContent, Button, Badge, Modal } from '@bookingflow/ui';
 import { useAuth } from '@/lib/auth';
 
 declare global {

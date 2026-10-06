@@ -10,11 +10,8 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { paymentBadgeClass } from '@/lib/payment';
-import { Button } from '@/components/ui/button';
-import { DashboardInput } from '@/components/ui/input';
-import { StatCard } from '@/components/ui/stat-card';
+import { Button, DashboardInput, StatCard, PageHeader } from '@bookingflow/ui';
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
-import { PageHeader } from '@/components/ui/page-header';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { useProductRouteGuard } from '@/lib/use-product-route-guard';
 import { QueryState } from '@/components/query-state';

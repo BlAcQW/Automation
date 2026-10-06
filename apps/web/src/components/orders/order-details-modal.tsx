@@ -8,8 +8,7 @@ import {
     MapPin, Phone, User, AlertTriangle
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Modal } from '@/components/ui/modal';
-import { Button } from '@/components/ui/button';
+import { Modal, Button } from '@bookingflow/ui';
 import { toast } from 'react-hot-toast';
 
 interface OrderItem {

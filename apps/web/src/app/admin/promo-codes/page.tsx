@@ -5,10 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Copy, Ticket, Pause, Play } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { DashboardInput } from '@/components/ui/input';
+import { Card, CardHeader, CardTitle, CardContent, Badge, Button, DashboardInput } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
 
 interface PromoCode {

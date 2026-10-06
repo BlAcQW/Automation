@@ -2,7 +2,7 @@
 
 import { forwardRef, type HTMLAttributes } from 'react';
 import { motion } from 'framer-motion';
-import { cn } from '@/lib/cn';
+import { cn } from '../cn';
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
     hover?: boolean;
@@ -24,7 +24,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
                     glass
                         ? 'bg-ink-900/50 backdrop-blur-xl border-ink-700/60 shadow-card-lg'
                         : 'bg-ink-900 border-ink-700/70 shadow-card',
-                    hover && 'hover:shadow-card-hover hover:border-bookly-emerald-500/40',
+                    hover && 'hover:shadow-card-hover hover:border-accent-500/40',
                     className
                 )}
                 {...motionProps}

@@ -110,7 +110,11 @@ TURBO mobile app (later) ──────────────> Bookly /v1/
 8. **Test with Paystack TEST keys**: message the number "Hi", buy the package
    with a test card / test MoMo, book, assign, complete, check 60 → 59, try
    PAYG. Then swap in the LIVE Paystack key.
-9. Optional: a demo console for TURBO before go-live:
+9. TURBO connects WhatsApp themselves in the console: **Channels → Connect
+   with TURBO's Facebook** (needs step 6's domain added to the Meta app and
+   the v4 Embedded Signup config id on Bookly). You see it on the admin
+   organisation page → Channels.
+10. Optional: a demo console for TURBO before go-live:
    `NEXT_PUBLIC_MOCK=1 TURBO_DEMO_DEPLOY=1` on a separate Vercel project.
 
 Known limits for this MVP: refunds (late or unhonoured payments, ops-cancelled
@@ -155,3 +159,5 @@ switched off; the same account and balance carry into the app later.
 | 2026-10-06 | R1-R5 | 3e86ae3 | Rides pack; Founding 50 = ever sold; anti-squatting from security review; 170 real-DB tests |
 | 2026-10-06 | R6, R7 | bd03bbc | Console API + app API; live smoke test 85/85 against the real console client |
 | 2026-10-06 | C1-C5 | turbo a80a108 | Console in /root/home/turbo; safe redirects, CSP/HSTS, demo-build guard |
+| 2026-10-06 | Inbox | turbo ad96e94, d26a4cf | Customer chats + takeover in the console; hand back to the bot restarts at the menu |
+| 2026-10-06 | Channels | 22bd7df, 4f10b35, turbo f27cef7 | Connect WhatsApp from the console (own Meta account, prefilled; code backup), Instagram & Messenger; admin Channels panel; Embedded Signup v4 |

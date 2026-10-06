@@ -15,6 +15,7 @@ import supportRoutes from './support.js';
 import flowRoutes from './flows.js';
 import adminApiKeyRoutes from './api-keys.js';
 import adminChannelRoutes from './channels.js';
+import adminPackRoutes from './packs.js';
 import { PLAN_IDS } from '../../services/plans.js';
 import { buildTenantUpdateData, parseTenantUpdate } from './tenant-update.js';
 import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
@@ -105,6 +106,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(flowRoutes);
     await fastify.register(adminApiKeyRoutes);
     await fastify.register(adminChannelRoutes);
+    await fastify.register(adminPackRoutes);
 
     // ============================================
     // TENANT MANAGEMENT

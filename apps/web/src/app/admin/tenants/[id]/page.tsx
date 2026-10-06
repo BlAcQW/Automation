@@ -14,6 +14,7 @@ import { Empty, Panel, ReasonModal, Table, Td, Th, UsageBar } from '../../_compo
 import { errorMessage, formatDate, formatDateTime, formatMinor, timeAgo } from '../../_components/format';
 import { ApiKeysPanel } from './api-keys-panel';
 import { ChannelsPanel } from './channels-panel';
+import { BotsPanel } from './bots-panel';
 
 interface Overview {
     tenant: any;
@@ -250,6 +251,8 @@ export default function OrganisationPage() {
             </div>
 
             <ChannelsPanel tenantId={tenant.id} tenantName={tenant.name} />
+
+            <BotsPanel tenantId={tenant.id} tenantName={tenant.name} />
 
             <Panel title={`Staff (${staff.length})`}>
                 {!staff.length ? <Empty>No users.</Empty> : (

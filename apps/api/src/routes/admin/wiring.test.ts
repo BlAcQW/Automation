@@ -83,6 +83,8 @@ const TABLE: Row[] = [
     ['POST', '/admin/tenants/t1/whatsapp/hosted/resend', 'channels:manage'],
     ['POST', '/admin/tenants/t1/whatsapp/health-check', 'channels:manage'],
     ['POST', '/admin/tenants/t1/facebook/disconnect', 'channels:manage'],
+    ['GET', '/admin/tenants/t1/packs', 'tenants:read'],
+    ['POST', '/admin/tenants/t1/packs/turbo-founding/install', 'flows:write'],
     ['POST', '/admin/tenants/t1/instagram/disconnect', 'channels:manage'],
     // /admin/billing/** lives in routes/admin-billing but is part of the same admin surface.
     ['GET', '/admin/billing/event-types', 'billing:read'],

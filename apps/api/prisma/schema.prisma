@@ -104,6 +104,14 @@ model Tenant {
   conversationMode            String?
   // The FlowDefinition.key a 'flow' tenant runs. Ignored for other modes.
   activeFlowKey               String?
+  // Wave 3 (A5) — emergency switches. Non-null = the switch is ON since that
+  // moment (a timestamp, not a boolean, so the audit trail and the UI can say
+  // "paused 3h ago"). Outbound = all WhatsApp/SMS/email sends and webhooks;
+  // payouts = withdrawals and auto-payouts. Inbound and bookings keep working.
+  outboundPausedAt            DateTime?
+  payoutsPausedAt             DateTime?
+  // Free-text reason shown to admins; shared by both switches (last one wins).
+  pauseReason                 String?
   isActive                    Boolean             @default(true)
   createdAt                   DateTime            @default(now())
   updatedAt                   DateTime            @updatedAt
@@ -127,6 +135,8 @@ model Tenant {
   apiKeys              ApiKey[]
   domainEvents         DomainEvent[]
   webhookSubscriptions WebhookSubscription[]
+  supportSessions      SupportSession[]
+  billingTerms         BillingTerms?
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -192,17 +202,33 @@ enum Role {
 
 // Platform Admin - separate from tenants, can manage all data
 model Admin {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  name         String
-  isSuperAdmin Boolean   @default(false)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  lastLoginAt  DateTime?
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  passwordHash       String
+  name               String
+  // DEPRECATED (wave 3): superseded by `role`. Kept so the running API and
+  // the old auth path keep working during rollout; drop in a later migration
+  // once every check reads `role`.
+  isSuperAdmin       Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  // Wave 3 (A4) — OWNER | SUPPORT | FINANCE | READONLY. A String, not an enum,
+  // so a new role needs no migration; validated against the set in code.
+  // The column default is the safe-for-bootstrap OWNER only for brand-new
+  // rows created by seed; the migration backfills existing rows explicitly.
+  role               String    @default("OWNER")
+  // TOTP secret, encrypted at rest via crypto.ts (never plaintext). NULL =
+  // not enrolled. totpEnabledAt is set only after the first code verifies,
+  // so a half-finished enrolment does not lock anyone out.
+  totpSecretEnc      String?
+  totpEnabledAt      DateTime?
+  // One-way hashes of single-use recovery codes. A used code is removed.
+  recoveryCodeHashes String[]  @default([])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lastLoginAt        DateTime?
 
-  promoCodes PromoCode[]
+  promoCodes      PromoCode[]
+  supportSessions SupportSession[]
 
   @@index([email])
 }
@@ -344,6 +370,13 @@ model Booking {
   // Link to the Customer record. SetNull: the booking is a financial record
   // and survives customer deletion (it keeps its own name/phone snapshot).
   customerId              String?
+  // Wave 3 (A2) — refund retry. A refund that failed after a cancel is retried
+  // by a sweep (due = depositState in the refund-pending state AND
+  // refundNextAttemptAt <= now) with backoff, instead of only alerting.
+  refundAttempts          Int           @default(0)
+  refundNextAttemptAt     DateTime?
+  // Last provider error, truncated and scrubbed by the caller. Never secrets.
+  refundLastError         String?
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
@@ -357,6 +390,7 @@ model Booking {
   @@index([customerPhone])
   @@index([bookingReference])
   @@index([paymentReference])
+  @@index([depositState, refundNextAttemptAt])
 }
 
 enum BookingStatus {
@@ -1179,4 +1213,62 @@ model WebhookDelivery {
   @@index([status, claimedAt])
   @@index([tenantId])
   @@index([eventId])
+}
+
+// ============================================
+// WAVE 3 — admin control, support access, custom billing
+// ============================================
+
+/// Platform-wide switches and settings (e.g. key 'payouts.paused'). Not tenant
+/// scoped: it belongs to the platform. Values are small JSON documents.
+model PlatformSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  /// Admin id who last changed it. Plain string, no FK: the audit log is the
+  /// history and a deleted admin must not block or erase a switch.
+  updatedBy String?
+}
+
+/// A time-boxed, reasoned grant letting a platform admin look at one tenant.
+/// Every support read/write is expected to check for a live session. Deleting
+/// a tenant cascades its sessions; the AuditLog keeps the history of what
+/// support did (AuditLog is not FK-linked to the tenant for this reason).
+model SupportSession {
+  id        String    @id @default(cuid())
+  adminId   String
+  tenantId  String
+  reason    String
+  /// READ_ONLY | WRITE. A String so a new mode needs no migration.
+  mode      String    @default("READ_ONLY")
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  /// Set when the admin ends it early. NULL and expiresAt in the future = live.
+  endedAt   DateTime?
+
+  admin  Admin  @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([adminId, createdAt])
+}
+
+/// Negotiated per-tenant billing, overriding the plan catalog. One row per
+/// tenant. ALL money is integer minor units (pesewas/kobo), never floats.
+model BillingTerms {
+  id              String   @id @default(cuid())
+  tenantId        String   @unique
+  currency        String   @default("GHS")
+  setupFeeMinor   Int      @default(0)
+  monthlyFeeMinor Int      @default(0)
+  /// Price per billable unit, minor units.
+  unitPriceMinor  Int      @default(0)
+  /// The DomainEvent.type counted as one billable unit, e.g. 'flow.completed'.
+  /// NULL = no usage billing.
+  unitEventType   String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }

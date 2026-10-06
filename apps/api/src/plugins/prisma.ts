@@ -71,6 +71,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
     'DomainEvent',
     'WebhookSubscription',
     'WebhookDelivery',
+    'SupportSession',
+    'BillingTerms',
 ]);
 
 export { hasTenantFilter };

@@ -65,6 +65,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
     'PayoutRecipient',
     'PayoutRequest',
     'Customer',
+    'FlowDefinition', // tenantId nullable; default rows (null) read only without tenant context
+    'ExternalApp',
+    'ApiKey',
+    'DomainEvent',
+    'WebhookSubscription',
+    'WebhookDelivery',
 ]);
 
 export { hasTenantFilter };

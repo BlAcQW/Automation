@@ -98,6 +98,12 @@ model Tenant {
   // The owner asked for the account to be deleted. A person confirms and
   // removes the tenant; this records the ask and shows it in Settings.
   deletionRequestedAt         DateTime?
+  // Who answers this tenant's conversations. NULL = the vertical's default.
+  // 'llm' | 'flow' | 'external'. A String, not an enum, so a new handler kind
+  // needs no migration; validated against the known set at the API boundary.
+  conversationMode            String?
+  // The FlowDefinition.key a 'flow' tenant runs. Ignored for other modes.
+  activeFlowKey               String?
   isActive                    Boolean             @default(true)
   createdAt                   DateTime            @default(now())
   updatedAt                   DateTime            @updatedAt
@@ -117,6 +123,10 @@ model Tenant {
   promoRedemptions     PromoRedemption[]
   customers            Customer[]
   wallet               Wallet?
+  externalApp          ExternalApp?
+  apiKeys              ApiKey[]
+  domainEvents         DomainEvent[]
+  webhookSubscriptions WebhookSubscription[]
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -331,12 +341,17 @@ model Booking {
   paidAt                  DateTime?
   depositAmount           Decimal?      @db.Decimal(10, 2) // snapshot at booking time
   publicToken             String?       @unique // non-guessable token for the SMS cancel link
+  // Link to the Customer record. SetNull: the booking is a financial record
+  // and survives customer deletion (it keeps its own name/phone snapshot).
+  customerId              String?
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  service Service @relation(fields: [serviceId], references: [id])
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service  Service   @relation(fields: [serviceId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
+  @@index([customerId])
   @@index([tenantId])
   @@index([tenantId, startTime])
   @@index([customerPhone])
@@ -379,15 +394,20 @@ model Conversation {
   assignedAt      DateTime? // When the conversation was assigned
   takeoverReason  String? // Reason for human takeover
   botFailureCount Int                 @default(0) // Count of bot failures for auto-takeover
+  // The end customer this conversation is with, once resolved. SetNull: the
+  // conversation history outlives a deleted customer record.
+  customerId      String?
   contextVersion  Int                 @default(0) // Optimistic-lock counter — incremented on every botContext write; concurrent updates that read a stale version are dropped
   lastInboundAt   DateTime? // Timestamp of last customer message — drives the WhatsApp 24-hour customer-service window check
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   messages Message[]
 
   @@unique([tenantId, channel, externalId])
+  @@index([customerId])
   @@index([tenantId])
   @@index([customerPhone])
   @@index([tenantId, lastInboundAt])
@@ -577,12 +597,16 @@ model Order {
   deliveryAddress         String?
   notes                   String?
   publicToken             String?       @unique // non-guessable token for the order tracking link
+  // Link to the Customer record. SetNull: the order keeps its own snapshot.
+  customerId              String?
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
 
-  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  items  OrderItem[]
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items    OrderItem[]
 
+  @@index([customerId])
   @@index([tenantId])
   @@index([orderRef])
   @@index([customerPhone])
@@ -948,8 +972,8 @@ model PayoutRequest {
   @@index([tenantId, status])
 }
 
-/// A tenant's end customer, keyed by phone. Not yet linked to Booking, Order
-/// or Conversation.
+/// A tenant's end customer, keyed by phone. Linked (optional, SetNull) from
+/// Conversation, Booking and Order.
 model Customer {
   id         String   @id @default(cuid())
   tenantId   String
@@ -964,7 +988,10 @@ model Customer {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  bookings      Booking[]
+  orders        Order[]
 
   @@unique([tenantId, phone])
   @@index([tenantId])
@@ -1013,4 +1040,137 @@ model PlatformAlert {
 
   @@index([resolvedAt, severity, lastSeenAt])
   @@index([tenantId])
+}
+
+// ============================================
+// WAVE 2: WORKFLOWS, EXTERNAL APPS, PUBLIC API, EVENTS
+// ============================================
+
+// Workflow definitions as data (D1), so a flow can be edited and versioned
+// without a deploy. tenantId NULL = a vertical-level default that any tenant of
+// that vertical falls back to. Deliberately NO FK to Tenant: defaults have no
+// tenant. Because tenantId is nullable (like AuditLog) the model is in
+// TENANT_SCOPED_MODELS; default rows (tenantId null) are only read WITHOUT
+// tenant context (webhook, worker, admin).
+// A version is immutable once published: change a flow by inserting version+1.
+model FlowDefinition {
+  id         String    @id @default(cuid())
+  tenantId   String?
+  vertical   Vertical?
+  key        String
+  version    Int
+  definition Json
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+
+  // Postgres treats NULLs as distinct, so this does not stop two default rows
+  // with the same (key, version); the app must enforce that for tenantId NULL.
+  @@unique([tenantId, key, version])
+  @@index([tenantId, key, isActive])
+  @@index([vertical, key])
+}
+
+// An app hosted elsewhere that handles a tenant's conversations (D2). One per
+// tenant. Inbound messages are POSTed to `url`, signed with the secret.
+model ExternalApp {
+  id               String   @id @default(cuid())
+  tenantId         String   @unique
+  name             String
+  /// Inbound delivery endpoint.
+  url              String
+  /// Encrypted at rest by application code (crypto.ts). Never returned to a client.
+  signingSecretEnc String
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+// Scoped keys for the public API (D2). Only a hash of the secret is stored; the
+// raw key is shown once at creation. `prefix` is the public identifier used to
+// look the key up before the hash is compared.
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String
+  name       String
+  prefix     String    @unique
+  secretHash String
+  scopes     String[]
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  createdBy  String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// Append-only record of things that happened (D3): the source for outgoing
+// webhooks and any future timeline. Events are tenant data, so unlike AuditLog
+// they cascade with the Tenant: removing a tenant must remove everything about
+// it, and a surviving event would keep customer payloads with no owner. Audit
+// history that must outlive the tenant belongs in AuditLog, not here.
+model DomainEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  type      String // e.g. message.received, payment.succeeded
+  payload   Json
+  createdAt DateTime @default(now())
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId, createdAt])
+  @@index([type, createdAt])
+}
+
+// A tenant's subscription to outgoing webhooks (D3).
+model WebhookSubscription {
+  id          String   @id @default(cuid())
+  tenantId    String
+  url         String
+  events      String[] // event types, or a wildcard the app understands
+  /// Encrypted at rest by application code; used to sign deliveries.
+  secretEnc   String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([tenantId])
+}
+
+// One attempt-tracked delivery of one event to one subscription (D3). The
+// unique pair makes fan-out idempotent. tenantId is denormalised (no FK of its
+// own): the row is removed with its subscription/event when the tenant goes.
+// claimedAt/nextAttemptAt mirror WebhookInbox for crash-safe claiming and
+// retry backoff.
+model WebhookDelivery {
+  id             String    @id @default(cuid())
+  tenantId       String
+  subscriptionId String
+  eventId        String
+  status         String    @default("PENDING") // PENDING | SUCCEEDED | FAILED
+  attempts       Int       @default(0)
+  nextAttemptAt  DateTime?
+  claimedAt      DateTime?
+  lastStatusCode Int?
+  lastError      String?
+  createdAt      DateTime  @default(now())
+  deliveredAt    DateTime?
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  event        DomainEvent         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, eventId])
+  @@index([status, nextAttemptAt])
+  @@index([status, claimedAt])
+  @@index([tenantId])
+  @@index([eventId])
 }

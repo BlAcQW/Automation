@@ -14,6 +14,7 @@ import messagingRoutes from './messaging.js';
 import supportRoutes from './support.js';
 import flowRoutes from './flows.js';
 import adminApiKeyRoutes from './api-keys.js';
+import adminChannelRoutes from './channels.js';
 import { PLAN_IDS } from '../../services/plans.js';
 import { buildTenantUpdateData, parseTenantUpdate } from './tenant-update.js';
 import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
@@ -51,6 +52,43 @@ const paginationSchema = z.object({
     search: z.string().optional(),
 });
 
+/** GET /admin/tenants filters on top of pagination. */
+const tenantListSchema = paginationSchema.extend({
+    // 'not_connected' = no number, or a hosted number still waiting for its code.
+    whatsapp: z.enum(['not_connected', 'connected', 'problem']).optional(),
+});
+
+/** Prisma where for the WhatsApp filter. Pending hosted numbers count as not connected. */
+export function whatsappFilterWhere(filter: 'not_connected' | 'connected' | 'problem' | undefined) {
+    const pendingHosted = { whatsappHosted: true, whatsappNumberStatus: { in: ['PENDING_CODE', 'VERIFIED'] } };
+    switch (filter) {
+        case 'not_connected':
+            return { OR: [{ whatsappPhoneNumberId: null }, pendingHosted] };
+        case 'connected':
+            return { whatsappPhoneNumberId: { not: null }, NOT: pendingHosted };
+        case 'problem':
+            return { whatsappPhoneNumberId: { not: null }, whatsappHealthProblem: { not: null }, NOT: pendingHosted };
+        default:
+            return {};
+    }
+}
+
+/** Pure: the compact per-row channel summary for the organisations list. */
+export function channelSummary(t: {
+    whatsappPhoneNumberId: string | null; whatsappHosted: boolean; whatsappNumberStatus: string | null;
+    whatsappHealthProblem: string | null; whatsappConnectionMode: string | null;
+    facebookPageId: string | null; instagramUserId: string | null;
+}) {
+    const pending = t.whatsappHosted && (t.whatsappNumberStatus === 'PENDING_CODE' || t.whatsappNumberStatus === 'VERIFIED');
+    const whatsapp = !t.whatsappPhoneNumberId ? 'none' : pending ? 'pending' : t.whatsappHealthProblem ? 'problem' : 'connected';
+    return {
+        whatsapp,
+        whatsappMode: t.whatsappPhoneNumberId ? t.whatsappConnectionMode ?? (t.whatsappHosted ? 'BOOKLY_HOSTED' : 'OWN_ACCOUNT') : null,
+        instagram: !!t.instagramUserId,
+        messenger: !!t.facebookPageId,
+    };
+}
+
 const adminRoutes: FastifyPluginAsync = async (fastify) => {
     // Sign-in, refresh, logout, /auth/me and 2FA live in ./auth.ts; admin
     // management in ./admins.ts. Every other route below names a permission via
@@ -66,6 +104,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(supportRoutes);
     await fastify.register(flowRoutes);
     await fastify.register(adminApiKeyRoutes);
+    await fastify.register(adminChannelRoutes);
 
     // ============================================
     // TENANT MANAGEMENT
@@ -229,10 +268,10 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/tenants', {
         preHandler: adminGuard(fastify, 'tenants:read'),
     }, async (request) => {
-        const query = paginationSchema.parse(request.query);
+        const query = tenantListSchema.parse(request.query);
         const skip = (query.page - 1) * query.limit;
 
-        const where = query.search
+        const searchWhere = query.search
             ? {
                 OR: [
                     { name: { contains: query.search, mode: 'insensitive' as const } },
@@ -240,6 +279,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                 ],
             }
             : {};
+        const where = { AND: [searchWhere, whatsappFilterWhere(query.whatsapp)] };
 
         const [tenants, total] = await Promise.all([
             fastify.prisma.tenant.findMany({
@@ -266,6 +306,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         return {
             data: tenants.map((t) => {
                 const messagesThisCycle = usage.get(t.id) ?? 0;
+                const channels = channelSummary(t);
                 return {
                     id: t.id,
                     name: t.name,
@@ -275,8 +316,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                     vertical: t.vertical,
                     monthlyMessageQuotaOverride: t.monthlyMessageQuotaOverride,
                     messagesThisMonth: messagesThisCycle,
-                    whatsappConnected: !!t.whatsappPhoneNumberId,
+                    whatsappConnected: channels.whatsapp === 'connected' || channels.whatsapp === 'problem',
                     whatsappDisplayNumber: t.whatsappDisplayNumber,
+                    channels,
                     usersCount: t._count.users,
                     bookingsCount: t._count.bookings,
                     servicesCount: t._count.services,

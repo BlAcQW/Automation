@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
-import { Search, Building2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Building2, ChevronLeft, ChevronRight, MessageCircle, Instagram, Facebook } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, Badge, Button, Input } from '@bookingflow/ui';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
@@ -12,12 +12,14 @@ import { NewOrganisation } from './new-organisation';
 export default function AdminTenantsPage() {
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
+    const [whatsappFilter, setWhatsappFilter] = useState<'' | 'not_connected' | 'problem'>('');
 
     const { data, isLoading } = useQuery({
-        queryKey: ['admin', 'tenants', page, search],
+        queryKey: ['admin', 'tenants', page, search, whatsappFilter],
         queryFn: async () => {
             const params = new URLSearchParams({ page: String(page), limit: '20' });
             if (search) params.set('search', search);
+            if (whatsappFilter) params.set('whatsapp', whatsappFilter);
             const res = await adminApi.get(`/admin/tenants?${params}`);
             return res.data;
         },
@@ -54,6 +56,16 @@ export default function AdminTenantsPage() {
                 <Button type="submit">
                     Search
                 </Button>
+                <select
+                    aria-label="Filter by WhatsApp"
+                    value={whatsappFilter}
+                    onChange={(e) => { setWhatsappFilter(e.target.value as typeof whatsappFilter); setPage(1); }}
+                    className="rounded-lg border border-slate-700 bg-slate-800/50 px-3 text-sm text-white"
+                >
+                    <option value="">All organisations</option>
+                    <option value="not_connected">WhatsApp not connected</option>
+                    <option value="problem">WhatsApp has a problem</option>
+                </select>
             </form>
 
             {/* Table */}
@@ -75,7 +87,7 @@ export default function AdminTenantsPage() {
                                         <th className="px-6 py-4 font-medium">Users</th>
                                         <th className="px-6 py-4 font-medium">Services</th>
                                         <th className="px-6 py-4 font-medium">Bookings</th>
-                                        <th className="px-6 py-4 font-medium">WhatsApp</th>
+                                        <th className="px-6 py-4 font-medium">Channels</th>
                                         <th className="px-6 py-4 font-medium">Status</th>
                                         <th className="px-6 py-4 font-medium">Created</th>
                                     </tr>
@@ -115,9 +127,7 @@ export default function AdminTenantsPage() {
                                                 <td className="px-6 py-4 text-slate-300">{tenant.servicesCount}</td>
                                                 <td className="px-6 py-4 text-slate-300">{tenant.bookingsCount}</td>
                                                 <td className="px-6 py-4">
-                                                    <Badge variant={tenant.whatsappConnected ? 'default' : 'slate'}>
-                                                        {tenant.whatsappConnected ? 'Connected' : 'Not Connected'}
-                                                    </Badge>
+                                                    <ChannelIcons channels={tenant.channels} />
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <Badge variant={tenant.isActive ? 'default' : 'red'}>
@@ -169,5 +179,30 @@ export default function AdminTenantsPage() {
                 )}
             </Card>
         </div>
+    );
+}
+
+const WA_TONE: Record<string, { cls: string; label: string }> = {
+    connected: { cls: 'text-emerald-400', label: 'WhatsApp connected' },
+    problem: { cls: 'text-red-400', label: 'WhatsApp has a problem' },
+    pending: { cls: 'text-amber-300', label: 'WhatsApp waiting for its code' },
+    none: { cls: 'text-slate-600', label: 'WhatsApp not connected' },
+};
+
+/** Three small marks: WhatsApp (connected / problem / pending / none), Instagram, Messenger. */
+function ChannelIcons({ channels }: { channels?: { whatsapp: string; whatsappMode: string | null; instagram: boolean; messenger: boolean } }) {
+    if (!channels) return null;
+    const wa = WA_TONE[channels.whatsapp] ?? WA_TONE.none;
+    const waLabel = `${wa.label}${channels.whatsappMode === 'BOOKLY_HOSTED' ? ' (Bookly-hosted)' : channels.whatsappMode ? ' (own account)' : ''}`;
+    return (
+        <span className="flex items-center gap-2">
+            <span title={waLabel} aria-label={waLabel}><MessageCircle className={`h-4 w-4 ${wa.cls}`} /></span>
+            <span title={channels.instagram ? 'Instagram connected' : 'Instagram not connected'} aria-label={channels.instagram ? 'Instagram connected' : 'Instagram not connected'}>
+                <Instagram className={`h-4 w-4 ${channels.instagram ? 'text-pink-400' : 'text-slate-600'}`} />
+            </span>
+            <span title={channels.messenger ? 'Messenger connected' : 'Messenger not connected'} aria-label={channels.messenger ? 'Messenger connected' : 'Messenger not connected'}>
+                <Facebook className={`h-4 w-4 ${channels.messenger ? 'text-sky-400' : 'text-slate-600'}`} />
+            </span>
+        </span>
     );
 }

@@ -30,6 +30,17 @@ interface WhatsAppStatus {
     hostedAvailable?: boolean;
 }
 
+/**
+ * Exact origins Meta's Embedded Signup popup posts from (same list the API
+ * returns as sessionEvent.origins). Set membership, never suffix matching:
+ * "evilfacebook.com" must not pass.
+ */
+const FACEBOOK_MESSAGE_ORIGINS = new Set([
+    'https://www.facebook.com',
+    'https://web.facebook.com',
+    'https://business.facebook.com',
+]);
+
 export default function WhatsAppSetupPage() {
     const { tenant } = useAuth();
     const [status, setStatus] = useState<WhatsAppStatus | null>(null);
@@ -158,7 +169,8 @@ export default function WhatsAppSetupPage() {
                 appId: process.env.NEXT_PUBLIC_WHATSAPP_APP_ID,
                 cookie: true,
                 xfbml: true,
-                version: 'v18.0'
+                // Embedded Signup v4 (Meta's implementation guide uses v25.0).
+                version: 'v25.0'
             });
             setSdkReady(true);
             setSdkFailed(false);
@@ -212,36 +224,55 @@ export default function WhatsAppSetupPage() {
         setConnecting(true);
         setMessage(null);
 
+        // Embedded Signup v4 posts the chosen WABA + phone number as a
+        // WA_EMBEDDED_SIGNUP window message before the login callback fires.
+        // Kept and sent with the code so the server connects exactly that
+        // number (it falls back to the first one if no message arrived).
+        let sessionInfo: unknown = undefined;
+        const onMessage = (event: MessageEvent) => {
+            if (!FACEBOOK_MESSAGE_ORIGINS.has(event.origin)) return;
+            try {
+                const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                if (data?.type === 'WA_EMBEDDED_SIGNUP') sessionInfo = data;
+            } catch {
+                /* not ours */
+            }
+        };
+        window.addEventListener('message', onMessage);
+
         try {
             window.FB.login(
                 function (response: any) {
-                    if (response.authResponse) {
-                        exchangeCodeForToken(response.authResponse.code);
-                    } else {
-                        setConnecting(false);
-                        setMessage({ type: 'error', text: 'WhatsApp signup was cancelled or failed.' });
-                    }
+                    // The message event can land just after the callback.
+                    setTimeout(() => {
+                        window.removeEventListener('message', onMessage);
+                        if (response.authResponse) {
+                            exchangeCodeForToken(response.authResponse.code, sessionInfo);
+                        } else {
+                            setConnecting(false);
+                            setMessage({ type: 'error', text: 'WhatsApp signup was cancelled or failed.' });
+                        }
+                    }, 300);
                 },
                 {
                     config_id: configId,
                     response_type: 'code',
                     override_default_response_type: true,
-                    extras: {
-                        setup: {},
-                        featureType: '',
-                        sessionInfoVersion: '2',
-                    }
+                    // v4: the configuration (config_id) decides the version and
+                    // products; no version / sessionInfoVersion / featureType.
+                    extras: { setup: {} },
                 }
             );
         } catch (err: any) {
+            window.removeEventListener('message', onMessage);
             setConnecting(false);
             setMessage({ type: 'error', text: `FB.login error: ${err.message}` });
         }
     };
 
-    const exchangeCodeForToken = async (code: string) => {
+    const exchangeCodeForToken = async (code: string, sessionInfo?: unknown) => {
         try {
-            const res = await api.post('/whatsapp/embedded-signup', { code });
+            const res = await api.post('/whatsapp/embedded-signup', sessionInfo ? { code, sessionInfo } : { code });
             await fetchStatus();
             const verified = res.data.verifiedName ? ` (${res.data.verifiedName})` : '';
             setMessage({

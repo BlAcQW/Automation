@@ -28,10 +28,10 @@
  * because a human has to read the OTP off a handset in between.
  */
 
+import { META_GRAPH_BASE, scrubMetaText } from './meta-graph.js';
 import { config } from '../config/index.js';
 
-const GRAPH_API_VERSION = 'v18.0';
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+const GRAPH_BASE = META_GRAPH_BASE;
 
 /** Shortest plausible national subscriber number, used to reject typos early. */
 const MIN_LOCAL_DIGITS = 6;
@@ -47,12 +47,15 @@ export type NumberOnboardingStep =
     | 'delete_number';
 
 export class NumberOnboardingError extends Error {
+    readonly details: string;
     constructor(
         public readonly step: NumberOnboardingStep,
-        public readonly details: string,
+        details: string,
     ) {
-        super(`number_onboarding_${step}: ${details}`);
+        const safe = scrubMetaText(details, 500);
+        super(`number_onboarding_${step}: ${safe}`);
         this.name = 'NumberOnboardingError';
+        this.details = safe;
     }
 }
 
@@ -283,15 +286,28 @@ export async function verifyAndRegister(
     code: string,
     pin: string,
 ): Promise<void> {
-    const { accessToken } = requirePlatformWaba();
+    await verifyCode(phoneNumberId, code);
+    await registerNumber(phoneNumberId, pin);
+}
 
+/**
+ * Step 3 alone. Split from step 4 so a register failure after a good code does
+ * not strand the tenant: the code is spent once verified, so a retry must go
+ * straight to `registerNumber` (the route records VERIFIED in between).
+ */
+export async function verifyCode(phoneNumberId: string, code: string): Promise<void> {
+    const { accessToken } = requirePlatformWaba();
     await graph<{ success?: boolean }>(
         `/${phoneNumberId}/verify_code`,
         { method: 'POST', body: JSON.stringify({ code: code.replace(/\D/g, '') }) },
         'verify_code',
         accessToken,
     );
+}
 
+/** Step 4 alone: enable a verified number for Cloud API sending. */
+export async function registerNumber(phoneNumberId: string, pin: string): Promise<void> {
+    const { accessToken } = requirePlatformWaba();
     await graph<{ success?: boolean }>(
         `/${phoneNumberId}/register`,
         { method: 'POST', body: JSON.stringify({ messaging_product: 'whatsapp', pin }) },
@@ -317,14 +333,19 @@ export async function deleteHostedNumber(phoneNumberId: string): Promise<void> {
     );
 }
 
-/** How many of the portfolio's number slots are already spoken for. */
-export async function countHostedNumbers(): Promise<number> {
+/** Ids of every number on Bookly's WABA (hosted slots in use). */
+export async function listPlatformNumberIds(): Promise<string[]> {
     const { wabaId, accessToken } = requirePlatformWaba();
-    const res = await graph<{ data?: unknown[] }>(
-        `/${wabaId}/phone_numbers?fields=id`,
+    const res = await graph<{ data?: Array<{ id?: string }> }>(
+        `/${wabaId}/phone_numbers?fields=id&limit=100`,
         { method: 'GET' },
         'create_number',
         accessToken,
     );
-    return res.data?.length ?? 0;
+    return (res.data ?? []).map((p) => p.id).filter((id): id is string => typeof id === 'string');
+}
+
+/** How many of the portfolio's number slots are already spoken for. Throws if Meta cannot say. */
+export async function countHostedNumbers(): Promise<number> {
+    return (await listPlatformNumberIds()).length;
 }

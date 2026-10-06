@@ -1,10 +1,12 @@
+import crypto from 'node:crypto';
+import { META_GRAPH_BASE, formBody, scrubMetaText } from './meta-graph.js';
 import { config } from '../config/index.js';
 
-const GRAPH_API_VERSION = 'v18.0';
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+const GRAPH_BASE = META_GRAPH_BASE;
 
 export type EmbeddedSignupStep =
     | 'token_exchange'
+    | 'token_check'
     | 'waba_discovery'
     | 'phone_discovery'
     | 'subscribe_app'
@@ -12,9 +14,12 @@ export type EmbeddedSignupStep =
     | 'config';
 
 export class EmbeddedSignupError extends Error {
-    constructor(public readonly step: EmbeddedSignupStep, public readonly details: string) {
-        super(`embedded_signup_${step}: ${details}`);
+    readonly details: string;
+    constructor(public readonly step: EmbeddedSignupStep, details: string) {
+        const safe = scrubMetaText(details, 500);
+        super(`embedded_signup_${step}: ${safe}`);
         this.name = 'EmbeddedSignupError';
+        this.details = safe;
     }
 }
 
@@ -25,16 +30,14 @@ export interface EmbeddedSignupResult {
     displayPhoneNumber: string;
     verifiedName?: string;
     tokenExpiresAt?: Date | null;
+    /** The two-step PIN the number was registered with. Store it encrypted. */
+    registrationPin: string;
 }
 
 interface TokenExchangeResponse {
     access_token: string;
     token_type?: string;
     expires_in?: number;
-}
-
-interface OwnedWabaListResponse {
-    data?: Array<{ id: string; name?: string }>;
 }
 
 interface PhoneNumbersResponse {
@@ -45,16 +48,19 @@ interface PhoneNumbersResponse {
     }>;
 }
 
-interface MeWithBusinessesResponse {
-    businesses?: {
-        data?: Array<{
-            id: string;
-            name?: string;
-        }>;
-    };
+export interface DebugTokenData {
+    app_id?: string;
+    type?: string;
+    is_valid?: boolean;
+    expires_at?: number;
+    scopes?: string[];
+    granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
 }
 
-async function fetchJson<T>(url: string, init?: RequestInit, step: EmbeddedSignupStep = 'token_exchange'): Promise<T> {
+/** The scopes whose target_ids name the WABAs this token was granted. */
+const WABA_SCOPES = new Set(['whatsapp_business_management', 'whatsapp_business_messaging']);
+
+async function fetchJson<T>(url: string, init: RequestInit | undefined, step: EmbeddedSignupStep): Promise<T> {
     let response: Response;
     try {
         response = await fetch(url, init);
@@ -68,7 +74,7 @@ async function fetchJson<T>(url: string, init?: RequestInit, step: EmbeddedSignu
         } catch {
             /* ignore */
         }
-        throw new EmbeddedSignupError(step, `http_${response.status}: ${body.slice(0, 500)}`);
+        throw new EmbeddedSignupError(step, `http_${response.status}: ${body}`);
     }
     try {
         return (await response.json()) as T;
@@ -78,173 +84,159 @@ async function fetchJson<T>(url: string, init?: RequestInit, step: EmbeddedSignu
 }
 
 /**
- * Complete the Meta WhatsApp Embedded Signup flow:
- *   1. Exchange the Facebook Login code for an access token.
- *   2. Discover the WhatsApp Business Account (WABA) the user just granted us.
- *   3. Get the phone-number-id (and display number / verified business name).
- *   4. Subscribe our app to the WABA so webhooks fire for that number.
+ * Inspect a token with our app token. Sent as a POST form (method=GET) so
+ * neither the tenant token nor the app secret ever sits in a URL.
+ */
+export async function debugToken(inputToken: string, step: EmbeddedSignupStep = 'token_check'): Promise<DebugTokenData> {
+    const { appId, appSecret } = config.whatsapp;
+    if (!appId || !appSecret) {
+        throw new EmbeddedSignupError('config', 'WHATSAPP_APP_ID and WHATSAPP_APP_SECRET must both be set');
+    }
+    const form = formBody({ method: 'GET', input_token: inputToken, access_token: `${appId}|${appSecret}` });
+    const r = await fetchJson<{ data?: DebugTokenData }>(`${GRAPH_BASE}/debug_token`, { method: 'POST', ...form }, step);
+    return r.data ?? {};
+}
+
+/** Pure: the WABA ids a token was granted, from debug_token's granular scopes. */
+export function grantedWabaIds(data: DebugTokenData): string[] {
+    const ids = new Set<string>();
+    for (const g of data.granular_scopes ?? []) {
+        if (WABA_SCOPES.has(g.scope)) for (const id of g.target_ids ?? []) ids.add(id);
+    }
+    return [...ids];
+}
+
+/**
+ * Fail closed unless the token is valid and was issued to OUR app. Anything
+ * else (debug_token failing, another app's token) is refused.
+ */
+export function assertTokenIsOurs(data: DebugTokenData, step: EmbeddedSignupStep = 'token_check'): void {
+    if (data.is_valid !== true) throw new EmbeddedSignupError(step, 'token is not valid');
+    if (!config.whatsapp.appId || data.app_id !== config.whatsapp.appId) {
+        throw new EmbeddedSignupError(step, 'token was not issued to this app');
+    }
+}
+
+/**
+ * What the WA_EMBEDDED_SIGNUP `message` event reported when the popup
+ * finished (`data.waba_id`, `data.phone_number_id`). Never trusted on its own:
+ * the WABA must be one the token was granted, and the number must belong to it.
+ */
+export interface EmbeddedSignupSessionHint {
+    wabaId?: string;
+    phoneNumberId?: string;
+}
+
+/** Pure: pick the WABA, or explain why it cannot be picked. Never "the first one". */
+export function chooseWaba(granted: string[], hinted: string | undefined): string {
+    if (hinted) {
+        if (!granted.includes(hinted)) {
+            throw new EmbeddedSignupError('waba_discovery', 'The WhatsApp Business Account from the signup session was not granted to this app');
+        }
+        return hinted;
+    }
+    if (granted.length === 1) return granted[0];
+    if (granted.length === 0) throw new EmbeddedSignupError('waba_discovery', 'No WhatsApp Business Account was granted to this app');
+    throw new EmbeddedSignupError('waba_discovery', 'Several WhatsApp Business Accounts were granted; send waba_id from the signup session');
+}
+
+/** Pure: pick the phone number on that WABA, or explain why it cannot be picked. */
+export function choosePhone<P extends { id: string }>(phones: P[], hinted: string | undefined): P {
+    if (hinted) {
+        const p = phones.find((x) => x.id === hinted);
+        if (!p) throw new EmbeddedSignupError('phone_discovery', 'The phone number chosen in the signup window is not on that WhatsApp Business Account');
+        return p;
+    }
+    if (phones.length === 1) return phones[0];
+    if (phones.length === 0) throw new EmbeddedSignupError('phone_discovery', 'WABA has no phone numbers registered');
+    throw new EmbeddedSignupError('phone_discovery', 'That WhatsApp Business Account has several numbers; send phone_number_id from the signup session');
+}
+
+/** A random 6-digit two-step PIN, one per number. */
+export function newRegistrationPin(): string {
+    return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+/**
+ * Complete Meta's WhatsApp Embedded Signup:
+ *   1. Exchange the code for the customer's business token (POST form).
+ *   2. debug_token (mandatory): valid, issued to our app, and which WABAs it
+ *      was granted. Fails closed.
+ *   3. Choose the WABA: the session's waba_id if it is among the granted ones,
+ *      else the only granted one. Several and no hint is an error.
+ *   4. Choose the number on that WABA the same way.
+ *   5. Subscribe our app to the WABA so inbound webhooks fire.
+ *   6. Register the number for Cloud API with a fresh random PIN.
  *
- * Each step throws an `EmbeddedSignupError` tagged with which step failed, so
- * the caller can surface a precise message to the operator instead of a
- * generic "connect failed".
- *
- * Multi-WABA / multi-phone selection (when the user owns more than one
- * business or has multiple numbers under one WABA) is a Phase-4 polish item.
- * For now we take the first WABA and the first phone number — documented in
- * the plan.
+ * Each step throws an `EmbeddedSignupError` tagged with the failing step.
  */
 export async function completeEmbeddedSignup(
     code: string,
     redirectUri?: string,
+    hint: EmbeddedSignupSessionHint = {},
 ): Promise<EmbeddedSignupResult> {
     if (!config.whatsapp.appId || !config.whatsapp.appSecret) {
-        throw new EmbeddedSignupError(
-            'config',
-            'WHATSAPP_APP_ID and WHATSAPP_APP_SECRET must both be set',
-        );
+        throw new EmbeddedSignupError('config', 'WHATSAPP_APP_ID and WHATSAPP_APP_SECRET must both be set');
     }
 
-    // Step 1 — token exchange.
-    // Web (FB JS SDK): redirect_uri omitted — the SDK manages its own popup
-    // redirect. Native (WebView OAuth): the code IS bound to the https
-    // redirect_uri the dialog used, so it MUST be replayed here to match.
-    const tokenUrl = new URL(`${GRAPH_BASE}/oauth/access_token`);
-    tokenUrl.searchParams.set('client_id', config.whatsapp.appId);
-    tokenUrl.searchParams.set('client_secret', config.whatsapp.appSecret);
-    tokenUrl.searchParams.set('code', code);
-    if (redirectUri) {
-        tokenUrl.searchParams.set('redirect_uri', redirectUri);
-    }
-
-    const token = await fetchJson<TokenExchangeResponse>(tokenUrl.toString(), undefined, 'token_exchange');
+    // Step 1 — token exchange. Web (FB JS SDK) omits redirect_uri; the native
+    // WebView flow must replay the https redirect the code was issued for.
+    const exchange: Record<string, string> = {
+        client_id: config.whatsapp.appId,
+        client_secret: config.whatsapp.appSecret,
+        code,
+    };
+    if (redirectUri) exchange.redirect_uri = redirectUri;
+    const token = await fetchJson<TokenExchangeResponse>(
+        `${GRAPH_BASE}/oauth/access_token`,
+        { method: 'POST', ...formBody(exchange) },
+        'token_exchange',
+    );
     if (!token.access_token) {
         throw new EmbeddedSignupError('token_exchange', 'response missing access_token');
     }
 
-    const expiresAt = token.expires_in
-        ? new Date(Date.now() + token.expires_in * 1000)
-        : null;
+    // Step 2 — mandatory token check.
+    const debug = await debugToken(token.access_token);
+    assertTokenIsOurs(debug);
+    const granted = grantedWabaIds(debug);
+
+    // Step 3 — the WABA.
+    const wabaId = chooseWaba(granted, hint.wabaId);
 
     const authHeader = { Authorization: `Bearer ${token.access_token}` } as const;
 
-    // Step 1b — inspect granted scopes via debug_token. If a later call fails
-    // with "Missing Permission", we attach the actual granted scopes so the
-    // operator can fix the Embedded Signup configuration with confidence.
-    interface DebugTokenResponse {
-        data?: {
-            app_id?: string;
-            type?: string;
-            scopes?: string[];
-            granular_scopes?: Array<{ scope: string; target_ids?: string[] }>;
-            is_valid?: boolean;
-            user_id?: string;
-        };
-    }
-
-    const debugUrl = new URL(`${GRAPH_BASE}/debug_token`);
-    debugUrl.searchParams.set('input_token', token.access_token);
-    debugUrl.searchParams.set(
-        'access_token',
-        `${config.whatsapp.appId}|${config.whatsapp.appSecret}`,
+    // Step 4 — the number, which must be on that WABA.
+    const phones = await fetchJson<PhoneNumbersResponse>(
+        `${GRAPH_BASE}/${encodeURIComponent(wabaId)}/phone_numbers?fields=id,display_phone_number,verified_name`,
+        { headers: authHeader },
+        'phone_discovery',
     );
+    const phone = choosePhone(phones.data ?? [], hint.phoneNumberId);
 
-    // Modern Embedded Signup grants `whatsapp_business_management` per-WABA,
-    // and debug_token's granular_scopes.target_ids carries those WABA IDs
-    // directly. That lets us skip the /me/businesses query (which would
-    // require the broader `business_management` scope Meta no longer hands
-    // out by default).
-    const grantedScopeNames = new Set<string>();
-    let wabaIdFromGrant: string | undefined;
-    try {
-        const debug = await fetchJson<DebugTokenResponse>(debugUrl.toString());
-        for (const s of debug.data?.scopes ?? []) grantedScopeNames.add(s);
-        for (const g of debug.data?.granular_scopes ?? []) {
-            grantedScopeNames.add(g.scope);
-            if (g.scope === 'whatsapp_business_management' && g.target_ids?.length) {
-                wabaIdFromGrant = g.target_ids[0];
-            }
-        }
-    } catch {
-        // debug_token failures are non-blocking — we just lose the fast path.
-    }
-
-    // Step 2 — WABA discovery. Prefer the granular target_id; fall back to
-    // /me/businesses only when Meta didn't supply one (rare with modern
-    // signup configurations, but kept for resilience).
-    let wabaId: string | undefined = wabaIdFromGrant;
-
-    if (!wabaId) {
-        const meUrl = `${GRAPH_BASE}/me?fields=businesses{id,name,owned_whatsapp_business_accounts{id,name}}`;
-        type MeWithWabas = {
-            businesses?: {
-                data?: Array<{
-                    id: string;
-                    name?: string;
-                    owned_whatsapp_business_accounts?: { data?: Array<{ id: string; name?: string }> };
-                }>;
-            };
-        };
-        try {
-            const me = await fetchJson<MeWithWabas>(meUrl, { headers: authHeader }, 'waba_discovery');
-            for (const biz of me.businesses?.data ?? []) {
-                const waba = biz.owned_whatsapp_business_accounts?.data?.[0];
-                if (waba?.id) {
-                    wabaId = waba.id;
-                    break;
-                }
-            }
-        } catch (err) {
-            if (err instanceof EmbeddedSignupError) {
-                throw new EmbeddedSignupError(
-                    'waba_discovery',
-                    `Token has no granular WABA target_id and /me/businesses query failed. ` +
-                        `Granted scopes: [${[...grantedScopeNames].join(', ') || 'none'}]. ` +
-                        `Underlying error: ${err.details}`,
-                );
-            }
-            throw err;
-        }
-    }
-
-    if (!wabaId) {
-        throw new EmbeddedSignupError(
-            'waba_discovery',
-            'No WhatsApp Business Account found in token grant or owned businesses.',
-        );
-    }
-
-    // Step 3 — get phone number(s)
-    const phoneUrl = `${GRAPH_BASE}/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name`;
-    const phones = await fetchJson<PhoneNumbersResponse>(phoneUrl, { headers: authHeader }, 'phone_discovery');
-    const phone = phones.data?.[0];
-    if (!phone?.id) {
-        throw new EmbeddedSignupError('phone_discovery', 'WABA has no phone numbers registered');
-    }
-
-    // Step 4 — subscribe our app to the WABA so inbound webhooks fire.
-    // Meta returns { success: true } on a clean subscribe.
-    const subscribeUrl = `${GRAPH_BASE}/${wabaId}/subscribed_apps`;
+    // Step 5 — subscribe our app to the WABA.
     await fetchJson<{ success?: boolean }>(
-        subscribeUrl,
+        `${GRAPH_BASE}/${encodeURIComponent(wabaId)}/subscribed_apps`,
         { method: 'POST', headers: authHeader },
         'subscribe_app',
     );
 
-    // Step 5 — register the phone number for Cloud API messaging.
-    // Without this, Meta returns (#133010) "Account not registered" on every send.
-    // The PIN doubles as the two-step verification code; any 6 digits work on
-    // a fresh number without 2SV. Numbers already registered surface a 200 with
-    // success=true (Meta is idempotent here), so re-running is safe.
-    const registerUrl = `${GRAPH_BASE}/${phone.id}/register`;
+    // Step 6 — register for Cloud API (else every send fails with #133010).
+    // The PIN becomes the number's two-step code; it is per number and random.
+    const registrationPin = newRegistrationPin();
     await fetchJson<{ success?: boolean }>(
-        registerUrl,
+        `${GRAPH_BASE}/${encodeURIComponent(phone.id)}/register`,
         {
             method: 'POST',
             headers: { ...authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messaging_product: 'whatsapp', pin: '123456' }),
+            body: JSON.stringify({ messaging_product: 'whatsapp', pin: registrationPin }),
         },
         'register_number',
     );
+
+    const expiresAt = token.expires_in
+        ? new Date(Date.now() + token.expires_in * 1000)
+        : debug.expires_at && debug.expires_at > 0 ? new Date(debug.expires_at * 1000) : null;
 
     return {
         accessToken: token.access_token,
@@ -253,8 +245,8 @@ export async function completeEmbeddedSignup(
         displayPhoneNumber: phone.display_phone_number,
         verifiedName: phone.verified_name,
         tokenExpiresAt: expiresAt,
+        registrationPin,
     };
 }
 
-// Re-export the response shape for tests.
-export type { OwnedWabaListResponse, PhoneNumbersResponse, MeWithBusinessesResponse };
+export type { PhoneNumbersResponse };

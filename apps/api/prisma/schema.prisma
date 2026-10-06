@@ -43,6 +43,34 @@ model Tenant {
   // we register the number. Meta requires a re-register (with this same PIN)
   // after any display-name change, so it has to outlive onboarding.
   whatsappRegistrationPin     String?
+  // How the number is connected: 'OWN_ACCOUNT' (Embedded Signup, the tenant's
+  // own WABA), 'BOOKLY_HOSTED' (on Bookly's WABA, Meta bills Bookly) or
+  // 'MANUAL' (ids + token pasted in). NULL = not connected. A String, validated
+  // in services/whatsapp-connection.ts, so a new mode needs no migration.
+  whatsappConnectionMode      String?
+  whatsappConnectedAt         DateTime?
+  // User.id of whoever connected it. No FK: the record outlives the user.
+  whatsappConnectedByUserId   String?
+  // The business name customers see in WhatsApp, and Meta's review of it
+  // (name_status: APPROVED, PENDING_REVIEW, DECLINED, ...).
+  whatsappVerifiedName        String?
+  whatsappNameStatus          String?
+  // Hosted onboarding: how and when the last OTP was sent (drives resend
+  // cool-down and the "we sent a code to ..." copy).
+  whatsappCodeMethod          String?
+  whatsappCodeSentAt          DateTime?
+  // Health, refreshed by the whatsapp-health sweeper (services/whatsapp-health.ts).
+  // whatsappMetaStatus is Meta's phone-number `status` (CONNECTED, FLAGGED,
+  // BANNED, ...) and is NOT whatsappNumberStatus, which is Bookly's hosted
+  // onboarding progress.
+  whatsappQualityRating       String?
+  whatsappMessagingLimit      String?
+  whatsappMetaStatus          String?
+  whatsappHealthProblem       String?
+  whatsappHealthCheckedAt     DateTime?
+  // Embedded Signup user tokens can expire; NULL = never / unknown. Hosted
+  // numbers use the platform token and leave this NULL.
+  whatsappTokenExpiresAt      DateTime?
   paystackSecretKey           String? // Encrypted (AES-GCM via crypto.ts)
   paystackPublicKey           String? // Public, plaintext OK
   paymentCurrency             String              @default("NGN") // ISO 4217
@@ -95,6 +123,11 @@ model Tenant {
   facebookPageToken           String? // Encrypted
   instagramUserId             String?             @unique
   instagramUsername           String?
+  // When and by whom the Page (Messenger) / Instagram account was connected.
+  // No FK to User: the record outlives the user.
+  facebookConnectedAt         DateTime?
+  facebookConnectedByUserId   String?
+  instagramConnectedAt        DateTime?
   // The owner asked for the account to be deleted. A person confirms and
   // removes the tenant; this records the ask and shows it in Settings.
   deletionRequestedAt         DateTime?
@@ -1066,6 +1099,20 @@ model WebhookInbox {
   @@index([status, receivedAt])
   @@index([status, nextAttemptAt])
   @@index([status, claimedAt])
+}
+
+// One OTP sent to a Bookly-hosted number's destination phone (start or
+// resend), kept to cap sends per destination (24h) and platform-wide (1h).
+// Platform data, not tenant data: no tenantId, so not tenant-guarded. The
+// destination is a salted SHA-256 of its digits, never the number itself.
+model WhatsappOtpSend {
+  id              String   @id @default(cuid())
+  destinationHash String
+  kind            String // start | resend
+  createdAt       DateTime @default(now())
+
+  @@index([destinationHash, createdAt])
+  @@index([createdAt])
 }
 
 // Things a human must look at. tenantId is null for platform-wide alerts.

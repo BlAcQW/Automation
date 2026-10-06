@@ -10,6 +10,8 @@
  *  - ZodError            -> 400 with field-level messages the UI can show
  *  - Prisma known errors -> 404 / 409 as appropriate, never the raw driver text
  *  - http-errors         -> passed through untouched (fastify-sensible)
+ *  - errors with a string `publicCode` -> passed through with `code` added,
+ *                           whatever the status (see services/api-error.ts)
  *  - anything else       -> 500, logged in full, but the client sees only a
  *                           generic message and the request id
  */
@@ -77,12 +79,26 @@ export default fp(async (app) => {
 
         // --- explicit http errors (fastify-sensible, httpErrors.*) -----------
         const status = error.statusCode ?? 500;
+        // A stable, machine-readable reason a client can branch on (e.g.
+        // HOSTED_NOT_AVAILABLE). Only errors that opt in carry one.
+        const publicCode = (error as { publicCode?: unknown }).publicCode;
+        const coded = typeof publicCode === 'string' ? { code: publicCode } : {};
+        const retryAfterSec = (error as { retryAfterSec?: unknown }).retryAfterSec;
+        if (typeof publicCode === 'string' && typeof retryAfterSec === 'number') {
+            reply.header('Retry-After', String(retryAfterSec));
+        }
         if (status < 500) {
             return reply.status(status).send({
                 statusCode: status,
                 error: error.name ?? 'Error',
+                ...coded,
                 message: error.message,
             });
+        }
+        if (typeof publicCode === 'string') {
+            // A deliberate 5xx with a known cause (e.g. 503 "not available"):
+            // its message is written for the client, so pass it through.
+            return reply.status(status).send({ statusCode: status, error: error.name ?? 'Error', ...coded, message: error.message });
         }
 
         // --- everything else --------------------------------------------------

@@ -29,6 +29,8 @@ import { startDeliverySweeper, dispatchDelivery } from '../services/events/deliv
 import { startWebhookWorker, stopWebhookWorker } from '../services/events/worker.js';
 import { setDeliveryDispatcher } from '../services/events/dispatcher.js';
 import { startRideSweeper } from '../services/rides/sweeper.js';
+import { startWhatsappHealthSweeper } from '../services/whatsapp-health.js';
+import { startHostedNumberSweeper } from '../services/hosted-number-sweeper.js';
 
 export interface BackgroundContext {
     prisma: ExtendedPrismaClient;
@@ -123,6 +125,18 @@ export const BACKGROUND_TASKS: BackgroundTask[] = [
         // is a guarded updateMany claim and the follow-up (seat release, EXPIRY entry, reminder) runs only on count 1.
         name: 'ride-sweeper',
         start: (ctx) => startRideSweeper(ctx.prisma, ctx.log),
+    },
+    {
+        // Every ~6h per connected number: quality, limit, status, token, app subscription -> deduped alerts. Safe in
+        // many processes: each tenant is claimed by updateMany WHERE checkedAt still due; only count 1 checks it.
+        name: 'whatsapp-health-sweeper',
+        start: (ctx) => startWhatsappHealthSweeper(ctx.prisma, ctx.log),
+    },
+    {
+        // Releases Bookly-hosted numbers left unverified >30 min (frees WABA slots) and crashed STARTING claims. Safe in
+        // many processes: each release is updateMany WHERE still pending and stale; only count 1 deletes + audits.
+        name: 'hosted-number-sweeper',
+        start: (ctx) => startHostedNumberSweeper(ctx.prisma, ctx.log),
     },
 ];
 // ---- END REGISTRY ----

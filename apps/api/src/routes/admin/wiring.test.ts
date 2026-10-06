@@ -77,6 +77,13 @@ const TABLE: Row[] = [
     ['GET', '/admin/organisations/t1/api-keys', 'tenants:read'],
     ['POST', '/admin/organisations/t1/api-keys/k1/revoke', 'apikeys:revoke'],
     ['POST', '/admin/organisations/t1/api-keys/revoke-all', 'apikeys:revoke'],
+    ['GET', '/admin/tenants/t1/channels', 'tenants:read'],
+    ['GET', '/admin/tenants/t1/whatsapp', 'tenants:read'],
+    ['POST', '/admin/tenants/t1/whatsapp/disconnect', 'channels:manage'],
+    ['POST', '/admin/tenants/t1/whatsapp/hosted/resend', 'channels:manage'],
+    ['POST', '/admin/tenants/t1/whatsapp/health-check', 'channels:manage'],
+    ['POST', '/admin/tenants/t1/facebook/disconnect', 'channels:manage'],
+    ['POST', '/admin/tenants/t1/instagram/disconnect', 'channels:manage'],
     // /admin/billing/** lives in routes/admin-billing but is part of the same admin surface.
     ['GET', '/admin/billing/event-types', 'billing:read'],
     ['GET', '/admin/billing/tenants', 'billing:read'],

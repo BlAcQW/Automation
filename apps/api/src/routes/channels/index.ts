@@ -5,9 +5,9 @@ import { audit } from '../../services/audit.js';
 import {
     discoverPages,
     subscribePageToWebhooks,
-    unsubscribePage,
     PageConnectError,
 } from '../../services/meta-pages.js';
+import { disconnectFacebookPage } from '../../services/facebook-connection.js';
 
 /**
  * Connecting Instagram and Facebook Messenger.
@@ -31,28 +31,39 @@ const channelRoutes: FastifyPluginAsync = async (fastify) => {
                 facebookPageName: true,
                 instagramUserId: true,
                 instagramUsername: true,
+                whatsappConnectedAt: true,
+                whatsappConnectionMode: true,
+                facebookConnectedAt: true,
+                instagramConnectedAt: true,
             },
         });
 
         const whatsappAwaitingCode =
-            !!tenant?.whatsappHosted && tenant.whatsappNumberStatus === 'PENDING_CODE';
+            !!tenant?.whatsappHosted && (tenant.whatsappNumberStatus === 'PENDING_CODE' || tenant.whatsappNumberStatus === 'VERIFIED');
+        const whatsappConnected = !!tenant?.whatsappPhoneNumberId && !whatsappAwaitingCode;
 
         return {
             whatsapp: {
-                connected: !!tenant?.whatsappPhoneNumberId && !whatsappAwaitingCode,
+                connected: whatsappConnected,
                 label: tenant?.whatsappDisplayNumber ?? null,
                 awaitingCode: whatsappAwaitingCode,
+                mode: tenant?.whatsappPhoneNumberId ? tenant.whatsappConnectionMode ?? (tenant.whatsappHosted ? 'BOOKLY_HOSTED' : 'OWN_ACCOUNT') : null,
+                connectedAt: whatsappConnected ? tenant?.whatsappConnectedAt ?? null : null,
                 // WhatsApp is the only channel Meta charges for.
                 billedByMeta: true,
             },
             messenger: {
                 connected: !!tenant?.facebookPageId,
                 label: tenant?.facebookPageName ?? null,
+                pageName: tenant?.facebookPageName ?? null,
+                connectedAt: tenant?.facebookPageId ? tenant.facebookConnectedAt ?? null : null,
                 billedByMeta: false,
             },
             instagram: {
                 connected: !!tenant?.instagramUserId,
                 label: tenant?.instagramUsername ? `@${tenant.instagramUsername}` : null,
+                username: tenant?.instagramUsername ?? null,
+                connectedAt: tenant?.instagramUserId ? tenant.instagramConnectedAt ?? null : null,
                 // Instagram rides on the Page, so it cannot be connected alone.
                 requiresPage: true,
                 billedByMeta: false,
@@ -173,6 +184,7 @@ const channelRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const linkInstagram = body.includeInstagram && !!chosen.instagramUserId;
+        const now = new Date();
 
         await fastify.prisma.tenant.update({
             where: { id: request.user.tenantId },
@@ -180,8 +192,11 @@ const channelRoutes: FastifyPluginAsync = async (fastify) => {
                 facebookPageId: chosen.pageId,
                 facebookPageName: chosen.pageName,
                 facebookPageToken: encrypt(chosen.pageToken),
+                facebookConnectedAt: now,
+                facebookConnectedByUserId: request.user.userId,
                 instagramUserId: linkInstagram ? chosen.instagramUserId : null,
                 instagramUsername: linkInstagram ? chosen.instagramUsername ?? null : null,
+                instagramConnectedAt: linkInstagram ? now : null,
             },
         });
 
@@ -212,31 +227,9 @@ const channelRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.forbidden('Only owner can disconnect channels');
         }
 
-        const tenant = await fastify.prisma.tenant.findUnique({
-            where: { id: request.user.tenantId },
-            select: { facebookPageId: true, facebookPageToken: true },
-        });
-
-        // Best effort: a Meta-side failure must never trap a tenant in a
-        // connection they have asked to end.
-        if (tenant?.facebookPageId && tenant.facebookPageToken) {
-            try {
-                await unsubscribePage(tenant.facebookPageId, decrypt(tenant.facebookPageToken));
-            } catch (err) {
-                fastify.log.error({ err }, 'page unsubscribe failed — subscription may need manual cleanup');
-            }
-        }
-
-        await fastify.prisma.tenant.update({
-            where: { id: request.user.tenantId },
-            data: {
-                facebookPageId: null,
-                facebookPageName: null,
-                facebookPageToken: null,
-                instagramUserId: null,
-                instagramUsername: null,
-            },
-        });
+        // Best effort on Meta's side: a failure there must never trap a tenant
+        // in a connection they have asked to end.
+        const outcome = await disconnectFacebookPage(fastify.prisma, request.user.tenantId, request.log);
 
         await audit({
             prisma: fastify.prisma,
@@ -244,6 +237,7 @@ const channelRoutes: FastifyPluginAsync = async (fastify) => {
             actorType: 'USER',
             actorId: request.user.userId,
             tenantId: request.user.tenantId,
+            metadata: { pageId: outcome.pageId, pageName: outcome.pageName, instagram: outcome.instagramUsername, metaCleanup: outcome.metaCleanup, by: 'owner' },
             ipAddress: request.ip,
         });
 

@@ -1,19 +1,18 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { completeEmbeddedSignup, EmbeddedSignupError } from './meta-embedded-signup';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+    chooseWaba,
+    choosePhone,
+    completeEmbeddedSignup,
+    EmbeddedSignupError,
+    grantedWabaIds,
+} from './meta-embedded-signup.js';
 
-// The service reads config at call-time; the test env defaults from
-// src/config/index.ts cover JWT/encryption but not WhatsApp app id/secret.
-// Set them BEFORE importing-via-test-time so the guard inside the service
-// doesn't short-circuit on the config step.
-beforeEach(() => {
-    process.env.WHATSAPP_APP_ID = 'test-app-id';
-    process.env.WHATSAPP_APP_SECRET = 'test-app-secret';
-    process.env.WHATSAPP_REDIRECT_URI = 'http://localhost:3000/whatsapp';
-});
+// The test env defaults (src/config/index.ts) set WHATSAPP_APP_ID=test-app-id.
+const APP_ID = 'test-app-id';
 
-afterEach(() => {
-    vi.restoreAllMocks();
-});
+afterEach(() => { vi.restoreAllMocks(); });
+
+const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
 
 function mockFetchSequence(responses: Array<Response | Error>) {
     let i = 0;
@@ -25,161 +24,145 @@ function mockFetchSequence(responses: Array<Response | Error>) {
     });
 }
 
-describe('completeEmbeddedSignup — happy path', () => {
-    it('runs five Meta calls and returns the resolved IDs (granular WABA path)', async () => {
-        const fetchSpy = mockFetchSequence([
-            new Response(JSON.stringify({ access_token: 'EAAG...token', expires_in: 60 * 60 * 24 * 60 }), { status: 200 }),
-            // debug_token — supplies granular_scopes with the WABA target_id
-            // so we skip the /me/businesses query entirely.
-            new Response(
-                JSON.stringify({
-                    data: {
-                        granular_scopes: [
-                            { scope: 'whatsapp_business_management', target_ids: ['waba-99'] },
-                            { scope: 'whatsapp_business_messaging', target_ids: ['waba-99'] },
-                        ],
-                    },
-                }),
-                { status: 200 },
-            ),
-            new Response(
-                JSON.stringify({
-                    data: [
-                        { id: 'pn-77', display_phone_number: '+1 555 0100', verified_name: 'Acme Co' },
-                    ],
-                }),
-                { status: 200 },
-            ),
-            // subscribed_apps
-            new Response(JSON.stringify({ success: true }), { status: 200 }),
-            // register
-            new Response(JSON.stringify({ success: true }), { status: 200 }),
-        ]);
+const debug = (over: Record<string, unknown> = {}) => ok({
+    data: {
+        app_id: APP_ID, is_valid: true, expires_at: 0,
+        granular_scopes: [
+            { scope: 'whatsapp_business_management', target_ids: ['waba-99'] },
+            { scope: 'whatsapp_business_messaging', target_ids: ['waba-99'] },
+        ],
+        ...over,
+    },
+});
+const phones = (list: Array<{ id: string }>) => ok({ data: list.map((p) => ({ display_phone_number: '+1 555 0100', verified_name: 'Acme Co', ...p })) });
 
-        // Re-import the service so it re-reads our env. The module is cached
-        // across tests, but the function reads `config` which itself reads
-        // process.env at module load. In practice for these tests, the
-        // beforeEach sets env early enough.
-        const { completeEmbeddedSignup } = await import('./meta-embedded-signup.js');
+describe('completeEmbeddedSignup — happy path', () => {
+    it('exchanges by POST form, checks the token, uses the granted WABA and registers with a random PIN', async () => {
+        const fetchSpy = mockFetchSequence([
+            ok({ access_token: 'EAAGtoken1234567890', expires_in: 60 * 60 * 24 * 60 }),
+            debug(),
+            phones([{ id: 'pn-77' }]),
+            ok({ success: true }),
+            ok({ success: true }),
+        ]);
         const result = await completeEmbeddedSignup('test-code');
 
-        expect(result.accessToken).toBe('EAAG...token');
-        expect(result.wabaId).toBe('waba-99');
-        expect(result.phoneNumberId).toBe('pn-77');
-        expect(result.displayPhoneNumber).toBe('+1 555 0100');
-        expect(result.verifiedName).toBe('Acme Co');
+        expect(result).toMatchObject({ accessToken: 'EAAGtoken1234567890', wabaId: 'waba-99', phoneNumberId: 'pn-77', displayPhoneNumber: '+1 555 0100', verifiedName: 'Acme Co' });
         expect(result.tokenExpiresAt).toBeInstanceOf(Date);
-        expect(fetchSpy).toHaveBeenCalledTimes(5);
+        expect(result.registrationPin).toMatch(/^\d{6}$/);
 
-        // Step 1 — token exchange URL contains the expected query params.
-        const tokenCall = fetchSpy.mock.calls[0][0] as string;
-        expect(tokenCall).toContain('/oauth/access_token');
-        expect(tokenCall).toContain('client_id=test-app-id');
-        expect(tokenCall).toContain('client_secret=test-app-secret');
-        expect(tokenCall).toContain('code=test-code');
-
-        // Step 1b — debug_token inspects scopes and returns the WABA target_id.
-        const debugCall = fetchSpy.mock.calls[1][0] as string;
-        expect(debugCall).toContain('/debug_token');
-
-        // /me/businesses is NOT called when the granular target_id is present.
-        for (const call of fetchSpy.mock.calls) {
-            expect(call[0]).not.toContain('/me?fields=businesses');
+        // Secrets travel in POST bodies, never URLs.
+        const [tokenUrl, tokenInit] = fetchSpy.mock.calls[0] as [string, RequestInit];
+        expect(tokenUrl).toMatch(/\/oauth\/access_token$/);
+        expect(tokenInit.method).toBe('POST');
+        expect(String(tokenInit.body)).toContain('client_secret=');
+        expect(String(tokenInit.body)).toContain('code=test-code');
+        const [debugUrl, debugInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
+        expect(debugUrl).toMatch(/\/debug_token$/);
+        expect(String(debugInit.body)).toContain('input_token=EAAGtoken1234567890');
+        for (const [url] of fetchSpy.mock.calls) {
+            expect(String(url)).not.toMatch(/client_secret|input_token|access_token=/);
+            expect(String(url)).not.toContain('/me?fields=businesses');
         }
 
-        // Step 4 — subscribe is a POST (index 3).
-        const subscribeCall = fetchSpy.mock.calls[3];
-        expect(subscribeCall[0]).toContain('/waba-99/subscribed_apps');
-        expect((subscribeCall[1] as RequestInit | undefined)?.method).toBe('POST');
+        const [registerUrl, registerInit] = fetchSpy.mock.calls[4] as [string, RequestInit];
+        expect(registerUrl).toContain('/pn-77/register');
+        expect(String(registerInit.body)).toContain(`"pin":"${result.registrationPin}"`);
+    });
 
-        // Step 5 — register the phone number for Cloud API (index 4).
-        const registerCall = fetchSpy.mock.calls[4];
-        expect(registerCall[0]).toContain('/pn-77/register');
-        const registerInit = registerCall[1] as RequestInit | undefined;
-        expect(registerInit?.method).toBe('POST');
-        expect(String(registerInit?.body)).toContain('"messaging_product":"whatsapp"');
-        expect(String(registerInit?.body)).toMatch(/"pin":"\d{6}"/);
+    it('uses the session hint when it is among the granted WABAs and that WABA has the number', async () => {
+        mockFetchSequence([
+            ok({ access_token: 'tok' }),
+            debug({ granular_scopes: [{ scope: 'whatsapp_business_management', target_ids: ['w1', 'w2'] }] }),
+            phones([{ id: 'p1' }, { id: 'p2' }]),
+            ok({ success: true }),
+            ok({ success: true }),
+        ]);
+        const r = await completeEmbeddedSignup('c', undefined, { wabaId: 'w2', phoneNumberId: 'p2' });
+        expect([r.wabaId, r.phoneNumberId]).toEqual(['w2', 'p2']);
+    });
+
+    it('two signups never share a PIN by construction (random per number)', async () => {
+        const pins = new Set<string>();
+        for (let i = 0; i < 5; i += 1) {
+            mockFetchSequence([ok({ access_token: 'tok' }), debug(), phones([{ id: 'p' }]), ok({}), ok({})]);
+            pins.add((await completeEmbeddedSignup('c')).registrationPin);
+            vi.restoreAllMocks();
+        }
+        expect(pins.size).toBeGreaterThan(1);
     });
 });
 
-describe('completeEmbeddedSignup — error paths', () => {
-    it('throws token_exchange error on Meta 400', async () => {
-        mockFetchSequence([
-            new Response('{"error":{"message":"bad code"}}', { status: 400 }),
-        ]);
-        await expect(completeEmbeddedSignup('bad')).rejects.toBeInstanceOf(EmbeddedSignupError);
-        await expect(completeEmbeddedSignup('bad')).rejects.toMatchObject({
-            step: 'token_exchange',
-        });
+describe('completeEmbeddedSignup — fails closed', () => {
+    it('token_exchange error on Meta 400', async () => {
+        mockFetchSequence([new Response('{"error":{"message":"bad code"}}', { status: 400 })]);
+        await expect(completeEmbeddedSignup('bad')).rejects.toMatchObject({ step: 'token_exchange' });
     });
 
-    it('throws waba_discovery error when no business owns a WABA (fallback path)', async () => {
-        // debug_token returns scopes but NO target_ids → fallback to /me/businesses,
-        // which then has no WABA → final "no WABA found" error.
-        mockFetchSequence([
-            new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 }),
-            new Response(JSON.stringify({ data: { scopes: ['public_profile'] } }), { status: 200 }),
-            new Response(
-                JSON.stringify({ businesses: { data: [{ id: 'biz1' }] } }),
-                { status: 200 },
-            ),
-        ]);
-        await expect(completeEmbeddedSignup('code')).rejects.toMatchObject({
-            step: 'waba_discovery',
-        });
+    it('debug_token failing is an error (no "skip the check" fallback)', async () => {
+        mockFetchSequence([ok({ access_token: 'tok' }), new Response('{}', { status: 500 })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'token_check' });
     });
 
-    it('throws phone_discovery error when WABA has zero numbers', async () => {
-        mockFetchSequence([
-            new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 }),
-            new Response(
-                JSON.stringify({
-                    data: {
-                        granular_scopes: [
-                            { scope: 'whatsapp_business_management', target_ids: ['waba1'] },
-                        ],
-                    },
-                }),
-                { status: 200 },
-            ),
-            new Response(JSON.stringify({ data: [] }), { status: 200 }),
-        ]);
-        await expect(completeEmbeddedSignup('code')).rejects.toMatchObject({
-            step: 'phone_discovery',
-        });
+    it('a token issued to another app, or an invalid one, is refused', async () => {
+        mockFetchSequence([ok({ access_token: 'tok' }), debug({ app_id: 'someone-else' })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'token_check' });
+        vi.restoreAllMocks();
+        mockFetchSequence([ok({ access_token: 'tok' }), debug({ is_valid: false })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'token_check' });
     });
 
-    it('throws subscribe_app error when Meta refuses the subscription', async () => {
-        mockFetchSequence([
-            new Response(JSON.stringify({ access_token: 'tok' }), { status: 200 }),
-            new Response(
-                JSON.stringify({
-                    data: {
-                        granular_scopes: [
-                            { scope: 'whatsapp_business_management', target_ids: ['waba1'] },
-                        ],
-                    },
-                }),
-                { status: 200 },
-            ),
-            new Response(
-                JSON.stringify({
-                    data: [{ id: 'pn1', display_phone_number: '+1', verified_name: 'X' }],
-                }),
-                { status: 200 },
-            ),
-            new Response('subscribe rejected', { status: 403 }),
-        ]);
-        await expect(completeEmbeddedSignup('code')).rejects.toMatchObject({
-            step: 'subscribe_app',
-        });
+    it('a hinted WABA that was not granted is refused before any WABA call', async () => {
+        const spy = mockFetchSequence([ok({ access_token: 'tok' }), debug()]);
+        await expect(completeEmbeddedSignup('c', undefined, { wabaId: 'someone-elses-waba' })).rejects.toMatchObject({ step: 'waba_discovery' });
+        expect(spy).toHaveBeenCalledTimes(2);
     });
 
-    it('surfaces network errors with the step that was running', async () => {
+    it('no granted WABA is an error (no /me/businesses fallback)', async () => {
+        const spy = mockFetchSequence([ok({ access_token: 'tok' }), debug({ granular_scopes: [] })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'waba_discovery' });
+        expect(spy).toHaveBeenCalledTimes(2);
+    });
+
+    it('a hinted number not on that WABA is refused; several numbers and no hint is refused', async () => {
+        mockFetchSequence([ok({ access_token: 'tok' }), debug(), phones([{ id: 'p1' }])]);
+        await expect(completeEmbeddedSignup('c', undefined, { phoneNumberId: 'p-other' })).rejects.toMatchObject({ step: 'phone_discovery' });
+        vi.restoreAllMocks();
+        mockFetchSequence([ok({ access_token: 'tok' }), debug(), phones([{ id: 'p1' }, { id: 'p2' }])]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'phone_discovery' });
+    });
+
+    it('subscribe_app error when Meta refuses the subscription', async () => {
+        mockFetchSequence([ok({ access_token: 'tok' }), debug(), phones([{ id: 'p1' }]), new Response('rejected', { status: 403 })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'subscribe_app' });
+    });
+
+    it('network errors carry the step that was running', async () => {
         mockFetchSequence([new Error('connection reset')]);
-        await expect(completeEmbeddedSignup('code')).rejects.toMatchObject({
-            step: 'token_exchange',
-            message: expect.stringContaining('network_error'),
-        });
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'token_exchange', message: expect.stringContaining('network_error') });
+    });
+
+    it('error details are scrubbed of token-shaped text', () => {
+        const e = new EmbeddedSignupError('token_check', 'http_400: bad token EAAGabcdefghijklmnop12345 for access_token=secretvalue');
+        expect(e.details).not.toMatch(/EAAGabcdef|secretvalue/);
+    });
+});
+
+describe('pure choosers', () => {
+    it('grantedWabaIds unions the WhatsApp scopes only', () => {
+        expect(grantedWabaIds({ granular_scopes: [
+            { scope: 'whatsapp_business_management', target_ids: ['a'] },
+            { scope: 'whatsapp_business_messaging', target_ids: ['a', 'b'] },
+            { scope: 'pages_show_list', target_ids: ['page'] },
+        ] })).toEqual(['a', 'b']);
+    });
+    it('chooseWaba never picks "the first" of several', () => {
+        expect(chooseWaba(['a'], undefined)).toBe('a');
+        expect(() => chooseWaba(['a', 'b'], undefined)).toThrow(EmbeddedSignupError);
+        expect(chooseWaba(['a', 'b'], 'b')).toBe('b');
+    });
+    it('choosePhone never picks "the first" of several', () => {
+        expect(() => choosePhone([{ id: '1' }, { id: '2' }], undefined)).toThrow(EmbeddedSignupError);
+        expect(choosePhone([{ id: '1' }, { id: '2' }], '2')).toEqual({ id: '2' });
     });
 });

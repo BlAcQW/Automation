@@ -210,6 +210,14 @@ PLATFORM_FEE_BPS=0        # basis points. 250 = 2.5%. 0 = no fee.
 Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
 `NEXT_PUBLIC_WHATSAPP_APP_ID`.
 
+- [ ] **TURBO's console connecting WhatsApp (Embedded Signup v4) — before 15 Oct 2026:**
+      in the Meta app, create a **v4** Embedded Signup configuration (Facebook Login
+      for Business -> Configurations, WhatsApp Cloud API selected) and put its id in
+      `NEXT_PUBLIC_WHATSAPP_CONFIG_ID` (web) **and** `WHATSAPP_CONFIG_ID` (API); add
+      TURBO's console domain to *Allowed domains for the JavaScript SDK* and its
+      https URL to *Valid OAuth redirect URIs*. App ID and config ID are public.
+      Details: docs/API.md, "Connect WhatsApp from your own app".
+
 ---
 
 ## 5. Decisions nobody can make for you

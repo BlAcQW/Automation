@@ -11,6 +11,7 @@
  *             platform payout switches, audit log, read-only tenant/messaging views.
  *   SUPPORT   tenants, users, conversations, alerts, support access, the
  *             per-tenant outbound switch, revoking an organisation's API keys,
+ *             managing its channels (disconnect, resend OTP, health check),
  *             read-only flows. No money, no payout switches, no admin management.
  *   READONLY  GET requests for read permissions only. Nothing else, ever.
  *
@@ -53,6 +54,10 @@ export const ALL_PERMISSIONS = [
     'security:policy',
     // Revoke an organisation's API keys (one or all). Reading them is tenants:read.
     'apikeys:revoke',
+    // Manage an organisation's channels: disconnect WhatsApp / Facebook /
+    // Instagram, resend a hosted-number OTP, run a WhatsApp health check.
+    // Reading channel status is tenants:read.
+    'channels:manage',
 ] as const;
 export type AdminPermission = (typeof ALL_PERMISSIONS)[number];
 
@@ -109,6 +114,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, ReadonlySet<AdminPermission>> =
         'conversations:handoff',
         'outbound:switch',
         'apikeys:revoke',
+        'channels:manage',
         'flows:read',
     ]),
     READONLY: new Set<AdminPermission>(READ_ONLY_PERMISSIONS),

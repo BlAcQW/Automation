@@ -20,6 +20,7 @@ webhooks, and your app answers and acts through this API with a scoped key.
 8. [The external app flow](#the-external-app-flow)
 9. [Payments for your own entities](#payments-for-your-own-entities)
 10. [Managing keys and the external app](#managing-keys-and-the-external-app)
+11. [Connect WhatsApp from your own app](#connect-whatsapp-from-your-own-app)
 
 ---
 
@@ -733,3 +734,305 @@ Saving the external app maintains one managed webhook subscription (description
 Setting `isActive: false` or deleting the app switches delivery off; the
 subscription row and its delivery history are kept. It counts toward the
 organisation's webhook limit.
+
+---
+
+## Connect WhatsApp from your own app
+
+An organisation with its own console (for example TURBO's, on its own domain)
+can connect its WhatsApp number **through Bookly's API**, without opening the
+Bookly dashboard. These are dashboard endpoints, not `/v1` API-key endpoints:
+call them from the browser with the staff member's **Bookly login** (`Authorization:
+Bearer <access token>`, refreshed through `/auth/refresh` with the refresh cookie).
+Your console's origin must be in the API's `CORS_ORIGINS`, with
+`CROSS_SITE_AUTH=true` so the refresh cookie works cross-site.
+
+Two ways to connect:
+
+| | **Own Meta account (primary)** | **Bookly-hosted number (backup)** |
+|---|---|---|
+| How | Meta's Embedded Signup popup (v4) in your console | Type the number, enter the OTP Meta sends |
+| WhatsApp Business Account | The organisation's own | Bookly's |
+| Who Meta bills | The organisation (it adds a payment method in Meta) | **Bookly's WABA**; Bookly bills the organisation |
+| `mode` | `OWN_ACCOUNT` | `BOOKLY_HOSTED` |
+| Availability | `embeddedSignupAvailable` in status | `hostedAvailable` in status (off until Bookly sets `PLATFORM_WABA_ID` + `PLATFORM_WHATSAPP_TOKEN`) |
+
+Either way, inbound messages are routed to the organisation by the number's
+`phone_number_id`, and every outbound message counts against **that
+organisation's** plan quota and obeys its pause switches. A hosted number is not
+shared: it belongs to exactly one organisation.
+
+**Roles.** Any signed-in user can read the status. Only the **OWNER** can
+connect or disconnect (`403 OWNER_ONLY` otherwise).
+
+### Errors
+
+Failures return `{ "statusCode", "error", "code", "message" }`. Branch on `code`;
+`message` is human copy for the owner and may change.
+
+| `code` | Status | Meaning |
+|---|---|---|
+| `OWNER_ONLY` | 403 | Signed-in user is not the owner. |
+| `HOSTED_NOT_AVAILABLE` | 503 | Bookly-hosted numbers are switched off on this server. Offer Embedded Signup. |
+| `HOSTED_CAPACITY_FULL` | 503 | Bookly's WABA is at Meta's 20-number cap. |
+| `EMBEDDED_SIGNUP_NOT_AVAILABLE` | 503 | The Meta app is not configured on this server. |
+| `ALREADY_CONNECTED` | 409 | A live number is connected; disconnect first. |
+| `NUMBER_IN_USE` | 409 | That number is connected to another Bookly organisation. |
+| `NUMBER_ALREADY_ON_WHATSAPP` | 409 | The number has a WhatsApp / WhatsApp Business app account; delete it on the phone first. |
+| `INVALID_NUMBER` | 400 | The number does not look right. |
+| `NO_PENDING_VERIFICATION` | 409 | No hosted number is waiting for a code. |
+| `INVALID_OTP` | 400 | Wrong or missing code. |
+| `TOO_MANY_ATTEMPTS` | 429 | Our rate limit or Meta's; wait (see `Retry-After` when present). |
+| `RESEND_TOO_SOON` | 429 | A code was sent under 60 seconds ago; `Retry-After` says how long to wait. |
+| `CODE_SEND_FAILED` | 502 | Meta could not deliver the code; try `VOICE`. |
+| `META_ERROR` | 502 | Meta refused a step; start again. |
+| `NOT_CONNECTED` | 409 | (admin actions) nothing to act on. |
+| `MANUAL_CREDENTIALS_INVALID` | 400 | Manual connect: the token is not Bookly's app's, or the number is not on that account (or is a Bookly-hosted number). |
+| `COUNTRY_NOT_SUPPORTED` | 400 | Hosted numbers are not offered in that country (default allowlist: Ghana, +233). |
+| `EMAIL_NOT_VERIFIED` | 403 | The owner must verify their email before starting a hosted number. |
+| `DESTINATION_LIMIT` | 429 | Too many codes sent to that phone number in 24 hours. |
+| `HOSTED_BUSY` | 429 | Platform-wide hourly cap on hosted codes reached; try later. |
+| `START_IN_PROGRESS` | 409 | Another hosted start for this organisation is running. |
+
+Validation failures are `400` with `fields` (no `code`).
+
+### `GET /whatsapp/status`
+
+```json
+{
+  "connected": true,
+  "state": "CONNECTED",
+  "mode": "OWN_ACCOUNT",
+  "phoneNumberId": "1234567890",
+  "displayNumber": "+233 30 000 0000",
+  "displayPhoneNumber": "+233 30 000 0000",
+  "verifiedName": "TURBO Rides",
+  "nameStatus": "APPROVED",
+  "hosted": false,
+  "numberStatus": null,
+  "awaitingCode": false,
+  "connectedAt": "2026-10-06T09:00:00.000Z",
+  "billedBy": "ORGANISATION",
+  "pending": null,
+  "health": {
+    "qualityRating": "GREEN",
+    "messagingLimit": "TIER_1K",
+    "metaStatus": "CONNECTED",
+    "problem": null,
+    "checkedAt": "2026-10-06T12:00:00.000Z",
+    "tokenExpiresAt": null
+  },
+  "hostedAvailable": false,
+  "hostedUnavailableReason": "NOT_CONFIGURED",
+  "embeddedSignupAvailable": true,
+  "canManage": true
+}
+```
+
+- `state`: `NOT_CONNECTED` | `PENDING_CODE` (hosted, OTP sent) | `REGISTERING`
+  (hosted, code accepted, registration not finished: call verify again with no
+  code) | `CONNECTED` | `PROBLEM` (connected, but the last health check found a
+  problem; see `health.problem`).
+- `mode`: `OWN_ACCOUNT` | `BOOKLY_HOSTED` | `MANUAL` | `null`.
+- `billedBy`: `ORGANISATION` (Meta bills the organisation) | `BOOKLY` (hosted) | `null`.
+- `pending` (hosted, before it is live): `{ "step": "CODE_SENT" | "CODE_VERIFIED",
+  "displayNumber", "codeMethod": "SMS" | "VOICE", "codeSentAt", "resendAvailableAt" }`.
+- `health.problem`: `TOKEN_INVALID`, `TOKEN_EXPIRED`, `APP_UNSUBSCRIBED`,
+  `NUMBER_NOT_FOUND`, `NUMBER_BANNED`, `NUMBER_RESTRICTED`, `NUMBER_FLAGGED`,
+  `NUMBER_DISCONNECTED`, `NUMBER_DELETED`, `PLATFORM_TOKEN_MISSING`, or `null`.
+  Refreshed about every 6 hours.
+- `hostedUnavailableReason`: `NOT_CONFIGURED` or `null`.
+
+Facebook Messenger and Instagram status for the same organisation:
+`GET /channels/status` returns
+`{ whatsapp: { connected, label, awaitingCode, mode, connectedAt, billedByMeta },
+messenger: { connected, label, pageName, connectedAt, billedByMeta },
+instagram: { connected, label, username, connectedAt, requiresPage, billedByMeta } }`.
+
+### Own Meta account: Embedded Signup v4
+
+**1. Get the launch options.** `GET /whatsapp/embedded-signup/config` (owner):
+
+```json
+{
+  "available": true,
+  "unavailableReason": null,
+  "appId": "1234567890",
+  "configId": "9876543210",
+  "sdkVersion": "v25.0",
+  "login": {
+    "config_id": "9876543210",
+    "response_type": "code",
+    "override_default_response_type": true,
+    "extras": {
+      "setup": {
+        "business": { "name": "TURBO Rides", "email": "owner@turbo.example", "address": { "country": "GH" }, "timezone": "UTC+00:00" },
+        "phone": { "displayName": "TURBO Rides", "category": "TRAVEL", "description": "" }
+      }
+    }
+  },
+  "sessionEvent": {
+    "origins": ["https://www.facebook.com", "https://web.facebook.com", "https://business.facebook.com"],
+    "type": "WA_EMBEDDED_SIGNUP"
+  },
+  "completePath": "/whatsapp/embedded-signup"
+}
+```
+
+`appId` and `configId` are public values; the app secret never leaves Bookly.
+`sessionEvent.origins` is the exact list of origins the popup posts from:
+accept a `message` event only if `event.origin` is **exactly** one of them
+(set membership; suffix checks such as `endsWith('facebook.com')` would also
+accept `evilfacebook.com`).
+`setup` prefills Meta's screens from what Bookly knows (fields it does not know
+are omitted; `category` is `TRAVEL` for rides, `RETAIL` for product shops,
+`PROF_SERVICES` otherwise). You may merge your own values into `setup` before
+launching. In v4 the **configuration** (`config_id`) decides the version and
+products, so do **not** send `extras.version`, `sessionInfoVersion` or
+`featureType`.
+
+**2. Launch.** Load `https://connect.facebook.net/en_US/sdk.js`, then:
+
+```js
+FB.init({ appId: cfg.appId, cookie: true, xfbml: true, version: cfg.sdkVersion });
+
+let sessionInfo;
+window.addEventListener('message', (event) => {
+  if (!cfg.sessionEvent.origins.includes(event.origin)) return; // exact match only, never endsWith
+  try {
+    const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    if (data.type === cfg.sessionEvent.type) sessionInfo = data; // { type, event, data: { phone_number_id, waba_id, business_id, ... } }
+  } catch {}
+});
+
+FB.login((response) => {
+  const code = response.authResponse?.code;   // valid for about 30 seconds: post it at once
+  if (!code) return; // cancelled
+  // The message event usually lands first; the dashboard waits ~300 ms in case it does not.
+  fetch(`${API}/whatsapp/embedded-signup`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, sessionInfo }),
+  });
+}, cfg.login);
+```
+
+**3. Complete.** `POST /whatsapp/embedded-signup` (owner). Body:
+
+```json
+{ "code": "AQB...", "sessionInfo": { "type": "WA_EMBEDDED_SIGNUP", "event": "FINISH", "data": { "phone_number_id": "1234567890", "waba_id": "555", "business_id": "777" } } }
+```
+
+Also accepted (v2/v3 transition): flat `waba_id` / `phone_number_id` or
+`wabaId` / `phoneNumberId`, or just `{ "code" }` (Bookly then takes the first
+WABA and number the token can see). `redirectUri` is only for the native-app
+WebView flow. A `sessionInfo.event` of `CANCEL` is refused with `META_ERROR`.
+
+Bookly exchanges the code for the business token (stored encrypted, never
+returned) and inspects it (mandatory, fails closed): it must be valid and issued
+to Bookly's app. The WABA must be one the token was granted
+(`whatsapp_business_management` / `whatsapp_business_messaging` targets) and
+the number must be on that WABA. If the token was granted several WABAs, or the
+WABA has several numbers, the session's `waba_id` / `phone_number_id` are
+required: Bookly never guesses "the first one". It then subscribes its app to
+the WABA and registers the number for Cloud API with a random per-number PIN
+(stored encrypted). Response:
+
+```json
+{ "success": true, "mode": "OWN_ACCOUNT", "displayNumber": "+233 30 000 0000", "verifiedName": "TURBO Rides", "connectedAt": "2026-10-06T09:00:00.000Z", "status": { "...": "same shape as GET /whatsapp/status" } }
+```
+
+Errors: `META_ERROR`, `NUMBER_IN_USE`, `ALREADY_CONNECTED` (a live Bookly-hosted
+number exists; a hosted number still waiting for its code is replaced),
+`EMBEDDED_SIGNUP_NOT_AVAILABLE`, `TOO_MANY_ATTEMPTS` (10 per minute).
+
+Afterwards the organisation must add a payment method to its WhatsApp Business
+Account in Meta (Meta bills it directly).
+
+### Bookly-hosted number (backup)
+
+Check `hostedAvailable` first; when `false` every hosted call answers
+`503 HOSTED_NOT_AVAILABLE`. Guard rails, because Meta bills Bookly for these:
+
+- the owner's email must be verified (`EMAIL_NOT_VERIFIED`);
+- only allowlisted countries (`HOSTED_WHATSAPP_COUNTRIES`, default `233`; `COUNTRY_NOT_SUPPORTED`);
+- at most 5 codes (start + resend) per destination number per 24 hours
+  (`DESTINATION_LIMIT`) and 30 platform-wide per hour (`HOSTED_BUSY`);
+- one start at a time per organisation (`START_IN_PROGRESS`);
+- if Meta cannot report how many hosted slots are used, start is refused (`META_ERROR`);
+- a number not verified within **30 minutes** of its last code is released
+  (removed from Bookly's WABA, status back to `NOT_CONNECTED`, owner notified).
+
+**`POST /whatsapp/hosted/start`** (owner; 5 per 10 minutes)
+
+```json
+{ "countryCode": "233", "localNumber": "024 123 4567", "codeMethod": "SMS", "displayName": "TURBO Rides" }
+```
+
+`codeMethod`: `SMS` (default) or `VOICE`. `displayName` (3-100 chars) is the
+business name customers see; it defaults to the organisation name and Meta
+reviews it (its approval shows as `nameStatus` in status once checked). The
+leading trunk `0` is stripped. Calling `start` again while a number is still
+waiting for its code replaces that number. Response:
+
+```json
+{ "success": true, "status": "PENDING_CODE", "step": "CODE_SENT", "displayNumber": "+233241234567", "verifiedName": "TURBO Rides", "codeMethod": "SMS", "codeSentAt": "2026-10-06T09:00:00.000Z", "resendAvailableAt": "2026-10-06T09:01:00.000Z" }
+```
+
+Errors: `ALREADY_CONNECTED`, `START_IN_PROGRESS`, `HOSTED_CAPACITY_FULL`, `INVALID_NUMBER`,
+`COUNTRY_NOT_SUPPORTED`, `EMAIL_NOT_VERIFIED`, `DESTINATION_LIMIT`, `HOSTED_BUSY`,
+`NUMBER_ALREADY_ON_WHATSAPP`, `CODE_SEND_FAILED`, `TOO_MANY_ATTEMPTS`, `META_ERROR`.
+
+**`POST /whatsapp/hosted/resend`** (owner; 3 per 10 minutes, and not within 60 s of the last code)
+
+```json
+{ "codeMethod": "VOICE" }
+```
+
+Response: `{ "success": true, "codeMethod": "VOICE", "codeSentAt": "...", "resendAvailableAt": "..." }`.
+Errors: `NO_PENDING_VERIFICATION`, `RESEND_TOO_SOON` (with `Retry-After`),
+`DESTINATION_LIMIT`, `HOSTED_BUSY`, `CODE_SEND_FAILED`, `TOO_MANY_ATTEMPTS`.
+
+**`POST /whatsapp/hosted/verify`** (owner; 6 per 10 minutes)
+
+```json
+{ "code": "123456" }
+```
+
+Response: `{ "success": true, "status": "REGISTERED", "mode": "BOOKLY_HOSTED", "displayNumber": "+233241234567", "verifiedName": "TURBO Rides", "connectedAt": "..." }`.
+If the code was accepted but registration with Meta failed, you get
+`META_ERROR` and `state` becomes `REGISTERING`; call verify again **without** a
+code. Errors: `INVALID_OTP`, `NO_PENDING_VERIFICATION`, `TOO_MANY_ATTEMPTS`, `META_ERROR`.
+
+### `POST /whatsapp/connect` (manual fallback)
+
+Owner, 5 per 10 minutes. Body `{ "phoneNumberId", "accountId", "accessToken", "displayNumber"? }`.
+Before anything is stored Bookly verifies with Meta that the token is valid and
+issued to Bookly's app, that (when the token lists WABAs) `accountId` is one of
+them, that `phoneNumberId` is on `accountId`, and that neither is Bookly's own
+WABA or a Bookly-hosted number; otherwise `400 MANUAL_CREDENTIALS_INVALID`.
+Response `{ "success": true, "mode": "MANUAL", "displayNumber" }`.
+
+### `POST /whatsapp/disconnect`
+
+Owner. No body. Response `{ "success": true, "wasConnected": true }`. Works for
+a live number and for a hosted number still waiting for its code. A hosted
+number is removed from Bookly's WABA; for an own account Bookly unsubscribes its
+app from the organisation's WABA (unless another Bookly organisation uses the
+same WABA). Meta-side failures never block the disconnect.
+
+### Meta app setup for an external console
+
+Embedded Signup runs in your console's browser page, so Meta must trust its domain:
+
+1. Meta app dashboard -> **Facebook Login for Business -> Settings**: add the
+   console's domain (for example `console.turbo.example`) to **Allowed domains
+   for the JavaScript SDK**, and its `https://` URL to **Valid OAuth redirect
+   URIs**. Keep "Login with the JavaScript SDK" on.
+2. The app ID and the Embedded Signup **configuration ID** are public. The
+   console reads them from `GET /whatsapp/embedded-signup/config` (or its own
+   `NEXT_PUBLIC_WHATSAPP_APP_ID` / `NEXT_PUBLIC_WHATSAPP_CONFIG_ID`). Set
+   `WHATSAPP_CONFIG_ID` on the Bookly API so the config endpoint can hand it out.
+3. The configuration must be a **v4** Embedded Signup configuration (Facebook
+   Login for Business -> Configurations -> WhatsApp Embedded Signup, with the
+   WhatsApp Cloud API product selected). v2/v3 stop working on 15 October 2026.

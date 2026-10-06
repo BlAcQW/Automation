@@ -13,6 +13,7 @@ import { useAdmin } from '../../admin-context';
 import { Empty, Panel, ReasonModal, Table, Td, Th, UsageBar } from '../../_components/parts';
 import { errorMessage, formatDate, formatDateTime, formatMinor, timeAgo } from '../../_components/format';
 import { ApiKeysPanel } from './api-keys-panel';
+import { ChannelsPanel } from './channels-panel';
 
 interface Overview {
     tenant: any;
@@ -192,7 +193,11 @@ export default function OrganisationPage() {
                                     : c.status === 'todo' ? <Circle className="mt-0.5 h-4 w-4 text-amber-400" aria-label="to do" />
                                         : <Minus className="mt-0.5 h-4 w-4 text-slate-600" aria-label="not applicable" />}
                                 <div>
-                                    <p className={`text-sm ${c.status === 'na' ? 'text-slate-500' : 'text-white'}`}>{c.label}</p>
+                                    {c.key === 'whatsapp' ? (
+                                        <a href="#channels" className="text-sm text-white underline-offset-2 hover:text-emerald-400 hover:underline">{c.label} →</a>
+                                    ) : (
+                                        <p className={`text-sm ${c.status === 'na' ? 'text-slate-500' : 'text-white'}`}>{c.label}</p>
+                                    )}
                                     {c.detail && <p className="text-xs text-slate-500">{c.detail}</p>}
                                 </div>
                             </li>
@@ -243,6 +248,8 @@ export default function OrganisationPage() {
                     </Panel>
                 )}
             </div>
+
+            <ChannelsPanel tenantId={tenant.id} tenantName={tenant.name} />
 
             <Panel title={`Staff (${staff.length})`}>
                 {!staff.length ? <Empty>No users.</Empty> : (

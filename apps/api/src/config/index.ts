@@ -64,6 +64,10 @@ const envSchema = z.object({
     WHATSAPP_APP_SECRET: z.string().min(1, 'WHATSAPP_APP_SECRET is required for webhook signature verification'),
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().min(1, 'WHATSAPP_WEBHOOK_VERIFY_TOKEN is required'),
     WHATSAPP_REDIRECT_URI: z.string().optional(),
+    // Embedded Signup configuration id (Facebook Login for Business). Public,
+    // like WHATSAPP_APP_ID: handed to external consoles by
+    // GET /whatsapp/embedded-signup/config. Same value as NEXT_PUBLIC_WHATSAPP_CONFIG_ID.
+    WHATSAPP_CONFIG_ID: z.string().optional(),
 
     // Paystack (per-tenant keys; the platform-level only optionally overrides
     // where Paystack redirects the customer after payment).
@@ -117,6 +121,9 @@ const envSchema = z.object({
     // the only way to connect.
     PLATFORM_WABA_ID: z.string().optional(),
     PLATFORM_WHATSAPP_TOKEN: z.string().optional(),
+    // Comma-separated country calling codes a Bookly-hosted number may be in
+    // (OTP destinations). Default: Ghana only.
+    HOSTED_WHATSAPP_COUNTRIES: z.string().optional(),
 
     // Extra browser origins allowed by CORS, comma-separated. See parseCorsOrigins.
     CORS_ORIGINS: z.string().optional(),
@@ -305,6 +312,7 @@ export const config = {
         appSecret: env.WHATSAPP_APP_SECRET,
         webhookVerifyToken: env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
         redirectUri: env.WHATSAPP_REDIRECT_URI,
+        configId: env.WHATSAPP_CONFIG_ID,
     },
 
     /// Percentage cut of each platform-collected payment, in basis points.
@@ -325,6 +333,8 @@ export const config = {
     platformWhatsapp: {
         wabaId: env.PLATFORM_WABA_ID,
         accessToken: env.PLATFORM_WHATSAPP_TOKEN,
+        allowedCountryCodes: (env.HOSTED_WHATSAPP_COUNTRIES ?? '233')
+            .split(',').map((c) => c.replace(/\D/g, '')).filter(Boolean),
     },
 
     paystack: {

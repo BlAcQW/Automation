@@ -65,6 +65,14 @@ describe('role -> permission map', () => {
         expect(allow('READONLY', 'apikeys:revoke', 'POST')).toBe(false);
     });
 
+    it('channels:manage (disconnect a channel, resend OTP, run a health check) is OWNER and SUPPORT only', () => {
+        expect(ALL_PERMISSIONS).toContain('channels:manage');
+        expect(allow('OWNER', 'channels:manage', 'POST')).toBe(true);
+        expect(allow('SUPPORT', 'channels:manage', 'POST')).toBe(true);
+        expect(allow('FINANCE', 'channels:manage', 'POST')).toBe(false);
+        expect(allow('READONLY', 'channels:manage', 'POST')).toBe(false);
+    });
+
     it('READONLY holds read permissions only', () => {
         for (const [perm, ] of Object.entries(ROLE_PERMISSIONS)) void perm;
         const writes = ALL_PERMISSIONS.filter((p) => !p.endsWith(':read') && p !== 'self');

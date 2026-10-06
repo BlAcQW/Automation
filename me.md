@@ -275,6 +275,20 @@ Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
 - [ ] **Public API docs for client developers:** `docs/API.md`. Keys and
       the external-app address are set by the organisation owner under
       Developer settings.
+- [ ] **Fix organisations still on the old NGN currency default.** New
+      organisations now get GHS, but older ones may still say NGN, and the
+      money ledger refuses to mix currencies. Review first:
+      ```sql
+      SELECT t.id, t.name, t."paymentCurrency", w.currency AS wallet,
+             (t."paystackSecretKey" IS NOT NULL) AS own_paystack
+      FROM "Tenant" t LEFT JOIN "Wallet" w ON w."tenantId" = t.id
+      WHERE t."paymentCurrency" = 'NGN';
+      ```
+      For Ghanaian businesses without their own Paystack, set GHS:
+      `UPDATE "Tenant" SET "paymentCurrency"='GHS' WHERE id IN (...);`
+      Leave any that genuinely use their own NGN Paystack account.
+- [ ] **Withdrawals now ask for the owner's password** (both web and
+      mobile). Tell owners before deploying so it isn't a surprise.
 - [ ] **Check the new Alerts page in the admin** after deploying. Payments
       nobody can match, failed payouts and refunds, and messages that could
       not be processed all land there.
@@ -286,6 +300,31 @@ Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
       the API crash-loops on P1001. Fix: resume the project, then
       `pm2 restart bookly-api`.
 - [ ] Flip the Meta app to **Live** mode when you are ready for real tenants.
+- [ ] **Admin accounts after the wave 3 deploy (8 Oct changes):**
+      - Every admin is signed out once and must log in again (sign-in
+        sessions are now tracked as families that can be revoked).
+      - `REDIS_URL` is now **required** for admin sign-in to stay logged in
+        in production. Without it admins are bounced to the login page every
+        15 minutes (see `ADMIN_REFRESH_ALLOW_NO_REDIS` in `.env.example`).
+      - Admins have roles now: OWNER, SUPPORT, FINANCE, READONLY. Existing
+        super-admins become OWNER, other existing admins SUPPORT. New admins
+        made with the script are SUPPORT unless you pass a role:
+        `npm run admin:create -w apps/api -- --email you@example.com --name "Your Name" --role OWNER`.
+      - Turn on two-factor sign-in for every OWNER admin (admin → Account).
+- [ ] **Behaviour changes owners will notice:**
+      - Only the owner can cancel a **paid** order or booking, because it
+        refunds the customer. Staff get a clear message asking the owner.
+      - "Send test message" is now owner-only and counts towards the plan.
+      - Unpaid orders with a payment link expire (default 60 minutes,
+        `ORDER_EXPIRY_MINUTES`) and their stock goes back on the shelf.
+      - On Instagram and Messenger the assistant only discusses orders and
+        bookings made in that same chat. A typed phone number is not proof
+        of who someone is.
+      - Adding a team member with an email that already has a Bookly login
+        (in any business) is refused: one email, one account.
+- [ ] **Never run `npm run db:seed` against production.** It now refuses to
+      unless the database is local; the demo admin it creates gets a random
+      password printed once.
 
 ---
 

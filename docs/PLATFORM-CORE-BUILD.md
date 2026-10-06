@@ -56,19 +56,19 @@ item. See [architecture brainstorm](https://claude.ai/code/artifact/81043827-579
 
 ## After TURBO — before salon payments go live
 
-- [ ] **A1. Currency checks** end to end; balances never mix currencies.
-- [ ] **A2. Open money findings** from the money security review.
-- [ ] **A3. Admin control room v1.** Needs-attention home, organisation
+- [x] **A1. Currency checks** end to end; balances never mix currencies.
+- [x] **A2. Open money findings** from the money security review.
+- [x] **A3. Admin control room v1.** Needs-attention home, organisation
       detail with setup checklist and health, money oversight, audit log,
       messaging health.
-- [ ] **A4. Admin roles and two-factor login.**
-- [ ] **A5. Support access and emergency switches.**
-- [ ] **A6. Workflow editor in the admin** (wording, options, prices;
+- [x] **A4. Admin roles and two-factor login.**
+- [x] **A5. Support access and emergency switches.**
+- [x] **A6. Workflow editor in the admin** (wording, options, prices;
       publish and roll back).
-- [ ] **A7. Plans per vertical and usage-based billing.**
-- [ ] **A8. Background jobs in their own process.**
-- [ ] **A9. Shop vertical** — product and order tools for the assistant.
-- [ ] **A10. Real-database test harness** for money concurrency and
+- [x] **A7. Plans per vertical and usage-based billing.**
+- [x] **A8. Background jobs in their own process.**
+- [x] **A9. Shop vertical** — product and order tools for the assistant.
+- [x] **A10. Real-database test harness** for money concurrency and
       key routes.
 
 ## Log
@@ -87,3 +87,10 @@ item. See [architecture brainstorm](https://claude.ai/code/artifact/81043827-579
 | 2026-10-07 | D4, D5 | 759b81e | Customers linked, generic reminders, double-refund race closed |
 | 2026-10-07 | D6, D7 | f637a1a | Shared UI/API/auth packages; cross-site login with CSRF |
 | 2026-10-07 | wiring | bd0793b | Per-tenant engine on all channels; payment events can't be lost; late payment no longer resurrects expired holds |
+| 2026-10-08 | wave 3 schema | 9e28f7d | Admin roles/2FA, switches, support sessions, billing terms, refund retry columns |
+| 2026-10-08 | A1, A2 | 2565b7a | Currency enforced in the wallet lock; order refunds; refund retry; payout reaper; withdrawal step-up |
+| 2026-10-08 | A3-A6 | 4af3b49 | Control room, roles + 2FA, refresh families, support sessions (deny-by-default, always masked), flows editor |
+| 2026-10-08 | A7 | da5ddab | Plans per vertical, usage billing from the audit trail |
+| 2026-10-08 | A5, A8 | d592870 | Worker process role, emergency pause enforced before counters, 423 outbound_paused |
+| 2026-10-08 | A9 | e8f6228 | Shop vertical; typed phones on IG/Messenger prove nothing; masking gaps from the security re-review closed |
+| 2026-10-08 | A10 | 988e4e5 | Real-DB harness found 5 races (wallet, deadlock, usage, resolver, duplicate owner email), all fixed |

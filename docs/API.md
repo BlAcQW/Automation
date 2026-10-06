@@ -107,6 +107,7 @@ Validation failures (`400`, code `validation_error`) also carry `error.details`:
 | 422 | `window_closed` | A free-form message was refused because the 24-hour window is closed. |
 | 422 | `channel_not_connected` | The organisation has no connected channel for that conversation. |
 | 422 | `payments_not_configured` | The organisation has not connected its own Paystack account. |
+| 423 | `outbound_paused` | Bookly support has paused outbound messaging for the organisation. Not a quota problem and not fixed by upgrading; nothing was sent or counted. Retry only after support lifts it. |
 | 429 | `rate_limited` | Slow down; see `Retry-After`. |
 | 502 | `send_failed` | The channel provider refused or timed out. Nothing was charged to the quota. Safe to retry. |
 | 500 | `internal_error` | Our fault. Includes a `requestId` to quote to support. |

@@ -6,6 +6,7 @@ import { checkOutboundQuota, incrementMessageUsage } from '../../services/usage.
 import { resolveCredentials, selectCredentialSource } from '../../services/whatsapp-credentials.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
+import { emitConversationHandoff, emitConversationResumed, emitMessageSent } from '../../services/events/emit.js';
 import {
     MESSAGE_TYPE,
     MediaError,
@@ -15,6 +16,37 @@ import {
     storeMedia,
     uploadToWhatsApp,
 } from '../../services/media.js';
+
+/**
+ * The bot -> human flip, as arguments for updateMany. CONDITIONAL on the
+ * conversation not already being with a person, so of two racing requests
+ * exactly one gets count === 1, and that one alone announces the handoff. Sets
+ * takeoverAt like triggerTakeover does (the pending list sorts by it and a
+ * resume clears it).
+ */
+function humanFlip(tenantId: string, id: string) {
+    const now = new Date();
+    return {
+        where: { id, tenantId, state: { not: 'HUMAN_ACTIVE' as const } },
+        data: { state: 'HUMAN_ACTIVE' as const, takeoverAt: now, updatedAt: now },
+    };
+}
+
+/** Bump updatedAt even when the flip did not apply (the thread had activity). */
+function touch(tenantId: string, id: string) {
+    return { where: { id, tenantId }, data: { updatedAt: new Date() } };
+}
+
+/**
+ * A staff action that flips a bot conversation to HUMAN_ACTIVE is a handoff too:
+ * subscribers (an external app, above all) must hear that the bot is no longer
+ * in charge. Only announced when `flipped` (the conditional update changed a
+ * row). Best-effort.
+ */
+async function announceHandoff(prisma: unknown, tenantId: string, conversationId: string, flipped: boolean, reason: string): Promise<void> {
+    if (!flipped) return;
+    await emitConversationHandoff(prisma, { tenantId, conversationId, reason });
+}
 
 const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
     // All routes require authentication
@@ -216,7 +248,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // Create message and set human takeover
-        const [message] = await fastify.prisma.$transaction([
+        const [message, flip] = await fastify.prisma.$transaction([
             fastify.prisma.message.create({
                 data: {
                     conversationId: id,
@@ -225,14 +257,10 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                     messageType: 'TEXT',
                 },
             }),
-            fastify.prisma.conversation.updateMany({
-                where: { id, tenantId: request.user.tenantId },
-                data: {
-                    state: 'HUMAN_ACTIVE',
-                    updatedAt: new Date(),
-                },
-            }),
+            fastify.prisma.conversation.updateMany(humanFlip(request.user.tenantId, id)),
+            fastify.prisma.conversation.updateMany(touch(request.user.tenantId, id)),
         ]);
+        await announceHandoff(fastify.prisma, request.user.tenantId, id, flip.count === 1, 'staff_reply');
 
         // Send message via WhatsApp Cloud API
         const tenant = await fastify.prisma.tenant.findUnique({
@@ -280,6 +308,11 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                     // Count successful staff replies toward the tenant's
                     // monthly outbound-message quota (Phase 4a).
                     await incrementMessageUsage(fastify.prisma, request.user.tenantId);
+
+                    // Only now is it actually sent.
+                    await emitMessageSent(fastify.prisma, {
+                        tenantId: request.user.tenantId, conversationId: id, messageId: message.id, channel: 'WHATSAPP', sentBy: 'HUMAN',
+                    });
                 }
             } catch (err) {
                 fastify.log.error(err, 'Error sending WhatsApp reply');
@@ -422,7 +455,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             messages?: Array<{ id?: string }>;
         };
 
-        const [message] = await fastify.prisma.$transaction([
+        const [message, flip] = await fastify.prisma.$transaction([
             fastify.prisma.message.create({
                 data: {
                     conversationId: id,
@@ -443,13 +476,15 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                     } as Prisma.InputJsonValue,
                 },
             }),
-            fastify.prisma.conversation.updateMany({
-                where: { id, tenantId: request.user.tenantId },
-                data: { state: 'HUMAN_ACTIVE', updatedAt: new Date() },
-            }),
+            fastify.prisma.conversation.updateMany(humanFlip(request.user.tenantId, id)),
+            fastify.prisma.conversation.updateMany(touch(request.user.tenantId, id)),
         ]);
+        await announceHandoff(fastify.prisma, request.user.tenantId, id, flip.count === 1, 'staff_reply');
 
         await incrementMessageUsage(fastify.prisma, request.user.tenantId);
+        await emitMessageSent(fastify.prisma, {
+            tenantId: request.user.tenantId, conversationId: id, messageId: message.id, channel: 'WHATSAPP', sentBy: 'HUMAN',
+        });
 
         return message;
     });
@@ -638,13 +673,15 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         if (!isReaction) {
-            await fastify.prisma.conversation.updateMany({
-                where: { id, tenantId: request.user.tenantId },
-                data: { state: 'HUMAN_ACTIVE', updatedAt: new Date() },
-            });
+            const flip = await fastify.prisma.conversation.updateMany(humanFlip(request.user.tenantId, id));
+            await fastify.prisma.conversation.updateMany(touch(request.user.tenantId, id));
+            await announceHandoff(fastify.prisma, request.user.tenantId, id, flip.count === 1, 'staff_reply');
         }
 
         await incrementMessageUsage(fastify.prisma, request.user.tenantId);
+        await emitMessageSent(fastify.prisma, {
+            tenantId: request.user.tenantId, conversationId: id, messageId: message.id, channel: 'WHATSAPP', sentBy: 'HUMAN',
+        });
         return message;
     });
 
@@ -671,19 +708,29 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const { count } = await fastify.prisma.conversation.updateMany({
-            where: { id, tenantId: request.user.tenantId },
+            // Conditional: only the request that actually changes the state resumes it
+            // (and announces it); a concurrent one finds it already back with the bot.
+            where: { id, tenantId: request.user.tenantId, state: 'HUMAN_ACTIVE' },
             data: {
                 state: 'BOT_ACTIVE',
-                botContext: Prisma.JsonNull, // Reset bot context
+                // botContext is kept: an in-flight workflow (e.g. waiting on a
+                // payment) carries on instead of starting over, and a later
+                // payment still finds its step. The customer can type "menu"
+                // to start over.
                 // A stale count of 3+ would hand the conversation straight
                 // back to a human on the customer's next message.
                 botFailureCount: 0,
+                // Same as resumeBot(): a conversation with the bot has no takeover.
+                takeoverAt: null,
+                takeoverReason: null,
+                assignedUserId: null,
                 updatedAt: new Date(),
             },
         });
         if (count === 0) {
-            throw fastify.httpErrors.notFound('Conversation not found');
+            throw fastify.httpErrors.badRequest('Bot is already active');
         }
+        await emitConversationResumed(fastify.prisma, { tenantId: request.user.tenantId, conversationId: id });
 
         // Create system message
         await fastify.prisma.message.create({
@@ -715,16 +762,13 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Conversation not found');
         }
 
+        // The conversation was just verified for this tenant, so count 0 means
+        // someone else already flipped it: nothing to do and nothing to announce.
         const { count } = await fastify.prisma.conversation.updateMany({
-            where: { id, tenantId: request.user.tenantId },
-            data: {
-                state: 'HUMAN_ACTIVE',
-                updatedAt: new Date(),
-            },
+            ...humanFlip(request.user.tenantId, id),
+            data: { ...humanFlip(request.user.tenantId, id).data, takeoverReason: 'manual' },
         });
-        if (count === 0) {
-            throw fastify.httpErrors.notFound('Conversation not found');
-        }
+        await announceHandoff(fastify.prisma, request.user.tenantId, id, count === 1, 'manual');
 
         return {
             id,

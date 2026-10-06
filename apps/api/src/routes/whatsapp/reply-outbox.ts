@@ -40,6 +40,7 @@
 import { sendChannelText, ChannelSendError, type ChannelCredentials } from '../../services/channel-send.js';
 import { tryReserveOutbound, rollbackOutboundReservation } from '../../services/usage.js';
 import { raiseAlert } from '../../services/alerts.js';
+import { emitMessageSent, type SentBy } from '../../services/events/emit.js';
 
 export type OutboxChannel = 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
 
@@ -68,6 +69,12 @@ export function isPermanentSendFailure(err: unknown): boolean {
     if (!m) return false;
     const status = Number(m[1]);
     return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+/** Who authored a stored reply, from the `source` the caller recorded in its metadata. */
+export function sentByFor(metadata: unknown): SentBy {
+    const source = (metadata as { source?: unknown } | null | undefined)?.source;
+    return source === 'flow' ? 'FLOW' : 'AI';
 }
 
 export interface DeliverArgs {
@@ -176,6 +183,17 @@ export async function deliverReply(fastify: any, tenant: any, args: DeliverArgs)
 
     // The customer has it. A failure here only risks a duplicate on retry.
     await setState(fastify, rowId, { sendState: 'SENT', sendClaimedAt: null, whatsappMsgId: providerMessageId ?? null });
+    // Announced only now that the provider has accepted it ("actually SENT").
+    // Best-effort: a failed publish must not turn a delivered reply into a retry.
+    if (rowId) {
+        await emitMessageSent(fastify.prisma, {
+            tenantId: tenant.id,
+            conversationId: args.conversationId,
+            messageId: rowId,
+            channel,
+            sentBy: sentByFor(args.metadata),
+        });
+    }
     return 'sent';
 }
 
@@ -204,7 +222,7 @@ export async function resendPendingReply(
     const reply = await fastify.prisma.message.findFirst({
         where: { conversationId: args.conversationId, replyToId: args.inboundId, direction: 'OUTBOUND' },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, content: true, sendState: true, sendClaimedAt: true },
+        select: { id: true, content: true, sendState: true, sendClaimedAt: true, metadata: true },
     });
     if (!reply) return false;
 
@@ -240,7 +258,8 @@ export async function resendPendingReply(
         recipientId: args.recipientId,
         text: reply.content,
         inboundId: args.inboundId,
-        metadata: {},
+        // Only read for the message.sent event's author; the row keeps its own metadata.
+        metadata: (reply.metadata as Record<string, unknown> | null) ?? {},
         existingRowId: reply.id,
     });
     return true;

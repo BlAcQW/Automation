@@ -18,7 +18,8 @@ const isDev = process.env.NODE_ENV === 'development';
 export const logger = pino({
     // Same levels and pretty-printing as the Fastify instance, so local output
     // stays uniform and production stays machine-readable.
-    level: isDev ? 'debug' : 'info',
+    // Tests exercise failure paths on purpose; their stack traces are noise.
+    level: process.env.VITEST ? 'silent' : isDev ? 'debug' : 'info',
     transport: isDev ? { target: 'pino-pretty', options: { colorize: true } } : undefined,
     base: { scope: 'service' },
 });

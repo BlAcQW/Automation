@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
-import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
+import { fulfillBookingCharge, fulfillOrderCharge, republishPaymentSucceeded } from '../../services/payment-fulfillment.js';
 import { dispatchFulfillment } from '../../services/payment-fulfillers.js';
 import { markPayoutFailed, markPayoutPaid } from '../../services/payout-transfer.js';
 import { raiseAlert } from '../../services/alerts.js';
@@ -130,6 +130,33 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
      * and nothing is attributed. Still 200 (Paystack must not retry forever),
      * but loud — error log plus an audit row a human can find.
      */
+    /**
+     * The row is already PAID: nothing is left to apply, but payment.succeeded
+     * may never have been written (the first delivery claimed the row, then the
+     * events store failed). Re-record it from the signature-verified event data
+     * (a tenant with its own key can only ever affect its own subscribers).
+     * The publish is keyed per reference, so this is a no-op when it exists.
+     *
+     * A failure answers 5xx so Paystack redelivers. That is safe: the claim
+     * above is idempotent (guarded on UNPAID) so a redelivery re-applies
+     * nothing, it only retries this publish.
+     */
+    async function rerecordPaidEvent(
+        log: { error: (obj: object, msg: string) => void },
+        input: { tenantId: string; reference: string; amount: unknown; currency: unknown; extra: Record<string, unknown> },
+    ): Promise<void> {
+        const err = await republishPaymentSucceeded({
+            prisma: fastify.prisma,
+            logger: log,
+            tenantId: input.tenantId,
+            reference: input.reference,
+            amountMinor: Number(input.amount),
+            currency: String(input.currency ?? ''),
+            extra: input.extra,
+        });
+        if (err) throw fastify.httpErrors.badGateway('payment.succeeded not recorded');
+    }
+
     async function reportUnattributed(
         log: { error: (obj: object, msg: string) => void },
         reason: string,
@@ -589,6 +616,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                 return reply.code(200).send({ ignored: 'booking_not_found' });
             }
             if (booking.paymentStatus === 'PAID') {
+                await rerecordPaidEvent(request.log, { tenantId, reference, amount: event.data.amount, currency: event.data.currency, extra: { bookingId: booking.id } });
                 return reply.code(200).send({ ok: true, idempotent: true });
             }
 
@@ -676,6 +704,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(200).send({ ignored: 'order_not_found' });
         }
         if (order.paymentStatus === 'PAID') {
+            await rerecordPaidEvent(request.log, { tenantId, reference, amount: event.data.amount, currency: event.data.currency, extra: { orderId: order.id } });
             return reply.code(200).send({ ok: true, idempotent: true });
         }
 

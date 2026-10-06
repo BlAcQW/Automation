@@ -39,6 +39,8 @@ export interface ResolvedConversation {
      * one. The agent needs it to decide whether it still has to ask.
      */
     customerPhone: string | null;
+    /** The linked Customer record, when the conversation has been linked to one. */
+    customerId: string | null;
     /** Bot flow state — the message handler reads and advances this. */
     botContext: unknown;
     botFailureCount: number;
@@ -71,6 +73,7 @@ export async function resolveConversation(
             customerName: true,
             customerHandle: true,
             customerPhone: true,
+            customerId: true,
             botContext: true,
             botFailureCount: true,
         },
@@ -92,6 +95,7 @@ export async function resolveConversation(
                 state: true,
                 customerName: true,
                 customerPhone: true,
+                customerId: true,
                 botContext: true,
                 botFailureCount: true,
             },
@@ -118,6 +122,7 @@ export async function resolveConversation(
         state: existing.state,
         customerName: patch.customerName ?? existing.customerName,
         customerPhone: patch.customerPhone ?? existing.customerPhone,
+        customerId: existing.customerId ?? null,
         botContext: existing.botContext,
         botFailureCount: existing.botFailureCount,
         created: false,

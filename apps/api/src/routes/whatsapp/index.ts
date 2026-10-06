@@ -25,20 +25,19 @@ import {
     selectCredentialSource,
 } from '../../services/whatsapp-credentials.js';
 import { resolveConversation } from '../../services/conversation-resolver.js';
-import { sendChannelText, resolveChannelCredentials } from '../../services/channel-send.js';
 import { publish } from '../../services/realtime.js';
-import {
-    planAssistantFallback,
-    isDuplicateMessageError,
-    HOLDING_MESSAGE_COOLDOWN_MS,
-} from '../../services/assistant-fallback.js';
-import { selectConversationHandler, canCustomerResumeBot } from '../../services/conversation-handlers.js';
+import { planAssistantFallback } from '../../services/assistant-fallback.js';
+import { canCustomerResumeBot } from '../../services/conversation-handlers.js';
 import { Prisma } from '@prisma/client';
 import { persistInbound, dispatchInbound } from '../../services/inbound-queue.js';
 import { withConversationLock, LockTimeoutError, type LockRedis } from '../../services/conversation-lock.js';
 import { findInbound, insertInbound, markInboundHandled } from './inbound-store.js';
 import { deliverReply, resendPendingReply, ReplySendError } from './reply-outbox.js';
-import { raiseAlert } from '../../services/alerts.js';
+import { holdingSentRecently, sendSystemMessage, type ChannelKind } from './system-message.js';
+import { prepareInbound } from './inbound-events.js';
+import { resolveHandler, handleWithFlow, handleExternalAppUnavailable } from './turn-handlers.js';
+import { emitConversationResumed } from '../../services/events/emit.js';
+import { tenantChannelCreds } from '../../services/tenant-channel-creds.js';
 
 /**
  * How long an inbound job queues for its conversation's lock before handing the
@@ -964,7 +963,7 @@ async function processChannelMessage(
         return;
     }
 
-    await runChannelTurn(fastify, tenant, conversation, input, slot.id);
+    await runChannelTurn(fastify, tenant, conversation, input, slot.id, reused);
     await markInboundHandled(fastify.prisma, slot.id);
 }
 
@@ -973,8 +972,9 @@ async function runChannelTurn(
     fastify: any,
     tenant: any,
     conversation: any,
-    input: { channel: 'INSTAGRAM' | 'MESSENGER'; senderId: string; text: string },
+    input: { channel: 'INSTAGRAM' | 'MESSENGER'; senderId: string; text: string; providerMessageId?: string },
     inboundId?: string,
+    reused = false,
 ) {
     // Opens the 24-hour reply window. It applies on these channels too, but
     // without a template escape hatch once it closes.
@@ -985,12 +985,33 @@ async function runChannelTurn(
 
     publish(tenant.id, { type: 'message', conversationId: conversation.id });
 
+    const handler = await resolveHandler(tenant);
+    const { externalAppLive } = await prepareInbound(fastify, tenant, conversation, handler, {
+        rowId: inboundId, channel: input.channel, text: input.text, type: 'TEXT', reused,
+    });
+
     // A human has taken over — stay out of the way.
     if (conversation.state === 'HUMAN_ACTIVE') return;
 
-    const { isLlmEnabled } = await import('../../services/llm-agent.js');
-    const llmEnabled = isLlmEnabled();
-    const handler = selectConversationHandler(tenant.vertical ?? 'APPOINTMENTS', llmEnabled);
+    // The tenant's own app answers: the message was delivered as an event.
+    if (handler === 'external_app') {
+        if (!externalAppLive) {
+            await handleExternalAppUnavailable(fastify, tenant, conversation, { channel: input.channel, recipientId: input.senderId });
+        }
+        return;
+    }
+
+    if (handler === 'flow') {
+        await handleWithFlow(fastify, tenant, conversation, {
+            channel: input.channel,
+            recipientId: input.senderId,
+            text: input.text,
+            inboundRowId: inboundId,
+            providerMessageId: input.providerMessageId,
+        });
+        return;
+    }
+
     let agentThrew = false;
     const progress: AgentProgress = { replySent: false };
 
@@ -1171,6 +1192,8 @@ async function recordMessageStatus(
     });
 }
 
+type FlowLocation = { latitude: number; longitude: number; name?: string; address?: string };
+
 // Process individual message
 async function processMessage(
     fastify: any,
@@ -1296,8 +1319,23 @@ async function processMessage(
         return;
     }
 
-    await runWhatsAppTurn(fastify, tenant, conversation, customerPhone, content, slot.id);
+    await runWhatsAppTurn(fastify, tenant, conversation, customerPhone, content, slot.id, {
+        messageType,
+        reused: Boolean(existing),
+        providerMessageId: message.id,
+        ...(messageType === 'INTERACTIVE' && content ? { interactiveId: content } : {}),
+        ...(messageType === 'LOCATION' && meta ? { location: meta as FlowLocation } : {}),
+    });
     await markInboundHandled(fastify.prisma, slot.id);
+}
+
+interface WhatsAppTurnExtra {
+    messageType: string;
+    /** The inbound row existed from an earlier attempt of this same turn. */
+    reused: boolean;
+    providerMessageId?: string;
+    interactiveId?: string;
+    location?: FlowLocation;
 }
 
 /** Everything after the inbound row is stored. Returning normally = turn complete. */
@@ -1307,7 +1345,8 @@ async function runWhatsAppTurn(
     conversation: any,
     customerPhone: string,
     content: string,
-    inboundId?: string,
+    inboundId: string | undefined,
+    extra: WhatsAppTurnExtra,
 ) {
     // Update conversation timestamps. lastInboundAt powers the WhatsApp
     // 24-hour customer-service window check on staff replies.
@@ -1320,6 +1359,16 @@ async function runWhatsAppTurn(
     // Live nudge to any open app so the chat thread + inbox refetch instantly.
     publish(tenant.id, { type: 'message', conversationId: conversation.id });
 
+    // Which engine answers, chosen once per turn at the seam. Everything below
+    // (resume, takeover detection, dispatch) keys off this one answer.
+    const handler = await resolveHandler(tenant);
+
+    // Link the customer and announce the message (`message.received`). Before
+    // the human-takeover check: subscribers see every inbound message.
+    const { externalAppLive } = await prepareInbound(fastify, tenant, conversation, handler, {
+        rowId: inboundId, channel: 'WHATSAPP', text: content, type: extra.messageType, reused: extra.reused,
+    });
+
     // Human takeover handling. While HUMAN_ACTIVE, the bot is silent — except
     // if the customer types one of the escape keywords, in which case we
     // hand the conversation back to the assistant. This prevents the
@@ -1328,13 +1377,12 @@ async function runWhatsAppTurn(
         const cmd = content.trim().toLowerCase();
         const RESUME_BOT_KEYWORDS = new Set(['menu', 'bot', 'start']);
         // Rules live in canCustomerResumeBot (tested): only with an assistant
-        // to resume to, and never for a staff-claimed conversation.
-        const { isLlmEnabled: llmOn } = await import('../../services/llm-agent.js');
-        const handler = selectConversationHandler(tenant.vertical ?? 'APPOINTMENTS', llmOn());
+        // to resume to (a flow counts, an external app does not: the app
+        // decides), and never for a staff-claimed conversation.
         const isResumeKeyword = RESUME_BOT_KEYWORDS.has(cmd);
         // Only look up the owner when it could change the answer.
         const owner =
-            isResumeKeyword && handler !== 'unavailable'
+            isResumeKeyword && handler !== 'unavailable' && handler !== 'external_app'
                 ? await fastify.prisma.conversation.findUnique({
                       where: { id: conversation.id },
                       select: { assignedUserId: true },
@@ -1352,6 +1400,7 @@ async function runWhatsAppTurn(
                     botContext: Prisma.JsonNull,
                     botFailureCount: 0,
                     takeoverReason: null,
+                    takeoverAt: null,
                     assignedUserId: null,
                     assignedAt: null,
                 },
@@ -1359,10 +1408,20 @@ async function runWhatsAppTurn(
             // Refresh local copy so the checks below see the new state.
             conversation.state = 'BOT_ACTIVE';
             conversation.botFailureCount = 0;
+            await emitConversationResumed(fastify.prisma, { tenantId: tenant.id, conversationId: conversation.id });
         } else {
             fastify.log.debug({ conversationId: conversation.id }, 'Human takeover active, skipping bot');
             return;
         }
+    }
+
+    // The tenant's own app answers: the message was delivered as an event, and
+    // keyword takeover is the app's call, not ours.
+    if (handler === 'external_app') {
+        if (!externalAppLive) {
+            await handleExternalAppUnavailable(fastify, tenant, conversation, { channel: 'WHATSAPP', recipientId: customerPhone });
+        }
+        return;
     }
 
     // Check for automatic takeover triggers
@@ -1390,16 +1449,25 @@ async function runWhatsAppTurn(
         return;
     }
 
+    if (handler === 'flow') {
+        await handleWithFlow(fastify, tenant, conversation, {
+            channel: 'WHATSAPP',
+            recipientId: customerPhone,
+            text: content,
+            inboundRowId: inboundId,
+            providerMessageId: extra.providerMessageId,
+            interactiveId: extra.interactiveId,
+            location: extra.location,
+        });
+        return;
+    }
+
     // Conversational layer. When OPENAI_API_KEY is set the LLM agent answers.
     // There is no scripted fallback: if the assistant is unavailable or throws,
     // the conversation is handed to a human and the customer gets one neutral
     // holding message.
-    const { isLlmEnabled } = await import('../../services/llm-agent.js');
-
     let agentThrew = false;
     const progress: AgentProgress = { replySent: false };
-    const llmEnabled = isLlmEnabled();
-    const handler = selectConversationHandler(tenant.vertical ?? 'APPOINTMENTS', llmEnabled);
     if (handler === 'llm_agent') {
         try {
             await handleWithAgent(fastify, tenant, conversation, customerPhone, content, 'WHATSAPP', undefined, progress, inboundId);
@@ -1428,10 +1496,8 @@ async function runWhatsAppTurn(
     });
 }
 
-type ChannelKind = 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
-
 function channelCreds(tenant: any, channel: ChannelKind) {
-    return resolveChannelCredentials(tenant, channel, decrypt, resolveCredentials(selectCredentialSource(tenant)));
+    return tenantChannelCreds(tenant, channel);
 }
 
 /** Mutated by handleWithAgent so a failure handler knows the reply went out. */
@@ -1501,98 +1567,6 @@ async function runAssistantFallback(
                 reason: plan.reason,
             });
         }
-    }
-}
-
-/** A holding message went to this conversation within the cooldown window. */
-async function holdingSentRecently(prisma: any, conversationId: string): Promise<boolean> {
-    const since = new Date(Date.now() - HOLDING_MESSAGE_COOLDOWN_MS);
-    const recent = await prisma.message.findFirst({
-        where: {
-            conversationId,
-            direction: 'OUTBOUND',
-            createdAt: { gte: since },
-            metadata: { path: ['kind'], equals: 'holding' },
-        },
-        select: { id: true },
-    });
-    return Boolean(recent);
-}
-
-/**
- * Send a short system-authored message (holding / retry). Reserves quota
- * atomically, releases it if the send fails, and never throws: by the time
- * this runs the customer-facing outcome is decided, and a failure here must
- * not bubble up and fail the webhook.
- *
- * Deliberately NOT given the reply outbox (reply-outbox.ts). These run only
- * after the agent already failed: 'holding' follows a successful handoff to a
- * human (the conversation is HUMAN_ACTIVE, staff see it and reply), and 'retry'
- * is a cosmetic "try again" nudge. Making their send failure throw would retry
- * the turn and re-run the agent, whose tools may already have acted, which is
- * worse than a lost courtesy message. The failure is logged at error.
- */
-async function sendSystemMessage(
-    fastify: any,
-    tenant: any,
-    conversationId: string,
-    input: { channel: ChannelKind; recipientId: string; text: string; kind: string; reason?: string },
-): Promise<void> {
-    const { tryReserveOutbound, rollbackOutboundReservation } = await import('../../services/usage.js');
-
-    const creds = resolveChannelCredentials(
-        tenant,
-        input.channel,
-        decrypt,
-        resolveCredentials(selectCredentialSource(tenant)),
-    );
-    if (!creds) {
-        await raiseAlert(fastify.prisma, {
-            kind: 'outbound.no_channel',
-            severity: 'warning',
-            tenantId: tenant.id,
-            message: `Replies on ${input.channel} cannot be sent: the channel is not configured`,
-            context: { channel: input.channel },
-            dedupeKey: `outbound.no_channel:${tenant.id}:${input.channel}`,
-        });
-        return;
-    }
-
-    const reservation = await tryReserveOutbound(fastify.prisma, tenant.id);
-    if (!reservation.ok) {
-        fastify.log.warn({ tenantId: tenant.id, kind: input.kind }, 'Quota exhausted — system message suppressed');
-        return;
-    }
-
-    let providerMessageId: string | undefined;
-    try {
-        const sent = await sendChannelText({
-            channel: input.channel,
-            credentials: creds,
-            recipientId: input.recipientId,
-            text: input.text,
-        });
-        providerMessageId = sent.messageId;
-    } catch (err) {
-        fastify.log.error({ err, channel: input.channel, kind: input.kind }, 'Failed to send system message');
-        await rollbackOutboundReservation(fastify.prisma, tenant.id).catch(() => undefined);
-        return;
-    }
-
-    try {
-        await fastify.prisma.message.create({
-            data: {
-                conversationId,
-                direction: 'OUTBOUND',
-                content: input.text,
-                messageType: 'TEXT',
-                whatsappMsgId: providerMessageId ?? null,
-                metadata: { source: 'system', kind: input.kind, reason: input.reason ?? null, channel: input.channel },
-            },
-        });
-    } catch (err) {
-        // Sent and billed; only the transcript row is missing.
-        fastify.log.error({ err, conversationId, kind: input.kind }, 'System message sent but not recorded');
     }
 }
 

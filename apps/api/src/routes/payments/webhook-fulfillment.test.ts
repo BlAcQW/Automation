@@ -11,13 +11,13 @@ vi.mock('../../services/paystack.js', () => ({
 vi.mock('../../services/crypto.js', () => ({ encrypt: (v: string) => v, decrypt: () => 'sk_tenant' }));
 vi.mock('../../services/audit.js', () => ({ audit: vi.fn() }));
 vi.mock('../../services/alerts.js', () => ({ raiseAlert: vi.fn() }));
-vi.mock('../../services/payment-fulfillment.js', () => ({ fulfillBookingCharge: vi.fn(), fulfillOrderCharge: vi.fn() }));
+vi.mock('../../services/payment-fulfillment.js', () => ({ fulfillBookingCharge: vi.fn(), fulfillOrderCharge: vi.fn(), republishPaymentSucceeded: vi.fn(async () => null) }));
 vi.mock('../../services/payout-transfer.js', () => ({ markPayoutFailed: vi.fn(), markPayoutPaid: vi.fn() }));
 
 import { verifyTransaction, verifyWebhookSignature } from '../../services/paystack.js';
 import { audit } from '../../services/audit.js';
 import { raiseAlert } from '../../services/alerts.js';
-import { fulfillOrderCharge } from '../../services/payment-fulfillment.js';
+import { fulfillOrderCharge, republishPaymentSucceeded } from '../../services/payment-fulfillment.js';
 import { registerPaymentFulfiller, resetPaymentFulfillersForTests } from '../../services/payment-fulfillers.js';
 import paymentsRoutes from './index.js';
 
@@ -132,5 +132,41 @@ describe('webhook fulfillment dispatch', () => {
         registerPaymentFulfiller('ride_package', vi.fn().mockRejectedValue(new Error('db down')));
         const res = await post({ fulfillmentKind: 'ride_package', entityId: 'e1' });
         expect(res.statusCode).toBe(500);
+    });
+});
+
+describe('webhook on an already-PAID row re-records payment.succeeded', () => {
+    const paidBooking = { id: 'b1', paymentStatus: 'PAID' };
+    const paidOrder = { id: 'o1', paymentStatus: 'PAID' };
+
+    it('booking: republishes from the signed event data, then answers idempotent', async () => {
+        prisma.booking.findFirst.mockResolvedValue(paidBooking);
+        const res = await post({ bookingId: 'b1' });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ ok: true, idempotent: true });
+        expect(republishPaymentSucceeded).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: 't1', reference: 'ref1', amountMinor: 5000, currency: 'GHS', extra: { bookingId: 'b1' },
+        }));
+        expect(verifyTransaction).not.toHaveBeenCalled();
+    });
+
+    it('booking: a failed republish answers non-2xx so Paystack redelivers (nothing is re-applied: the row is PAID)', async () => {
+        prisma.booking.findFirst.mockResolvedValue(paidBooking);
+        (republishPaymentSucceeded as any).mockResolvedValueOnce(new Error('events down'));
+        const res = await post({ bookingId: 'b1' });
+        expect(res.statusCode).toBeGreaterThanOrEqual(500);
+        expect(fulfillOrderCharge).not.toHaveBeenCalled();
+    });
+
+    it('order: republishes, and a failure is non-2xx', async () => {
+        prisma.order.findFirst.mockResolvedValue(paidOrder);
+        const ok = await post({ orderId: 'o1' });
+        expect(ok.statusCode).toBe(200);
+        expect(republishPaymentSucceeded).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: 't1', reference: 'ref1', amountMinor: 5000, currency: 'GHS', extra: { orderId: 'o1' },
+        }));
+        (republishPaymentSucceeded as any).mockResolvedValueOnce(new Error('events down'));
+        const bad = await post({ orderId: 'o1' });
+        expect(bad.statusCode).toBeGreaterThanOrEqual(500);
     });
 });

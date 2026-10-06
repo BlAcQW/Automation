@@ -19,6 +19,9 @@ import { startNotificationWorkers, stopNotificationWorkers } from './services/no
 import { startHoldExpirySweeper } from './services/hold-expiry.js';
 import { startInboundWorker, stopInboundWorker } from './services/inbound-worker.js';
 import { startInboundSweeper } from './services/inbound-queue.js';
+import { startDeliverySweeper, dispatchDelivery } from './services/events/delivery.js';
+import { startWebhookWorker, stopWebhookWorker } from './services/events/worker.js';
+import { setDeliveryDispatcher } from './services/events/dispatcher.js';
 
 // Import routes
 import authRoutes from './routes/auth/index.js';
@@ -45,10 +48,18 @@ import privacyRoutes from './routes/privacy/index.js';
 import channelRoutes from './routes/channels/index.js';
 import moneyRoutes from './routes/money/index.js';
 import usersRoutes from './routes/users/index.js';
+import webhooksRoutes from './routes/webhooks/index.js';
+import v1Routes from './routes/v1/index.js';
+import developerRoutes from './routes/developer/index.js';
+import csrfPlugin from './plugins/csrf.js';
+import { registerExternalAppFulfiller } from './services/external-app.js';
+import { registerFlowPaymentFulfiller } from './services/flow-payments.js';
 import websocket from '@fastify/websocket';
 import realtimeRoutes from './routes/realtime/index.js';
 
 const app = Fastify({
+    // Behind nginx: believe X-Forwarded-For from the local hop so request.ip is the real client.
+    trustProxy: config.trustProxy,
     logger: {
         level: config.nodeEnv === 'development' ? 'debug' : 'info',
         transport: config.nodeEnv === 'development'
@@ -68,6 +79,9 @@ async function buildApp() {
     await app.register(cookie, {
         secret: config.jwtSecret,
     });
+    // CSRF guard for cookie-authenticated refresh/logout when cross-site auth
+    // is enabled (CROSS_SITE_AUTH). A no-op otherwise. Must precede the routes.
+    await app.register(csrfPlugin);
 
     // Register sensible for better error handling
     await app.register(sensible);
@@ -112,6 +126,10 @@ async function buildApp() {
     await app.register(prismaPlugin);
     await app.register(authPlugin);
     await app.register(redisPlugin);
+    // Payments for apps hosted elsewhere (fulfillment kind 'external_app').
+    registerExternalAppFulfiller();
+    // Payment steps of a conversation flow (fulfillment kind 'flow_payment').
+    registerFlowPaymentFulfiller();
 
     // Wire Sentry error handler — no-op when DSN unset.
     Sentry.setupFastifyErrorHandler(app);
@@ -181,6 +199,10 @@ async function buildApp() {
     await app.register(channelRoutes, { prefix: '/channels' });
     await app.register(moneyRoutes, { prefix: '/money' });
     await app.register(usersRoutes, { prefix: '/users' });
+    await app.register(webhooksRoutes, { prefix: '/webhooks' });
+    // Public API for external apps (API-key auth, server-to-server).
+    await app.register(v1Routes, { prefix: '/v1' });
+    await app.register(developerRoutes, { prefix: '/developer' });
     // Live updates over WebSocket (GET /ws). Registered after the plugin so the
     // route can opt in with { websocket: true }.
     await app.register(websocket);
@@ -198,6 +220,9 @@ let stopHoldSweeper: (() => void) | null = null;
 // re-dispatches stranded WebhookInbox rows (works with or without Redis).
 let inboundWorker: ReturnType<typeof startInboundWorker> = null;
 let stopInboundSweeper: (() => void) | null = null;
+// Outgoing webhooks (D3): same shape as the inbound pair above.
+let webhookWorker: ReturnType<typeof startWebhookWorker> = null;
+let stopWebhookSweeper: (() => void) | null = null;
 
 async function start() {
     try {
@@ -221,6 +246,12 @@ async function start() {
         inboundWorker = startInboundWorker(config.redisUrl, inboundDeps);
         stopInboundSweeper = startInboundSweeper(inboundDeps);
 
+        const webhookDeps = { prisma: server.prisma, log: server.log, queue: server.queues.webhooks };
+        webhookWorker = startWebhookWorker(config.redisUrl, webhookDeps);
+        stopWebhookSweeper = startDeliverySweeper(webhookDeps);
+        // Lets publishEvent() nudge delivery right after it writes the rows.
+        setDeliveryDispatcher((id, delayMs) => dispatchDelivery(webhookDeps, id, delayMs));
+
         server.log.info(`Bookly API running at http://${config.host}:${config.port}`);
     } catch (err) {
         app.log.error(err);
@@ -233,7 +264,10 @@ async function shutdown(signal: string) {
     try {
         stopHoldSweeper?.();
         stopInboundSweeper?.();
+        stopWebhookSweeper?.();
+        setDeliveryDispatcher(null);
         await stopInboundWorker(inboundWorker);
+        await stopWebhookWorker(webhookWorker);
         if (workers) {
             await stopNotificationWorkers(workers);
         }

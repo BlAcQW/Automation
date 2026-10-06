@@ -187,9 +187,9 @@ const cases: Case[] = [
     { name: 'POST /orders/:id/cancel', method: 'POST', url: '/orders/o1/cancel',
       expects: { model: 'order', op: 'updateMany', where: { id: 'o1', tenantId: TENANT } }, forbids: [{ model: 'order', op: 'update' }] },
     { name: 'POST /conversations/:id/resume-bot', method: 'POST', url: '/conversations/c1/resume-bot',
-      expects: { model: 'conversation', op: 'updateMany', where: { id: 'c1', tenantId: TENANT } }, forbids: [{ model: 'conversation', op: 'update' }] },
+      expects: { model: 'conversation', op: 'updateMany', where: { id: 'c1', tenantId: TENANT, state: 'HUMAN_ACTIVE' } }, forbids: [{ model: 'conversation', op: 'update' }] },
     { name: 'POST /conversations/:id/activate-human', method: 'POST', url: '/conversations/c1/activate-human',
-      expects: { model: 'conversation', op: 'updateMany', where: { id: 'c1', tenantId: TENANT } }, forbids: [{ model: 'conversation', op: 'update' }] },
+      expects: { model: 'conversation', op: 'updateMany', where: { id: 'c1', tenantId: TENANT, state: { not: 'HUMAN_ACTIVE' } } }, forbids: [{ model: 'conversation', op: 'update' }] },
     { name: 'POST /conversations/:id/assign', method: 'POST', url: '/conversations/c1/assign',
       expects: { model: 'conversation', op: 'updateMany', where: { id: 'c1', tenantId: TENANT } }, forbids: [{ model: 'conversation', op: 'update' }] },
     { name: 'PATCH /users/:id', method: 'PATCH', url: '/users/u2', payload: { name: 'Bob' },
@@ -268,7 +268,7 @@ describe('cancelling a booking from the dashboard stays tenant-scoped end to end
 
         expect(violations, violations.join(' | ')).toEqual([]);
         expect(res.statusCode, res.body).toBe(200);
-        expect(find('booking', 'updateMany')[0].args.where).toEqual({ id: 'b1', tenantId: TENANT });
+        expect(find('booking', 'updateMany')[0].args.where).toEqual({ id: 'b1', tenantId: TENANT, status: 'CONFIRMED' });
         expect(find('booking', 'update')).toHaveLength(0);
         expect(find('booking', 'findUnique')).toHaveLength(0);
     });

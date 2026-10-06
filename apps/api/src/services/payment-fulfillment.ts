@@ -23,6 +23,8 @@ import { createNotification } from './notifications.js';
 import { syncBookingToCalendar } from './calendar.js';
 import type { VerifyResult } from './paystack.js';
 import { creditDepositToWallet } from './wallet-credit.js';
+import { publishEventOnce } from './events/emit.js';
+import { raiseAlert } from './alerts.js';
 
 /** Minimal booking shape the fulfillment needs (matches the webhook select). */
 export interface FulfillableBooking {
@@ -117,6 +119,220 @@ async function creditForPlatformPayment(opts: {
     }
 }
 
+/** What a verified charge looks like as an event; `extra` carries bookingId / orderId. */
+function paymentEventPayload(verified: Pick<VerifyResult, 'amountKobo' | 'currency'>, reference: string, extra: Record<string, unknown>): Record<string, unknown> {
+    return {
+        ...extra,
+        paymentId: reference,
+        amount: verified.amountKobo,
+        currency: verified.currency,
+        reference,
+    };
+}
+
+/**
+ * Record `payment.succeeded` once per reference, BEFORE the paid claim.
+ *
+ * A verified Paystack success is a fact whatever the claim does. Publishing
+ * after the claim lost the event for good when the first attempt died in
+ * between: the redelivery sees an already-PAID row and returns idempotently.
+ * Published first and keyed by the reference, every redelivery (claim won or
+ * lost) tries again and the unique key makes extra tries harmless.
+ *
+ * A failure is returned, not thrown: an events outage must never hold up
+ * confirming the booking or crediting the money. The caller finishes the
+ * fulfilment and then rethrows (settle), so the webhook answers with an error
+ * and Paystack redelivers, which publishes the event.
+ */
+async function recordPaymentSucceeded(
+    prisma: unknown,
+    logger: { error: (obj: object, msg: string) => void },
+    args: { tenantId: string; reference: string; verified: VerifyResult; extra: Record<string, unknown> },
+): Promise<unknown | null> {
+    return republishPaymentSucceeded({
+        prisma,
+        logger,
+        tenantId: args.tenantId,
+        reference: args.reference,
+        amountMinor: args.verified.amountKobo,
+        currency: args.verified.currency,
+        extra: args.extra,
+    });
+}
+
+/**
+ * (Re)publish `payment.succeeded` for a charge whose row is already PAID.
+ *
+ * The fulfilment publishes before its claim, and rethrows when that publish
+ * fails so Paystack redelivers. But a redelivery (or the customer's return
+ * page) finds the row PAID and used to answer idempotently BEFORE any
+ * publish, so an events outage lost the event for good. Every PAID
+ * short-circuit therefore calls this: the dedupe key makes it a no-op when
+ * the event exists and the first write when it does not.
+ *
+ * `amountMinor` / `currency` come from signature-verified webhook data or a
+ * Paystack verify. Even a tenant using its own key, who could sign whatever
+ * amount it likes, can only affect its own subscribers' events.
+ *
+ * Returns the error instead of throwing (see recordPaymentSucceeded). An
+ * unusable amount or currency is skipped, not published: the fulfilment that
+ * made the row PAID already published the real figures.
+ */
+export async function republishPaymentSucceeded(args: {
+    prisma: unknown;
+    logger: { error: (obj: object, msg: string) => void };
+    tenantId: string;
+    reference: string;
+    amountMinor: number;
+    currency: string;
+    extra: Record<string, unknown>;
+}): Promise<unknown | null> {
+    if (!Number.isInteger(args.amountMinor) || args.amountMinor <= 0 || typeof args.currency !== 'string' || !args.currency) {
+        return null;
+    }
+    try {
+        await publishEventOnce(
+            args.prisma,
+            {
+                tenantId: args.tenantId,
+                type: 'payment.succeeded',
+                payload: paymentEventPayload({ amountKobo: args.amountMinor, currency: args.currency }, args.reference, args.extra),
+            },
+            { field: 'reference', equals: args.reference },
+        );
+        return null;
+    } catch (err) {
+        args.logger.error({ err, reference: args.reference, tenantId: args.tenantId }, 'payment.succeeded not recorded; will throw after fulfilment so the delivery is retried');
+        return err;
+    }
+}
+
+/**
+ * Has `payment.succeeded` already been written for this reference? Lets the
+ * unauthenticated return page skip a Paystack round trip on every refresh.
+ * Fails open (false): when unsure, the caller verifies and republishes, which
+ * the unique key makes harmless.
+ */
+export async function recordedPaymentSucceeded(prisma: any, tenantId: string, reference: string): Promise<boolean> {
+    try {
+        const row = await prisma.domainEvent.findFirst({
+            where: { tenantId, dedupeKey: `payment.succeeded:reference:${reference}` },
+            select: { id: true },
+        });
+        return !!row;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Verify-on-return companion of republishPaymentSucceeded: when the row is
+ * already PAID and the event is not recorded, verify with Paystack and record
+ * it. Never throws: the customer is answered as before whatever happens here.
+ */
+export async function ensurePaymentSucceededOnReturn(args: {
+    prisma: any;
+    logger: { error: (obj: object, msg: string) => void };
+    tenantId: string;
+    reference: string;
+    verify: () => Promise<VerifyResult>;
+    extra: Record<string, unknown>;
+}): Promise<void> {
+    try {
+        if (await recordedPaymentSucceeded(args.prisma, args.tenantId, args.reference)) return;
+        const verified = await args.verify();
+        if (verified.status !== 'success') return;
+        await republishPaymentSucceeded({
+            prisma: args.prisma,
+            logger: args.logger,
+            tenantId: args.tenantId,
+            reference: args.reference,
+            amountMinor: verified.amountKobo,
+            currency: verified.currency,
+            extra: args.extra,
+        });
+    } catch (err) {
+        args.logger.error({ err, reference: args.reference }, 'Could not re-record payment.succeeded on return');
+    }
+}
+
+/**
+ * Record `payment.failed` (underpaid) once per reference. Thrown on failure:
+ * nothing was claimed, so the redelivery is safe and is the only way the event
+ * is ever written.
+ */
+async function recordPaymentFailed(
+    prisma: unknown,
+    args: { tenantId: string; reference: string; verified: VerifyResult; extra: Record<string, unknown> },
+): Promise<void> {
+    await publishEventOnce(
+        prisma,
+        {
+            tenantId: args.tenantId,
+            type: 'payment.failed',
+            payload: { ...paymentEventPayload(args.verified, args.reference, args.extra), reason: 'underpaid' },
+        },
+        { field: 'reference', equals: args.reference },
+    );
+}
+
+/** Finish with the fulfilment result, unless the event could not be recorded. */
+function settle(result: FulfillResult, eventError: unknown | null): FulfillResult {
+    if (eventError) throw eventError;
+    return result;
+}
+
+/**
+ * A verified payment for a booking whose hold already expired (CANCELLED).
+ *
+ * Not confirmed and not rebooked: the slot may belong to someone else now.
+ * The row is marked PAID (status untouched) so the payment is traceable and
+ * so the refund path (which needs PAID + a reference) works. Money we hold
+ * must have an owner and an exit: it is credited to the wallet as PENDING
+ * exactly like any platform-collected deposit; PENDING is never withdrawable
+ * and a CANCELLED booking never clears, so the only way out is a refund, which
+ * the CRITICAL alert asks a person to do (or to rebook the customer).
+ *
+ * The alert goes FIRST: the claim above is what makes this run once, so a
+ * crash after it must not be able to lose the only thing that tells a person.
+ * (raiseAlert never throws.)
+ */
+async function handleLatePayment(opts: {
+    fastify: FastifyInstance;
+    logger: FastifyBaseLogger;
+    tenantId: string;
+    booking: FulfillableBooking;
+    verified: VerifyResult;
+    reference: string;
+    storedRoute: string | null;
+}): Promise<void> {
+    const { fastify, logger, tenantId, booking, verified, reference } = opts;
+    logger.error(
+        { bookingId: booking.id, reference },
+        'Payment arrived after the hold expired — booking NOT confirmed; refund or rebook',
+    );
+    await raiseAlert(fastify.prisma, {
+        kind: 'payment.after_hold_expired',
+        severity: 'critical',
+        tenantId,
+        message: `A payment arrived for booking ${booking.bookingReference} after its hold expired. It was not confirmed; refund the customer or rebook them.`,
+        context: { bookingId: booking.id, bookingReference: booking.bookingReference, reference, amountMinor: verified.amountKobo, currency: verified.currency },
+        dedupeKey: `payment.after_hold_expired:${tenantId}:${reference}`,
+    });
+    await creditForPlatformPayment({
+        fastify, logger, tenantId, verified, reference, storedRoute: opts.storedRoute, bookingId: booking.id,
+    });
+    await audit({
+        prisma: fastify.prisma,
+        action: 'payments.charge.after_hold_expired',
+        actorType: 'SYSTEM',
+        tenantId,
+        targetType: 'Booking',
+        targetId: booking.id,
+        metadata: { entity: 'booking', reference, amountKobo: verified.amountKobo, currency: verified.currency },
+    });
+}
+
 /** `applied` is true iff this call performed the UNPAID → PAID flip. */
 export interface FulfillResult {
     applied: boolean;
@@ -146,14 +362,24 @@ export async function fulfillBookingCharge(opts: {
             { bookingId: booking.id, reference, paidMinor: verified.amountKobo },
             'Payment is less than the deposit asked for — NOT confirming or crediting',
         );
+        await recordPaymentFailed(fastify.prisma, { tenantId, reference, verified, extra: { bookingId: booking.id } });
         return { applied: false };
     }
+
+    // The success fact first (see recordPaymentSucceeded), whatever the claim does.
+    const eventError = await recordPaymentSucceeded(fastify.prisma, logger, {
+        tenantId, reference, verified, extra: { bookingId: booking.id },
+    });
 
     // Atomic claim: only the writer that sees UNPAID flips to PAID. A
     // concurrent delivery sees count === 0 and returns idempotently, so
     // side effects (template, calendar, audit) only run once per payment.
+    //
+    // Guarded on the booking still being held (or already CONFIRMED with an
+    // unpaid deposit): a hold that expired is CANCELLED and UNPAID, and
+    // confirming it would resurrect a slot that may already be rebooked.
     const claimed = await fastify.prisma.booking.updateMany({
-        where: { id: booking.id, paymentStatus: 'UNPAID' },
+        where: { id: booking.id, paymentStatus: 'UNPAID', status: { in: ['PENDING_PAYMENT', 'CONFIRMED'] } },
         data: {
             paymentStatus: 'PAID',
             paidAt: verified.paidAt ?? new Date(),
@@ -161,7 +387,15 @@ export async function fulfillBookingCharge(opts: {
         },
     });
     if (claimed.count === 0) {
-        return { applied: false };
+        // Money that arrived for a booking that is no longer waiting for it.
+        const late = await fastify.prisma.booking.updateMany({
+            where: { id: booking.id, paymentStatus: 'UNPAID', status: { notIn: ['PENDING_PAYMENT', 'CONFIRMED'] } },
+            data: { paymentStatus: 'PAID', paidAt: verified.paidAt ?? new Date() },
+        });
+        if (late.count === 1) {
+            await handleLatePayment({ fastify, logger, tenantId, booking, verified, reference, storedRoute: entityCollectionRoute });
+        }
+        return settle({ applied: false }, eventError);
     }
 
     // Credit the wallet IMMEDIATELY after the claim and before any queue work.
@@ -266,7 +500,7 @@ export async function fulfillBookingCharge(opts: {
         logger.warn({ err, bookingId: booking.id }, 'Payment notification failed');
     });
 
-    return { applied: true };
+    return settle({ applied: true }, eventError);
 }
 
 /**
@@ -289,8 +523,13 @@ export async function fulfillOrderCharge(opts: {
             { orderId: order.id, reference, paidMinor: verified.amountKobo },
             'Payment is less than the order total — NOT fulfilling or crediting',
         );
+        await recordPaymentFailed(fastify.prisma, { tenantId, reference, verified, extra: { orderId: order.id } });
         return { applied: false };
     }
+
+    const eventError = await recordPaymentSucceeded(fastify.prisma, fastify.log, {
+        tenantId, reference, verified, extra: { orderId: order.id },
+    });
 
     // Atomic claim: same TOCTOU guard as the booking branch.
     const claimed = await fastify.prisma.order.updateMany({
@@ -302,7 +541,7 @@ export async function fulfillOrderCharge(opts: {
         },
     });
     if (claimed.count === 0) {
-        return { applied: false };
+        return settle({ applied: false }, eventError);
     }
 
     // Same ordering as the booking path: credit before any queue work, so a
@@ -357,5 +596,5 @@ export async function fulfillOrderCharge(opts: {
         fastify.log.warn({ err, orderId: order.id }, 'Payment notification failed');
     });
 
-    return { applied: true };
+    return settle({ applied: true }, eventError);
 }

@@ -17,7 +17,7 @@ import { cancelBooking } from '../../services/booking-cancel.js';
 import { audit } from '../../services/audit.js';
 import { decrypt } from '../../services/crypto.js';
 import { verifyTransaction, PaystackError } from '../../services/paystack.js';
-import { fulfillBookingCharge, fulfillOrderCharge } from '../../services/payment-fulfillment.js';
+import { fulfillBookingCharge, fulfillOrderCharge, ensurePaymentSucceededOnReturn } from '../../services/payment-fulfillment.js';
 import { config } from '../../config/index.js';
 
 const ipRateLimit = {
@@ -248,8 +248,21 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(409).send({ error: 'payments_not_configured' });
         }
 
-        // Already PAID — idempotent short-circuit, no Paystack call needed.
+        // Already PAID — idempotent short-circuit. The only Paystack call is
+        // made when payment.succeeded was never recorded (an events outage
+        // after the claim), to re-record it; see ensurePaymentSucceededOnReturn.
+        // The answer to the customer never depends on it.
+        const rerecord = (entity: { tenantId: string }, extra: Record<string, unknown>) =>
+            ensurePaymentSucceededOnReturn({
+                prisma: fastify.prisma,
+                logger: request.log,
+                tenantId: entity.tenantId,
+                reference,
+                verify: () => verifyTransaction(secretKey, reference),
+                extra,
+            });
         if (order && order.paymentStatus === 'PAID') {
+            await rerecord(order, { orderId: order.id });
             return {
                 status: 'PAID',
                 kind: 'order',
@@ -261,6 +274,7 @@ const publicRoutes: FastifyPluginAsync = async (fastify) => {
             };
         }
         if (booking && booking.paymentStatus === 'PAID') {
+            await rerecord(booking, { bookingId: booking.id });
             return {
                 status: 'PAID',
                 kind: 'booking',

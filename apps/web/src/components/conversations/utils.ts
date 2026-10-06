@@ -1,3 +1,5 @@
+import type { Conversation } from './types';
+
 /** WhatsApp-style relative timestamp for chat rows and message bubbles. */
 export function formatTime(dateStr?: string): string {
     if (!dateStr) return '';
@@ -27,4 +29,23 @@ export function previewText(messageType: string, content?: string): string {
         default:
             return content?.trim() || '';
     }
+}
+
+/** Channel name for a conversation; null for WhatsApp (the default, shown without a label). */
+export function channelLabel(c: Pick<Conversation, 'channel'>): string | null {
+    if (c.channel === 'INSTAGRAM') return 'Instagram';
+    if (c.channel === 'MESSENGER') return 'Messenger';
+    return null;
+}
+
+/** How to reach the customer: phone on WhatsApp, @handle on Instagram, the channel name otherwise. */
+export function contactLine(c: Pick<Conversation, 'channel' | 'customerPhone' | 'customerHandle'>): string {
+    if (c.channel === 'INSTAGRAM' && c.customerHandle) return `@${c.customerHandle.replace(/^@/, '')}`;
+    if (c.channel === 'INSTAGRAM' || c.channel === 'MESSENGER') return channelLabel(c)!;
+    return c.customerPhone ?? '';
+}
+
+/** The name to show for a conversation. */
+export function conversationTitle(c: Pick<Conversation, 'channel' | 'customerPhone' | 'customerHandle' | 'customerName'>): string {
+    return c.customerName || contactLine(c) || 'Customer';
 }

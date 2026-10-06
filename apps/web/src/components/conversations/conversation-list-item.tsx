@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 
 import { cn, Avatar } from '@bookingflow/ui';
 import type { Conversation } from './types';
-import { formatTime, previewText } from './utils';
+import { channelLabel, contactLine, conversationTitle, formatTime, previewText } from './utils';
 
 interface ConversationListItemProps {
     /** Position in the list, for the staggered entrance. */
@@ -17,10 +17,11 @@ interface ConversationListItemProps {
 
 /** A single row in the chat list — avatar, name, preview, time, unread dot. */
 export function ConversationListItem({ index = 0, conversation, active, unread, onClick }: ConversationListItemProps) {
-    const title = conversation.customerName || conversation.customerPhone;
+    const title = conversationTitle(conversation);
+    const channel = channelLabel(conversation);
     const preview = conversation.lastMessage
         ? previewText('TEXT', conversation.lastMessage)
-        : conversation.customerPhone;
+        : contactLine(conversation);
 
     return (
         <motion.button
@@ -52,6 +53,11 @@ export function ConversationListItem({ index = 0, conversation, active, unread, 
                     >
                         {title}
                     </span>
+                    {channel && (
+                        <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                            {channel}
+                        </span>
+                    )}
                     <span
                         className={cn(
                             'shrink-0 text-[11px]',

@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { decrypt } from '../../services/crypto.js';
 import { checkOutboundQuota, incrementMessageUsage } from '../../services/usage.js';
 import { resolveCredentials, selectCredentialSource } from '../../services/whatsapp-credentials.js';
+import { resolveChannelCredentials, sendChannelText, type ChannelCredentials } from '../../services/channel-send.js';
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 import { emitConversationHandoff, emitConversationResumed, emitMessageSent } from '../../services/events/emit.js';
@@ -52,6 +53,11 @@ const OUTBOUND_PAUSED_MESSAGE =
     'Messaging is paused for this business by Bookly support. Replies cannot be sent right now; ' +
     'contact Bookly support to have it lifted.';
 
+/** Human name of a conversation channel, for error messages. */
+function channelLabel(channel: string): string {
+    return channel === 'INSTAGRAM' ? 'Instagram' : channel === 'MESSENGER' ? 'Facebook Messenger' : 'WhatsApp';
+}
+
 /** Message rows without provider metadata (raw sender number, profile name) for masked viewers. */
 function withoutMetadata<T extends { metadata?: unknown }>(messages: T[]): T[] {
     return messages.map((m) => ({ ...m, metadata: null }));
@@ -97,8 +103,11 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         return {
             data: conversations.map((c) => maskContact({
                 id: c.id,
+                channel: c.channel,
                 customerPhone: c.customerPhone,
                 customerName: c.customerName,
+                // Instagram @username; Instagram and Messenger give no phone number.
+                customerHandle: c.customerHandle ?? null,
                 state: c.state,
                 lastMessage: c.messages[0]?.content,
                 lastMessageAt: c.messages[0]?.createdAt,
@@ -254,6 +263,24 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             );
         }
 
+        // Instagram and Messenger replies go out on that channel, signed by the
+        // Page token, to the customer's channel id. Never via WhatsApp: those
+        // customers usually have no phone, and a typed one may be someone else's.
+        const channel = conversation.channel ?? 'WHATSAPP';
+        let pageCredentials: ChannelCredentials | null = null;
+        if (channel !== 'WHATSAPP') {
+            const pageTenant = await fastify.prisma.tenant.findUnique({
+                where: { id: request.user.tenantId },
+                select: { facebookPageId: true, facebookPageToken: true, instagramUserId: true },
+            });
+            pageCredentials = pageTenant ? resolveChannelCredentials(pageTenant, channel, decrypt) : null;
+            if (!pageCredentials) {
+                throw fastify.httpErrors.unprocessableEntity(
+                    `${channelLabel(channel)} is not connected, so this reply cannot be sent. Connect it again in Channels.`,
+                );
+            }
+        }
+
         // Phase 4a — quota enforcement. If the tenant has burned through
         // their monthly message allowance, return 402 with a clear pointer
         // to the upgrade flow. Staff sees this as a toast in the dashboard.
@@ -281,6 +308,24 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             fastify.prisma.conversation.updateMany(touch(request.user.tenantId, id)),
         ]);
         await announceHandoff(fastify.prisma, request.user.tenantId, id, flip.count === 1, 'staff_reply');
+
+        if (pageCredentials) {
+            try {
+                const sentOut = await sendChannelText({ channel, credentials: pageCredentials, recipientId: conversation.externalId, text: body.content });
+                if (sentOut.messageId) {
+                    await fastify.prisma.message
+                        .update({ where: { id: message.id }, data: { whatsappMsgId: sentOut.messageId } })
+                        .catch(() => undefined);
+                }
+                await incrementMessageUsage(fastify.prisma, request.user.tenantId);
+                await emitMessageSent(fastify.prisma, {
+                    tenantId: request.user.tenantId, conversationId: id, messageId: message.id, channel, sentBy: 'HUMAN',
+                });
+            } catch (err) {
+                fastify.log.error({ err, channel }, 'Error sending staff reply');
+            }
+            return message;
+        }
 
         // Send message via WhatsApp Cloud API
         const tenant = await fastify.prisma.tenant.findUnique({
@@ -360,6 +405,11 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
         });
         if (!conversation) {
             throw fastify.httpErrors.notFound('Conversation not found');
+        }
+        if (conversation.channel && conversation.channel !== 'WHATSAPP') {
+            throw fastify.httpErrors.unprocessableEntity(
+                `Attachments, reactions and locations can't be sent on ${channelLabel(conversation.channel)} from Bookly yet. Send a text reply instead.`,
+            );
         }
 
         const WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -586,6 +636,11 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             where: { id, tenantId: request.user.tenantId },
         });
         if (!conversation) throw fastify.httpErrors.notFound('Conversation not found');
+        if (conversation.channel && conversation.channel !== 'WHATSAPP') {
+            throw fastify.httpErrors.unprocessableEntity(
+                `Attachments, reactions and locations can't be sent on ${channelLabel(conversation.channel)} from Bookly yet. Send a text reply instead.`,
+            );
+        }
 
         const WINDOW_MS = 24 * 60 * 60 * 1000;
         const withinWindow =

@@ -6,6 +6,7 @@ import { Avatar, cn } from '@bookingflow/ui';
 import type { Conversation, Message } from './types';
 import { MessageBubble } from './message-bubble';
 import { ChatComposer } from './chat-composer';
+import { channelLabel, contactLine, conversationTitle } from './utils';
 
 interface ChatThreadProps {
     conversation: Conversation;
@@ -37,7 +38,8 @@ export function ChatThread({
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
-    const title = conversation.customerName || conversation.customerPhone;
+    const title = conversationTitle(conversation);
+    const channel = channelLabel(conversation);
     const isHuman = conversation.state === 'HUMAN_ACTIVE';
 
     return (
@@ -55,8 +57,10 @@ export function ChatThread({
                 <div className="flex-1 min-w-0">
                     <h2 className="font-semibold text-sm text-slate-900 dark:text-white truncate">{title}</h2>
                     <p className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                        <Phone className="w-3 h-3 shrink-0" />
-                        <span className="truncate">{conversation.customerPhone}</span>
+                        {channel
+                            ? <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">{channel}</span>
+                            : <Phone className="w-3 h-3 shrink-0" />}
+                        <span className="truncate">{contactLine(conversation)}</span>
                         <span
                             className={cn(
                                 'ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium',

@@ -53,7 +53,8 @@ export default function ConversationsPage() {
             if (filter === 'human' && c.state !== 'HUMAN_ACTIVE') return false;
             if (!q) return true;
             return (
-                c.customerPhone.toLowerCase().includes(q) ||
+                (c.customerPhone?.toLowerCase().includes(q) ?? false) ||
+                (c.customerHandle?.toLowerCase().includes(q) ?? false) ||
                 (c.customerName?.toLowerCase().includes(q) ?? false)
             );
         });

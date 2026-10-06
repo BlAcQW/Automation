@@ -1,10 +1,17 @@
 export type ConversationState = 'BOT_ACTIVE' | 'HUMAN_ACTIVE';
 export type MessageDirection = 'INBOUND' | 'OUTBOUND';
 
+export type ConversationChannel = 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
+
 export interface Conversation {
     id: string;
-    customerPhone: string;
+    /** Absent on older API responses: treat as WhatsApp. */
+    channel?: ConversationChannel;
+    /** Instagram and Messenger give no phone number. */
+    customerPhone: string | null;
     customerName: string | null;
+    /** Instagram @username (masked like contacts for some staff). */
+    customerHandle?: string | null;
     state: ConversationState;
     lastMessage?: string;
     lastMessageAt?: string;

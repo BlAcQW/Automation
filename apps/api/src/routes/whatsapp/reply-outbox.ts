@@ -122,7 +122,12 @@ export async function deliverReply(fastify: any, tenant: any, args: DeliverArgs)
     // reserve atomically and release when this attempt fails.
     const reservation = await tryReserveOutbound(fastify.prisma, tenant.id);
     if (!reservation.ok) {
-        fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
+        // A support pause is not a quota problem: log which, so nobody chases the wrong thing.
+        if (reservation.reason === 'paused') {
+            fastify.log.warn({ tenantId: tenant.id }, 'Outbound messaging paused by support — agent reply suppressed');
+        } else {
+            fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
+        }
         await setState(fastify, rowId, { sendState: 'SUPPRESSED', sendClaimedAt: null });
         return 'suppressed';
     }

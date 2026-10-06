@@ -120,6 +120,14 @@ const messageRoutes: FastifyPluginAsync = async (fastify) => {
         // Atomic: two parallel sends cannot both take the last slot.
         const reservation = await tryReserveOutbound(fastify.prisma, tenantId);
         if (!reservation.ok) {
+            // A support pause is not a quota problem: a distinct, non-retry-with-upgrade answer.
+            if (reservation.reason === 'paused') {
+                throw new ApiError(
+                    423,
+                    'outbound_paused',
+                    'Messaging is paused for this organisation by Bookly support, so messages cannot be sent right now. Contact Bookly support; do not retry until it is lifted.',
+                );
+            }
             throw new ApiError(402, 'quota_exceeded', 'The monthly message quota for this organisation is used up. Upgrade the plan or wait for the next cycle.');
         }
 

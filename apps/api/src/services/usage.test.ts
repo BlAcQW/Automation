@@ -11,7 +11,9 @@ import {
     tryReserveOutbound,
     incrementPlatformSmsUsage,
     getPlatformSmsCount,
+    notePauseLogged,
 } from './usage';
+import { clearSwitchCache } from './platform-switches';
 import { getPlan, PLAN_CATALOG } from './plans';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -431,5 +433,94 @@ describe('platform SMS metering shares the message cycle key', () => {
         expect(await getPlatformSmsCount(prisma, 'ghost')).toBe(0);
         await incrementPlatformSmsUsage(prisma, 'ghost');
         expect(prisma.tenantUsage.upsert).not.toHaveBeenCalled();
+    });
+});
+
+describe('emergency outbound pause (A5)', () => {
+    const now = new Date();
+    function pausedPrisma(opts: { tenantPausedAt?: Date | null; platform?: unknown; reason?: string | null } = {}) {
+        return {
+            tenant: {
+                findUnique: vi.fn().mockResolvedValue({
+                    planId: 'free', subscriptionStatus: null, trialEndsAt: null, currentPeriodEnd: null,
+                    quotaCycleStart: now, createdAt: now, monthlyMessageQuotaOverride: null,
+                    outboundPausedAt: opts.tenantPausedAt ?? null,
+                    pauseReason: opts.reason ?? null,
+                }),
+                update: vi.fn(),
+            },
+            tenantUsage: {
+                findUnique: vi.fn().mockResolvedValue({ messageCount: 0 }),
+                upsert: vi.fn().mockResolvedValue({}),
+                updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+            },
+            platformSetting: {
+                findUnique: vi.fn().mockResolvedValue(opts.platform === undefined ? null : { value: opts.platform }),
+            },
+        } as any;
+    }
+
+    it('tryReserveOutbound refuses with reason "paused" and touches no counter', async () => {
+        clearSwitchCache();
+        const prisma = pausedPrisma({ tenantPausedAt: new Date(), reason: 'spam complaints' });
+        const out = await tryReserveOutbound(prisma, 't-paused-1');
+        expect(out).toMatchObject({ ok: false, reason: 'paused', pauseReason: 'spam complaints' });
+        expect(prisma.tenantUsage.upsert).not.toHaveBeenCalled();
+        expect(prisma.tenantUsage.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('a platform-wide outbound pause refuses every tenant', async () => {
+        clearSwitchCache();
+        const prisma = pausedPrisma({ platform: { paused: true, reason: 'carrier outage' } });
+        const out = await tryReserveOutbound(prisma, 't-paused-2');
+        expect(out).toMatchObject({ ok: false, reason: 'paused', pauseReason: 'carrier outage' });
+        expect(prisma.tenantUsage.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('a quota refusal is distinguishable from a pause', async () => {
+        clearSwitchCache();
+        const prisma = pausedPrisma();
+        prisma.tenantUsage.updateMany.mockResolvedValue({ count: 0 });
+        const out = await tryReserveOutbound(prisma, 't-quota');
+        expect(out).toMatchObject({ ok: false, reason: 'quota' });
+    });
+
+    it('a successful reservation carries no pause reason', async () => {
+        clearSwitchCache();
+        const out = await tryReserveOutbound(pausedPrisma(), 't-ok');
+        expect(out.ok).toBe(true);
+    });
+
+    it('checkOutboundQuota reports ok:false with paused:true and the reason', async () => {
+        clearSwitchCache();
+        const state = await checkOutboundQuota(pausedPrisma({ tenantPausedAt: new Date(), reason: 'review' }), 't-paused-3');
+        expect(state).toMatchObject({ ok: false, paused: true, pauseReason: 'review' });
+    });
+
+    it('checkOutboundQuota is unchanged when nothing is paused', async () => {
+        clearSwitchCache();
+        const state = await checkOutboundQuota(pausedPrisma(), 't-ok-2');
+        expect(state.ok).toBe(true);
+        expect(state.paused).toBeUndefined();
+    });
+
+    it('resuming takes effect on the very next reservation', async () => {
+        clearSwitchCache();
+        const prisma = pausedPrisma({ tenantPausedAt: new Date() });
+        expect((await tryReserveOutbound(prisma, 't-flip')).ok).toBe(false);
+        prisma.tenant.findUnique.mockResolvedValue({ ...(await prisma.tenant.findUnique()), outboundPausedAt: null });
+        expect((await tryReserveOutbound(prisma, 't-flip')).ok).toBe(true);
+    });
+
+    it('logs the pause once per tenant until it is lifted, not once per refused message', async () => {
+        clearSwitchCache();
+        const prisma = pausedPrisma({ tenantPausedAt: new Date(), reason: 'x' });
+        for (let i = 0; i < 5; i++) await tryReserveOutbound(prisma, 't-log-once');
+        // The first refusal already recorded it, so the helper reports "not new".
+        expect(notePauseLogged('t-log-once')).toBe(false);
+        // Once the tenant sends again, a later pause is news again.
+        prisma.tenant.findUnique.mockResolvedValue({ ...(await prisma.tenant.findUnique()), outboundPausedAt: null });
+        await tryReserveOutbound(prisma, 't-log-once');
+        expect(notePauseLogged('t-log-once')).toBe(true);
     });
 });

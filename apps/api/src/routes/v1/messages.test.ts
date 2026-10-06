@@ -115,6 +115,20 @@ describe('POST /v1/messages', () => {
         expect(h.find('message', 'create')).toHaveLength(0);
     });
 
+    it('423 outbound_paused (not quota_exceeded) when support has paused messaging; nothing sent, stored or rolled back', async () => {
+        (tryReserveOutbound as any).mockResolvedValue({ ok: false, used: 0, limit: 100, planId: 'free', reason: 'paused', pauseReason: 'internal abuse note' });
+        const k = h.makeKey({ scopes: ['messages:write'] });
+        const res = await send(k, { conversationId: CONV, text: 'hello' });
+        expect(res.statusCode).toBe(423);
+        expect(res.json().error.code).toBe('outbound_paused');
+        expect(res.json().error.message).toMatch(/paused/i);
+        expect(res.json().error.message).not.toMatch(/quota|upgrade/i);
+        expect(res.body).not.toContain('internal abuse note');
+        expect(sendChannelText).not.toHaveBeenCalled();
+        expect(rollbackOutboundReservation).not.toHaveBeenCalled();
+        expect(h.find('message', 'create')).toHaveLength(0);
+    });
+
     it('rolls the reservation back and returns 502 when the provider send fails; no message is stored', async () => {
         (sendChannelText as any).mockRejectedValue(new Error('meta 500'));
         const k = h.makeKey({ scopes: ['messages:write'] });

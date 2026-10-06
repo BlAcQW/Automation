@@ -741,6 +741,11 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
     // POST /whatsapp/send-test - Send a test message. Tight per-tenant
     // rate limit: testing is rare; high rate signals abuse and burns the
     // tenant's Meta messaging quota.
+    //
+    // This sends from the tenant's real number to ANY recipient, so it is OWNER
+    // only (staff have the inbox for replying to customers) and it goes through
+    // the same outbound pause and message quota as every other send: the slot is
+    // reserved first and handed back if the send fails.
     fastify.post('/send-test', {
         preHandler: [fastify.authenticate],
         config: {
@@ -751,35 +756,62 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
             },
         },
     }, async (request) => {
+        if (request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only the owner can send test messages');
+        }
         const body = z.object({
             to: z.string(),
             message: z.string(),
         }).parse(request.body);
+        const tenantId = request.user.tenantId;
 
-        const creds = await getWhatsappCredentials(fastify.prisma, request.user.tenantId);
+        const creds = await getWhatsappCredentials(fastify.prisma, tenantId);
         if (!creds) {
             throw fastify.httpErrors.badRequest('WhatsApp not connected');
         }
 
-        const accessToken = creds.accessToken;
-        const response = await fetch(
-            `https://graph.facebook.com/v21.0/${creds.phoneNumberId}/messages`,
-            {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    messaging_product: 'whatsapp',
-                    to: body.to,
-                    type: 'text',
-                    text: { body: body.message },
-                }),
+        const { tryReserveOutbound, rollbackOutboundReservation } = await import('../../services/usage.js');
+        const reservation = await tryReserveOutbound(fastify.prisma, tenantId);
+        if (!reservation.ok) {
+            if (reservation.reason === 'paused') {
+                throw fastify.httpErrors.locked(
+                    'Messaging is paused for this business by Bookly support. Test messages cannot be sent right now.',
+                );
             }
-        );
+            throw fastify.httpErrors.paymentRequired(
+                `Monthly message quota exhausted (${reservation.used}/${reservation.limit} on plan ${reservation.planId}).`,
+            );
+        }
+        const releaseSlot = () =>
+            rollbackOutboundReservation(fastify.prisma, tenantId).catch((err: unknown) =>
+                fastify.log.error({ err, tenantId }, 'send-test quota rollback failed'));
+
+        const accessToken = creds.accessToken;
+        let response: Response;
+        try {
+            response = await fetch(
+                `https://graph.facebook.com/v21.0/${creds.phoneNumberId}/messages`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messaging_product: 'whatsapp',
+                        to: body.to,
+                        type: 'text',
+                        text: { body: body.message },
+                    }),
+                }
+            );
+        } catch (err) {
+            await releaseSlot();
+            throw err;
+        }
 
         if (!response.ok) {
+            await releaseSlot();
             const error = await response.json().catch(() => ({}));
             fastify.log.error({ status: response.status, error }, 'WhatsApp API error');
             throw fastify.httpErrors.badGateway('Failed to send WhatsApp message');
@@ -1596,7 +1628,11 @@ async function handleWithAgent(
     // The authoritative, race-safe reservation happens just before the send.
     const quota = await checkOutboundQuota(fastify.prisma, tenant.id);
     if (!quota.ok) {
-        fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
+        if (quota.paused) {
+            fastify.log.warn({ tenantId: tenant.id }, 'Outbound messaging paused by support — agent turn suppressed');
+        } else {
+            fastify.log.warn({ tenantId: tenant.id }, 'Quota exhausted — agent reply suppressed');
+        }
         return;
     }
 

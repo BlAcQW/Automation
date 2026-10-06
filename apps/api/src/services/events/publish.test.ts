@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { publishEvent, publishTestEvent, TX_NUDGE_DELAY_MS } from './publish.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { publishEvent, publishTestEvent, clearBillingUnitCache, TX_NUDGE_DELAY_MS, BILLING_UNIT_CACHE_TTL_MS } from './publish.js';
 import { setDeliveryDispatcher } from './dispatcher.js';
 import { fakeEventsPrisma } from './testing.js';
 import { EVENT_TYPES, isEventType, isFanOutOnlyType } from './catalogue.js';
@@ -157,5 +157,82 @@ describe('catalogue', () => {
         for (const t of ['payment.succeeded', 'payment.failed', 'flow.completed', 'webhook.test', 'unknown.type']) {
             expect(isFanOutOnlyType(t), t).toBe(false);
         }
+    });
+});
+
+describe('billing unit events are always stored', () => {
+    beforeEach(() => clearBillingUnitCache());
+
+    it('stores a fan-out-only type with no subscription when it is the tenant\'s billing unit', async () => {
+        const prisma = fakeEventsPrisma({ terms: [{ tenantId: 't1', unitEventType: 'booking.created' }] });
+        const { eventId } = await publishEvent(prisma, { tenantId: 't1', type: 'booking.created', payload: { v: 1 } });
+        expect(eventId).not.toBeNull();
+        expect(prisma.domainEvent.rows).toHaveLength(1);
+    });
+
+    it('overrides an explicit storeOnlyIfSubscribed: true for the billing unit', async () => {
+        const prisma = fakeEventsPrisma({ terms: [{ tenantId: 't1', unitEventType: 'message.sent' }] });
+        await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 }, storeOnlyIfSubscribed: true });
+        expect(prisma.domainEvent.rows).toHaveLength(1);
+    });
+
+    it('still skips a fan-out-only type that is not the billing unit', async () => {
+        const prisma = fakeEventsPrisma({ terms: [{ tenantId: 't1', unitEventType: 'booking.created' }] });
+        const { eventId } = await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } });
+        expect(eventId).toBeNull();
+        expect(prisma.domainEvent.rows).toHaveLength(0);
+    });
+
+    it('still skips when the tenant has terms without a unit event type, or no terms', async () => {
+        const prisma = fakeEventsPrisma({ terms: [{ tenantId: 't1', unitEventType: null }] });
+        expect((await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } })).eventId).toBeNull();
+        expect((await publishEvent(prisma, { tenantId: 't9', type: 'message.sent', payload: { v: 1 } })).eventId).toBeNull();
+    });
+
+    it('is per tenant: another tenant\'s billing unit does not force storage here', async () => {
+        const prisma = fakeEventsPrisma({ terms: [{ tenantId: 't2', unitEventType: 'message.sent' }] });
+        expect((await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } })).eventId).toBeNull();
+    });
+
+    it('looks the terms up by tenantId only on the skip path (never for subscribed or stored-anyway events)', async () => {
+        const prisma = fakeEventsPrisma({ subs: [sub('s1', 't1', ['*'])] });
+        await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } });
+        await publishEvent(prisma, { tenantId: 't1', type: 'payment.succeeded', payload: { v: 1 } });
+        expect(prisma.billingTerms.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('caches the lookup briefly, and clearBillingUnitCache picks up a change', async () => {
+        const prisma = fakeEventsPrisma();
+        await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } });
+        await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } });
+        expect(prisma.billingTerms.findUnique).toHaveBeenCalledTimes(1);
+        expect(prisma.billingTerms.findUnique.mock.calls[0][0].where).toEqual({ tenantId: 't1' });
+
+        prisma.billingTerms.rows.push({ tenantId: 't1', unitEventType: 'message.sent' });
+        expect((await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } })).eventId).toBeNull(); // stale, within TTL
+        clearBillingUnitCache('t1');
+        expect((await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } })).eventId).not.toBeNull();
+    });
+
+    it('expires the cache after the TTL', async () => {
+        vi.useFakeTimers();
+        try {
+            const prisma = fakeEventsPrisma();
+            await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } });
+            prisma.billingTerms.rows.push({ tenantId: 't1', unitEventType: 'message.sent' });
+            vi.advanceTimersByTime(BILLING_UNIT_CACHE_TTL_MS + 1);
+            expect((await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } })).eventId).not.toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('fails safe: if the terms lookup errors, the event is stored (a count is never silently lost)', async () => {
+        const prisma = fakeEventsPrisma();
+        prisma.billingTerms.findUnique.mockRejectedValueOnce(new Error('db blip'));
+        const { eventId } = await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } });
+        expect(eventId).not.toBeNull();
+        // and the failure is not cached: the next publish looks again
+        expect((await publishEvent(prisma, { tenantId: 't1', type: 'message.sent', payload: { v: 1 } })).eventId).toBeNull();
     });
 });

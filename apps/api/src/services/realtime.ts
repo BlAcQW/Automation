@@ -36,7 +36,26 @@ export function registerClient(tenantId: string, client: RealtimeClient): () => 
     };
 }
 
+/**
+ * Split deployments: background work runs in a worker process that has no
+ * sockets. It installs a forwarder (background/realtime-bridge.ts) that relays
+ * every publish to the API process over Redis. Unset in a single process.
+ */
+export type RealtimeForwarder = (tenantId: string, event: RealtimeEvent) => void;
+let forwarder: RealtimeForwarder | null = null;
+
+export function setRealtimeForwarder(fn: RealtimeForwarder | null): void {
+    forwarder = fn;
+}
+
 export function publish(tenantId: string, event: RealtimeEvent): void {
+    if (forwarder) {
+        try {
+            forwarder(tenantId, event);
+        } catch {
+            // Live updates are best-effort; never fail the caller's work.
+        }
+    }
     const set = tenants.get(tenantId);
     if (!set || set.size === 0) return;
     const payload = JSON.stringify(event);

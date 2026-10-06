@@ -19,6 +19,9 @@ import { nudgeDeliveries } from './dispatcher.js';
 import { TEST_EVENT_TYPE, WILDCARD_EVENT, isFanOutOnlyType } from './catalogue.js';
 
 export const TX_NUDGE_DELAY_MS = 2_000;
+export const BILLING_UNIT_CACHE_TTL_MS = 30_000;
+const BILLING_UNIT_CACHE_MAX = 5_000;
+
 const TYPE_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
 export interface PublishInput {
@@ -40,6 +43,42 @@ export interface PublishInput {
      * events whose only purpose is delivery.
      */
     storeOnlyIfSubscribed?: boolean;
+}
+
+/**
+ * Billing units are always stored. A tenant whose BillingTerms.unitEventType
+ * is `type` is charged by counting DomainEvent rows of that type, so the
+ * "skip the row when nobody subscribes" optimisation must not apply to it
+ * (the count would be silently zero). Only consulted on the skip path, so the
+ * common case costs nothing. Cached per tenant for BILLING_UNIT_CACHE_TTL_MS
+ * (the admin route clears the entry of the process that edited the terms; other
+ * processes converge within the TTL, and an event published in that window for
+ * a freshly-set unit type can be missed: set terms before traffic starts).
+ * FAILS SAFE: if the lookup throws, store the event (and do not cache that).
+ * Note that inside a caller's Postgres transaction a failed query dooms the
+ * transaction; the lookup is a primary-key-style read and the same exposure as
+ * the subscription query above it.
+ */
+const billingUnitCache = new Map<string, { unit: string | null; expiresAt: number }>();
+
+export function clearBillingUnitCache(tenantId?: string): void {
+    if (tenantId) billingUnitCache.delete(tenantId);
+    else billingUnitCache.clear();
+}
+
+async function isBillingUnitType(tx: any, tenantId: string, type: string): Promise<boolean> {
+    const now = Date.now();
+    const hit = billingUnitCache.get(tenantId);
+    if (hit && hit.expiresAt > now) return hit.unit === type;
+    try {
+        const row = await tx.billingTerms.findUnique({ where: { tenantId }, select: { unitEventType: true } });
+        const unit: string | null = row?.unitEventType ?? null;
+        if (billingUnitCache.size >= BILLING_UNIT_CACHE_MAX) billingUnitCache.clear();
+        billingUnitCache.set(tenantId, { unit, expiresAt: now + BILLING_UNIT_CACHE_TTL_MS });
+        return unit === type;
+    } catch {
+        return true;
+    }
 }
 
 function isTransactionClient(prisma: any): boolean {
@@ -64,7 +103,9 @@ async function write(
             : subscriptionIds.map((id) => ({ id }));
 
     const fanOutOnly = input.storeOnlyIfSubscribed ?? isFanOutOnlyType(input.type);
-    if (fanOutOnly && subs.length === 0) return { eventId: null, deliveryIds: [] };
+    if (fanOutOnly && subs.length === 0 && !(await isBillingUnitType(tx, input.tenantId, input.type))) {
+        return { eventId: null, deliveryIds: [] };
+    }
 
     const event = await tx.domainEvent.create({
         data: {

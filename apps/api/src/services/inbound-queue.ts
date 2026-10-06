@@ -256,15 +256,18 @@ export async function sweepInbox(
     let recovered = 0;
     let requeued = 0;
 
+    const stuckBefore = new Date(now.getTime() - PROCESSING_STUCK_MS);
     const stuck: Array<{ id: string; attempts: number }> = await prisma.webhookInbox.findMany({
-        where: { status: 'PROCESSING', claimedAt: { lt: new Date(now.getTime() - PROCESSING_STUCK_MS) } },
+        where: { status: 'PROCESSING', claimedAt: { lt: stuckBefore } },
         select: { id: true, attempts: true },
         take: SWEEP_BATCH,
     });
     for (const row of stuck) {
         const state = nextStateOnFailure(row.attempts);
         const res = await prisma.webhookInbox.updateMany({
-            where: { id: row.id, status: 'PROCESSING' },
+            // Re-check the claim is still stale: with several sweepers, another
+            // process may have legitimately re-claimed it since the read.
+            where: { id: row.id, status: 'PROCESSING', claimedAt: { lt: stuckBefore } },
             data: {
                 status: state,
                 lastError: 'Recovered after processing stalled',

@@ -67,7 +67,11 @@ export async function sendSystemMessage(
 
     const reservation = await tryReserveOutbound(fastify.prisma, tenant.id);
     if (!reservation.ok) {
-        fastify.log.warn({ tenantId: tenant.id, kind: input.kind }, 'Quota exhausted — system message suppressed');
+        if (reservation.reason === 'paused') {
+            fastify.log.warn({ tenantId: tenant.id, kind: input.kind }, 'Outbound messaging paused by support — system message suppressed');
+        } else {
+            fastify.log.warn({ tenantId: tenant.id, kind: input.kind }, 'Quota exhausted — system message suppressed');
+        }
         return;
     }
 

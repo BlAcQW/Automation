@@ -194,6 +194,23 @@ describe('sweepInbox', () => {
         expect(res.recovered).toBe(1);
     });
 
+    it('does not reset a row another process re-claimed after the stale read (multi-process)', async () => {
+        // Sweeper A reads the row as stale; meanwhile worker B legitimately
+        // re-claims it. A's reset must not wipe B's fresh claim.
+        const { prisma, rows } = fakePrisma([
+            { status: 'PROCESSING', attempts: 1, receivedAt: ago(10 * 60_000), claimedAt: ago(10 * 60_000) },
+        ]);
+        const realFindMany = prisma.webhookInbox.findMany;
+        prisma.webhookInbox.findMany = vi.fn(async (args: any) => {
+            const found = await realFindMany(args);
+            if (args?.where?.status === 'PROCESSING') rows[0].claimedAt = now; // B re-claims
+            return found;
+        });
+        await sweepInbox({ prisma, log: log(), dispatch: vi.fn() }, now);
+        expect(rows[0].status).toBe('PROCESSING');
+        expect(rows[0].claimedAt).toBe(now);
+    });
+
     it('fails a stuck row that already used all its attempts', async () => {
         const { prisma, rows } = fakePrisma([{ status: 'PROCESSING', attempts: MAX_ATTEMPTS, receivedAt: ago(10 * 60_000), claimedAt: ago(10 * 60_000) }]);
         const dispatch = vi.fn();

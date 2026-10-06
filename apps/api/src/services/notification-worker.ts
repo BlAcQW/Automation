@@ -34,6 +34,7 @@ import {
     reminderStillApplies,
 } from './notification-purposes.js';
 import { resolveCustomerEmail } from './customers.js';
+import { deferForPause } from './pause-defer.js';
 
 const log = scoped('notification-worker');
 
@@ -129,6 +130,9 @@ interface SendContext {
  *   - 'ok'        : message sent (or skipped due to misconfiguration that
  *                   was surfaced as a dashboard alert — do NOT retry)
  *   - 'retry'     : transient send failure (Meta 5xx, network error)
+ *   - 'paused'    : support has paused this tenant's outbound messaging. Nothing
+ *                   was reserved or sent and NO alert is raised (it is not a
+ *                   quota problem); the caller delays the job (see pause-defer.ts).
  */
 async function sendByPurpose(
     tenantId: string,
@@ -136,7 +140,7 @@ async function sendByPurpose(
     customerPhone: string,
     variables: string[],
     ctx: SendContext = {},
-): Promise<'ok' | 'retry'> {
+): Promise<'ok' | 'retry' | 'paused'> {
     const { bookingId } = ctx;
     // Master toggle — if the tenant has switched off out-of-window messages,
     // skip reminders + order updates entirely (no send, no quota burn).
@@ -194,6 +198,10 @@ async function sendByPurpose(
     // workers can't both reserve when only one slot remains.
     const reservation = await tryReserveOutbound(prisma, tenantId);
     if (!reservation.ok) {
+        if (reservation.reason === 'paused') {
+            // usage.ts already logged the pause once per tenant; do not alert or log per job.
+            return 'paused';
+        }
         await alertDashboard(
             tenantId,
             purpose,
@@ -436,16 +444,27 @@ async function auditFallback(
     }
 }
 
-async function processNotification(job: Job<NotificationJob>): Promise<void> {
+/**
+ * Paused: re-queue instead of dropping. deferForPause throws DelayedError after
+ * rescheduling (BullMQ treats it as "moved", not failed), or returns 'expired'
+ * once the pause has outlasted the cap and the job is abandoned.
+ */
+async function deferPausedJob(job: Job, token: string | undefined, what: string): Promise<void> {
+    await deferForPause(job, token);
+    log.warn({ jobId: job.id }, `Outbound paused longer than the cap — dropping ${what}`);
+}
+
+export async function processNotification(job: Job<NotificationJob>, token?: string): Promise<void> {
     const { purpose, tenantId, customerPhone, variables } = job.data;
     log.info(`Processing notification: ${purpose} for ${customerPhone}`);
     const outcome = await sendByPurpose(tenantId, purpose, customerPhone, variables);
+    if (outcome === 'paused') return deferPausedJob(job, token, `notification ${purpose}`);
     if (outcome === 'retry') {
         throw new Error(`Failed to send template ${purpose} — BullMQ will retry`);
     }
 }
 
-async function processReminder(job: Job<ReminderJobPayload>): Promise<void> {
+export async function processReminder(job: Job<ReminderJobPayload>, token?: string): Promise<void> {
     // Accepts both the generic payload and jobs queued before it, which carry
     // only a bookingId.
     const reminder = normalizeReminderJob(job.data);
@@ -479,6 +498,7 @@ async function processReminder(job: Job<ReminderJobPayload>): Promise<void> {
         bookingId: reminder.bookingId,
         customerId: reminder.customerId,
     });
+    if (outcome === 'paused') return deferPausedJob(job, token, `reminder ${purpose}`);
     if (outcome === 'retry') {
         throw new Error(`Failed to send reminder template — BullMQ will retry`);
     }
@@ -497,7 +517,7 @@ export function startNotificationWorkers(redisUrl: string | undefined): {
 
     const notificationsWorker = new Worker(
         QUEUE_NAMES.NOTIFICATIONS,
-        async (job) => processNotification(job),
+        async (job, token) => processNotification(job, token),
         { connection, concurrency: 5 },
     );
 
@@ -510,7 +530,7 @@ export function startNotificationWorkers(redisUrl: string | undefined): {
 
     const remindersWorker = new Worker(
         QUEUE_NAMES.REMINDERS,
-        async (job) => processReminder(job),
+        async (job, token) => processReminder(job, token),
         { connection, concurrency: 5 },
     );
 

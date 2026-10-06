@@ -65,7 +65,7 @@ function table(rows: Row[], defaults: () => Row) {
     };
 }
 
-export function fakeEventsPrisma(seed: { subs?: Row[]; deliveries?: Row[]; events?: Row[] } = {}) {
+export function fakeEventsPrisma(seed: { subs?: Row[]; deliveries?: Row[]; events?: Row[]; terms?: Row[] } = {}) {
     const prisma: any = {
         webhookSubscription: table(seed.subs ?? [], () => ({ isActive: true, events: [], createdAt: new Date(), updatedAt: new Date(), description: null })),
         webhookDelivery: table(seed.deliveries ?? [], () => ({
@@ -73,10 +73,11 @@ export function fakeEventsPrisma(seed: { subs?: Row[]; deliveries?: Row[]; event
             createdAt: new Date(), deliveredAt: null,
         })),
         domainEvent: table(seed.events ?? [], () => ({ createdAt: new Date() })),
+        billingTerms: table(seed.terms ?? [], () => ({ unitEventType: null })),
         platformAlert: { upsert: vi.fn(async () => ({})), update: vi.fn() },
         auditLog: { create: vi.fn(async () => ({})) },
     };
-    prisma.$transaction = vi.fn(async (fn: any) => fn({ webhookSubscription: prisma.webhookSubscription, webhookDelivery: prisma.webhookDelivery, domainEvent: prisma.domainEvent }));
+    prisma.$transaction = vi.fn(async (fn: any) => fn({ webhookSubscription: prisma.webhookSubscription, webhookDelivery: prisma.webhookDelivery, domainEvent: prisma.domainEvent, billingTerms: prisma.billingTerms }));
     return prisma;
 }
 

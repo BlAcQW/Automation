@@ -23,6 +23,10 @@
 import type { PrismaClient, SubscriptionStatus } from '@prisma/client';
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
 import { effectiveMessageQuota, getPlan, type Plan } from './plans.js';
+import { resolveOutboundPause } from './platform-switches.js';
+import { scoped } from '../lib/logger.js';
+
+const log = scoped('usage');
 
 // The worker and the API use slightly different Prisma client types (raw vs
 // `$extends`-wrapped). Both expose the same methods we need here, so accept
@@ -101,7 +105,11 @@ export function currentMonthKey(now: Date = new Date()): string {
 }
 
 export interface QuotaState {
+    /** False when the quota is spent OR sending is paused (see `paused`). */
     ok: boolean;
+    /** Present (true) only when an emergency outbound pause refused the send. */
+    paused?: boolean;
+    pauseReason?: string;
     used: number;
     limit: number;
     planId: string;
@@ -150,9 +158,29 @@ export async function getQuotaState(
     };
 }
 
+/**
+ * `reason` tells a quota refusal from an emergency pause (A5), so a caller can
+ * stay silent or say something different instead of "quota exhausted".
+ */
 export type ReserveOutcome =
     | { ok: true; used: number; limit: number; planId: string }
-    | { ok: false; used: number; limit: number; planId: string };
+    | { ok: false; used: number; limit: number; planId: string; reason: 'quota' }
+    | { ok: false; used: number; limit: number; planId: string; reason: 'paused'; pauseReason?: string };
+
+// A pause is logged once per tenant until it is lifted: a paused tenant under
+// load would otherwise write a line (and tempt a caller into an alert) per message.
+const pauseLogged = new Set<string>();
+
+/** True the first time a pause is seen for this tenant (and records it). */
+export function notePauseLogged(tenantId: string): boolean {
+    if (pauseLogged.has(tenantId)) return false;
+    pauseLogged.add(tenantId);
+    return true;
+}
+
+function notePauseLifted(tenantId: string): void {
+    pauseLogged.delete(tenantId);
+}
 
 /**
  * Atomically reserve one outbound message slot in a single SQL statement.
@@ -180,12 +208,23 @@ export async function tryReserveOutbound(
     const planId = resolved.plan.id;
     const month = currentCycleKey(resolved.cycleAnchor);
 
+    // Emergency pause: refuse BEFORE touching the counter, so a paused tenant's
+    // usage neither grows nor needs a rollback.
+    const pause = await outboundPauseFor(prisma, tenantId, resolved);
+    if (pause.paused) {
+        return { ok: false, used: 0, limit, planId, reason: 'paused', pauseReason: pause.reason };
+    }
+
     // Ensure the row exists so updateMany can hit it. Create with count=0
     // (not 1) so the atomic increment below is the canonical counter.
     await prisma.tenantUsage.upsert({
         where: { tenantId_month: { tenantId, month } },
         create: { tenantId, month, messageCount: 0 },
-        update: {},
+        // Must NOT be empty: Prisma only emits an atomic INSERT ... ON
+        // CONFLICT for a non-empty update; with `{}` two first reservations
+        // of a cycle race and one throws P2002 (proven on a real database).
+        // A zero increment changes nothing.
+        update: { messageCount: { increment: 0 } },
     });
 
     // updateMany's WHERE doesn't accept the composite-key shortcut
@@ -208,7 +247,22 @@ export async function tryReserveOutbound(
     if (claimed.count === 1) {
         return { ok: true, used, limit, planId };
     }
-    return { ok: false, used, limit, planId };
+    return { ok: false, used, limit, planId, reason: 'quota' };
+}
+
+async function outboundPauseFor(prisma: AnyPrismaClient, tenantId: string, resolved: ResolvedPlan) {
+    const pause = await resolveOutboundPause(prisma, {
+        outboundPausedAt: resolved.outboundPausedAt,
+        pauseReason: resolved.pauseReason,
+    });
+    if (pause.paused) {
+        if (notePauseLogged(tenantId)) {
+            log.warn({ tenantId, reason: pause.reason }, 'outbound messages are paused; sends are being refused');
+        }
+    } else {
+        notePauseLifted(tenantId);
+    }
+    return pause;
 }
 
 /**
@@ -299,7 +353,10 @@ export async function checkOutboundQuota(
     tenantId: string,
 ): Promise<QuotaState> {
     const resolved = await evaluateSubscription(prisma, tenantId);
-    return getQuotaState(prisma, tenantId, resolved.plan.id);
+    const state = await getQuotaState(prisma, tenantId, resolved.plan.id);
+    const pause = await outboundPauseFor(prisma, tenantId, resolved);
+    if (pause.paused) return { ...state, ok: false, paused: true, pauseReason: pause.reason };
+    return state;
 }
 
 export interface ResolvedPlan {
@@ -311,6 +368,9 @@ export interface ResolvedPlan {
     cycleAnchor: TenantCycleAnchor;
     /** Per-tenant replacement for plan.monthlyMessageQuota; null = plan default. */
     quotaOverride: number | null;
+    /** Emergency outbound pause (A5), straight from the tenant row. */
+    outboundPausedAt: Date | null;
+    pauseReason: string | null;
 }
 
 /**
@@ -338,6 +398,8 @@ export async function evaluateSubscription(
             quotaCycleStart: true,
             createdAt: true,
             monthlyMessageQuotaOverride: true,
+            outboundPausedAt: true,
+            pauseReason: true,
         },
     });
     if (!tenant) {
@@ -348,6 +410,8 @@ export async function evaluateSubscription(
             currentPeriodEnd: null,
             cycleAnchor: { quotaCycleStart: null, createdAt: new Date() },
             quotaOverride: null,
+            outboundPausedAt: null,
+            pauseReason: null,
         };
     }
 
@@ -357,6 +421,8 @@ export async function evaluateSubscription(
     };
 
     const quotaOverride = tenant.monthlyMessageQuotaOverride ?? null;
+    const outboundPausedAt = tenant.outboundPausedAt ?? null;
+    const pauseReason = tenant.pauseReason ?? null;
     const now = Date.now();
     const status = tenant.subscriptionStatus;
     const trialExpired =
@@ -383,6 +449,8 @@ export async function evaluateSubscription(
             currentPeriodEnd: tenant.currentPeriodEnd,
             cycleAnchor,
             quotaOverride,
+            outboundPausedAt,
+            pauseReason,
         };
     }
 
@@ -393,5 +461,7 @@ export async function evaluateSubscription(
         currentPeriodEnd: tenant.currentPeriodEnd,
         cycleAnchor,
         quotaOverride,
+        outboundPausedAt,
+        pauseReason,
     };
 }

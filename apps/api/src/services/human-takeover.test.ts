@@ -169,12 +169,14 @@ describe('Human Takeover Service', () => {
                 where: { id: 'conv-123' },
                 data: expect.objectContaining({
                     state: 'BOT_ACTIVE',
-                    botContext: Prisma.JsonNull,
                     botFailureCount: 0,
                     assignedUserId: null,
-                    resumedByUserId: 'user-456',
+                    takeoverAt: null,
                 }),
             });
+            // Handing back to the bot must not wipe an in-flight workflow
+            // (e.g. a customer waiting on a payment) — the flow carries on.
+            expect(mockPrisma.conversation.update.mock.calls[0][0].data).not.toHaveProperty('botContext');
         });
 
         it('should return error if conversation not found', async () => {
@@ -323,5 +325,38 @@ describe('detectTakeover by vertical', () => {
     it('RIDES keeps repeated-failure takeover', () => {
         const r = detectTakeover({ messageContent: 'hi', recentMessages: [], botFailureCount: 3, vertical: 'RIDES' });
         expect(r.reason).toBe('repeated_failure');
+    });
+});
+
+describe('takeover writes only columns that exist', () => {
+    // takeoverAt was written for months but never existed in any migration:
+    // every handoff threw at runtime while tsc (widened by the tenant-guard
+    // $extends) stayed silent. Check every field we write or order by
+    // against the real Prisma schema.
+    const conversationFields = new Set(
+        Prisma.dmmf.datamodel.models.find((m) => m.name === 'Conversation')!.fields.map((f) => f.name),
+    );
+    const recorder = () => {
+        const used: string[] = [];
+        const conversation = {
+            update: async ({ data }: any) => { used.push(...Object.keys(data)); return {}; },
+            findUnique: async () => ({ id: 'c1', state: 'HUMAN_ACTIVE', assignedUserId: null }),
+            findMany: async ({ where, orderBy }: any) => { used.push(...Object.keys(where), ...Object.keys(orderBy ?? {})); return []; },
+        };
+        return { used, prisma: { conversation } as any };
+    };
+
+    it('triggerTakeover', async () => {
+        const { used, prisma } = recorder();
+        await triggerTakeover(prisma, 'c1', 'reason');
+        expect(used.filter((f) => !conversationFields.has(f))).toEqual([]);
+    });
+
+    it('resumeBot, getPendingTakeovers and assignConversation', async () => {
+        const { used, prisma } = recorder();
+        await resumeBot(prisma, 'c1', 'u1');
+        await getPendingTakeovers(prisma, 't1');
+        await assignConversation(prisma, 'c1', 'u1');
+        expect(used.filter((f) => !conversationFields.has(f))).toEqual([]);
     });
 });

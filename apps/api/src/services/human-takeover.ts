@@ -6,6 +6,7 @@
  */
 
 import { Prisma } from '@prisma/client';
+import { emitConversationHandoff, emitConversationResumed } from './events/emit.js';
 
 // Explicit requests to reach a person. Vertical-neutral: a customer asking for
 // a human gets one in every business.
@@ -122,7 +123,10 @@ export function detectTakeover(context: ConversationContext): TakeoverResult {
 }
 
 /**
- * Triggers human takeover for a conversation
+ * Triggers human takeover for a conversation, then announces it as a
+ * `conversation.handoff` event. The tenant comes from the row the update
+ * returns, so every call site (bot, flow, fallback) publishes without having to
+ * pass it; the publish is best-effort and never fails the takeover.
  */
 export async function triggerTakeover(
     prisma: any,
@@ -130,7 +134,7 @@ export async function triggerTakeover(
     reason: string,
     assignedUserId?: string
 ): Promise<void> {
-    await prisma.conversation.update({
+    const row = await prisma.conversation.update({
         where: { id: conversationId },
         data: {
             state: 'HUMAN_ACTIVE',
@@ -139,6 +143,9 @@ export async function triggerTakeover(
             takeoverAt: new Date(),
         },
     });
+    if (row?.tenantId) {
+        await emitConversationHandoff(prisma, { tenantId: row.tenantId, conversationId, reason });
+    }
 }
 
 /**
@@ -167,14 +174,18 @@ export async function resumeBot(
         where: { id: conversationId },
         data: {
             state: 'BOT_ACTIVE',
-            botContext: Prisma.JsonNull,
+            // botContext is kept: an in-flight workflow (e.g. waiting on a
+            // payment) carries on where it was instead of starting over.
             botFailureCount: 0,
             assignedUserId: null,
             takeoverReason: null,
-            resumedAt: new Date(),
-            resumedByUserId: userId,
+            takeoverAt: null,
         },
     });
+
+    if (conversation.tenantId) {
+        await emitConversationResumed(prisma, { tenantId: conversation.tenantId, conversationId });
+    }
 
     return { success: true };
 }

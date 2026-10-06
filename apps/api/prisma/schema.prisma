@@ -393,6 +393,8 @@ model Conversation {
   assignedUserId  String? // Staff member assigned to this conversation
   assignedAt      DateTime? // When the conversation was assigned
   takeoverReason  String? // Reason for human takeover
+  /// When the conversation was handed to a human (orders the staff queue).
+  takeoverAt      DateTime?
   botFailureCount Int                 @default(0) // Count of bot failures for auto-takeover
   // The end customer this conversation is with, once resolved. SetNull: the
   // conversation history outlives a deleted customer record.
@@ -1118,11 +1120,15 @@ model DomainEvent {
   tenantId  String
   type      String // e.g. message.received, payment.succeeded
   payload   Json
+  // Idempotency key (publishEventOnce): `${type}:${field}:${value}`. NULL for
+  // ordinary events (Postgres treats NULLs as distinct in a unique index).
+  dedupeKey String?
   createdAt DateTime @default(now())
 
   tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   deliveries WebhookDelivery[]
 
+  @@unique([tenantId, dedupeKey])
   @@index([tenantId, createdAt])
   @@index([type, createdAt])
 }

@@ -12,6 +12,7 @@ import {
     serializeMessage,
     toPage,
 } from './shared.js';
+import { prepareFlowForHandBack } from '../../services/flows/hand-back.js';
 
 const idParams = z.object({ id: idParam });
 const listQuery = paginationQuery.extend({
@@ -111,6 +112,11 @@ const conversationRoutes: FastifyPluginAsync = async (fastify) => {
         if (conversation.state !== 'HUMAN_ACTIVE') {
             return { data: { id, state: 'BOT_ACTIVE', changed: false } };
         }
+        // Same as the dashboard's resume-bot: a flow stopped mid-question
+        // restarts at its menu, one waiting on a payment keeps waiting.
+        await prepareFlowForHandBack(fastify.prisma, tenantId, id).catch((err: unknown) => {
+            request.log.warn({ err, conversationId: id }, 'Could not reset the flow before resuming the bot');
+        });
         const { count } = await fastify.prisma.conversation.updateMany({
             where: { id, tenantId, state: 'HUMAN_ACTIVE' },
             data: {

@@ -17,4 +17,5 @@ export {
     type DefinitionStore, type DefinitionRow, type DefinitionsService,
 } from './definitions.js';
 export { createPrismaFlowStore, type FlowPrismaLike } from './store.js';
+export { flowContextForHandBack, prepareFlowForHandBack, type HandBackPrismaLike } from './hand-back.js';
 export { turboSampleFlow } from './samples/turbo-flow.js';

@@ -59,6 +59,19 @@ describe('POST /conversations/:id/resume-bot', () => {
         expect(publish).not.toHaveBeenCalled();
     });
 
+    it('a flow stopped mid-question by a person restarts at its menu: the stale question is not resumed', async () => {
+        const flow = { flowKey: 'turbo-founding', flowVersion: 1, current: 'reg_name', status: 'active', vars: {}, misses: 2, lastInboundId: 'w1', lastEventId: null };
+        const { app, prisma } = await build({ ...conv('HUMAN_ACTIVE'), botContext: { flow }, contextVersion: 3 });
+        const res = await app.inject({ method: 'POST', url: '/conversations/c1/resume-bot' });
+        expect(res.statusCode).toBe(200);
+        const writes = prisma.conversation.updateMany.mock.calls.map((c: any[]) => c[0]);
+        expect(writes[0]).toEqual({
+            where: { id: 'c1', tenantId: 't1', state: 'HUMAN_ACTIVE', contextVersion: 3 },
+            data: { botContext: { flow: { ...flow, status: 'handed_off', misses: 0 } }, contextVersion: { increment: 1 } },
+        });
+        expect(writes[1].data).toMatchObject({ state: 'BOT_ACTIVE' });
+    });
+
     it('does not fail the resume when the publish throws', async () => {
         publish.mockRejectedValue(new Error('events db down'));
         const { app } = await build(conv('HUMAN_ACTIVE'));

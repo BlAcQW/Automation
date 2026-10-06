@@ -8,6 +8,7 @@ import { resolveChannelCredentials, sendChannelText, type ChannelCredentials } f
 import { maskContact, maskContacts } from '../../services/contact-privacy.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 import { emitConversationHandoff, emitConversationResumed, emitMessageSent } from '../../services/events/emit.js';
+import { prepareFlowForHandBack } from '../../services/flows/hand-back.js';
 import {
     MESSAGE_TYPE,
     MediaError,
@@ -786,6 +787,14 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.forbidden('Not authorized to resume bot');
         }
 
+        // A scripted flow stopped mid-question restarts at its menu; one waiting
+        // on a payment keeps waiting (services/flows/hand-back.ts). Done while a
+        // person still has the chat, so no flow turn runs on the stale step.
+        // Best-effort: the hand-back itself must not fail on it.
+        await prepareFlowForHandBack(fastify.prisma, request.user.tenantId, id).catch((err: unknown) => {
+            request.log.warn({ err, conversationId: id }, 'Could not reset the flow before resuming the bot');
+        });
+
         const { count } = await fastify.prisma.conversation.updateMany({
             // Conditional: only the request that actually changes the state resumes it
             // (and announces it); a concurrent one finds it already back with the bot.
@@ -794,8 +803,8 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                 state: 'BOT_ACTIVE',
                 // botContext is kept: an in-flight workflow (e.g. waiting on a
                 // payment) carries on instead of starting over, and a later
-                // payment still finds its step. The customer can type "menu"
-                // to start over.
+                // payment still finds its step. A flow stopped mid-question was
+                // already set to restart at its menu above.
                 // A stale count of 3+ would hand the conversation straight
                 // back to a human on the customer's next message.
                 botFailureCount: 0,

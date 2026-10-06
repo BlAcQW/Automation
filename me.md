@@ -254,6 +254,18 @@ Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
       ```
       Zero rows = safe. Duplicate *inbound* rows are cleaned up by the
       migration itself. Back up the database first either way.
+- [ ] **Set `REDIS_URL` in production.** Incoming messages are now queued.
+      Without Redis they still work, but processed inside the API, and
+      message ordering per conversation only holds within one process.
+- [ ] **Know the tenant-guard switch.** The guard that keeps one business
+      from touching another's data now *blocks* instead of only warning.
+      It was proven against a real database with the real app, but if
+      anything legitimate is ever blocked after a deploy (users see a
+      generic "something went wrong"), set `TENANT_GUARD_MODE=warn` and
+      restart — no code change needed — then tell me which screen failed.
+- [ ] **Check the new Alerts page in the admin** after deploying. Payments
+      nobody can match, failed payouts and refunds, and messages that could
+      not be processed all land there.
 - [ ] **nginx config is not in git.** `/etc/nginx/sites-available/bookly.ikieguy.online`
       must be re-applied by hand if the server is ever rebuilt. It carries the
       WebSocket upgrade and forwarded-host headers that two separate bugs

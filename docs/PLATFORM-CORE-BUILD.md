@@ -24,16 +24,16 @@ item. See [architecture brainstorm](https://claude.ai/code/artifact/81043827-579
 
 ## Before TURBO — trust
 
-- [ ] **B1. Queue incoming messages.** Webhook stores and enqueues, then
+- [x] **B1. Queue incoming messages.** Webhook stores and enqueues, then
       returns; a worker processes one message at a time per conversation.
       Fixes lost messages on crash/deploy and double replies on the AI path.
-- [ ] **B2. Tenant guard blocks.** Fix the ~15 "verify then mutate by id"
+- [x] **B2. Tenant guard blocks.** Fix the ~15 "verify then mutate by id"
       call sites, then make the guard throw instead of warn.
-- [ ] **B3. Alerts reach a person.** Loud failures (unattributed payments,
+- [x] **B3. Alerts reach a person.** Loud failures (unattributed payments,
       wallet currency mismatch, unknown notification purposes, failed
       payouts/refunds) become platform alerts and Sentry issues.
-- [ ] **B4. Usage-count bug.** One key format in TenantUsage.
-- [ ] **B5. Create an organisation from the admin**, with vertical, plan,
+- [x] **B4. Usage-count bug.** One key format in TenantUsage.
+- [x] **B5. Create an organisation from the admin**, with vertical, plan,
       quota and an owner invite.
 
 ## During TURBO — multiple workflows
@@ -75,3 +75,7 @@ item. See [architecture brainstorm](https://claude.ai/code/artifact/81043827-579
 
 | Date | Item | Commit | Notes |
 |---|---|---|---|
+| 2026-10-06 | B3, B4 + withdraw fixes | 468b77e | Alerts, one usage cycle; rejected-transfer reversal was blocked by the guard and falsely reported "money back" — fixed |
+| 2026-10-06 | B2 | 779e57a | Guard had NEVER run in prod (context lost after await). Now blocks; proven on real Postgres, 0 false blocks / 0 leaks. Rollback: TENANT_GUARD_MODE=warn |
+| 2026-10-06 | B1 | e15c149 | Durable inbox + per-conversation lock + reply outbox; three review rounds closed lost-reply and double-send paths |
+| 2026-10-06 | B5 | b206527 | Admin creates organisations with emailed invite; alerts page |

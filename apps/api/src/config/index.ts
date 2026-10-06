@@ -121,6 +121,15 @@ const envSchema = z.object({
     // Extra browser origins allowed by CORS, comma-separated. See parseCorsOrigins.
     CORS_ORIGINS: z.string().optional(),
 
+    // Cross-site login (D7). Off unless exactly "true". When on, the refresh
+    // cookie becomes SameSite=None; Secure so a console on another site keeps
+    // its session, and CSRF checks apply (plugins/csrf.ts). Refused at boot
+    // unless production over https; the _DEV flag is a development-only escape.
+    // Which hops to believe for X-Forwarded-For. Default 'loopback' (nginx on the same host).
+    TRUST_PROXY: z.string().optional(),
+    CROSS_SITE_AUTH: z.string().optional(),
+    CROSS_SITE_AUTH_ALLOW_INSECURE_DEV: z.string().optional(),
+
     // Frontend
     FRONTEND_URL: z.string().optional(),
     NEXT_PUBLIC_API_URL: z.string().optional(),
@@ -196,7 +205,70 @@ export function parseCorsOrigins(raw: string | undefined): string[] {
     return out;
 }
 
+/**
+ * Decide whether cross-site auth (SameSite=None refresh cookie) is on.
+ *
+ * SameSite=None requires Secure, and a Secure cookie is only stored over
+ * https, so the flag is refused (throws, failing boot) unless this is a
+ * production deploy with an https API URL and https-only CORS origins.
+ * `devOverride` relaxes that for NODE_ENV=development only; it is ignored
+ * everywhere else. Only the exact string "true" enables the feature.
+ */
+export function resolveCrossSiteAuth(input: {
+    flag: string | undefined;
+    devOverride?: string | undefined;
+    nodeEnv: 'development' | 'test' | 'production';
+    apiPublicUrl: string;
+    corsOrigins: string[];
+}): boolean {
+    if (input.flag !== 'true') return false;
+    if (input.nodeEnv === 'development' && input.devOverride === 'true') return true;
+
+    if (input.nodeEnv !== 'production') {
+        throw new Error(
+            'CROSS_SITE_AUTH=true requires NODE_ENV=production over https ' +
+            '(set CROSS_SITE_AUTH_ALLOW_INSECURE_DEV=true to try it in development)',
+        );
+    }
+    const insecure = [input.apiPublicUrl, ...input.corsOrigins].filter((u) => !u.startsWith('https://'));
+    if (insecure.length > 0) {
+        throw new Error(
+            `CROSS_SITE_AUTH=true requires https for API_PUBLIC_URL and every CORS origin; not https: ${insecure.join(', ')}`,
+        );
+    }
+    return true;
+}
+
+/**
+ * TRUST_PROXY for Fastify. The API sits behind nginx on the same host, so the
+ * socket peer is always 127.0.0.1; without trusting that hop request.ip is
+ * loopback for everybody and every per-IP limit and audit IP is meaningless.
+ *   unset / ''      'loopback' (trust only a local reverse proxy)
+ *   'false'         off (API exposed directly; X-Forwarded-For is ignored)
+ *   'true'          trust every hop (only if nothing can reach the API but the proxy)
+ *   '2'             trust the last 2 hops
+ *   'a, b'          proxy-addr list: keywords (loopback, linklocal, uniquelocal) or CIDRs
+ */
+export function resolveTrustProxy(raw: string | undefined): boolean | number | string | string[] {
+    const v = (raw ?? '').trim();
+    if (v === '') return 'loopback';
+    const lower = v.toLowerCase();
+    if (lower === 'false') return false;
+    if (lower === 'true') return true;
+    if (/^\d+$/.test(v)) return parseInt(v, 10);
+    const list = v.split(',').map((x) => x.trim()).filter(Boolean);
+    return list.length === 1 ? list[0] : list;
+}
+
 const env = parsed.data;
+
+const corsOrigins = [
+    env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,
+    env.NODE_ENV === 'development' ? 'http://localhost:3001' : null,
+    env.FRONTEND_URL,
+    ...parseCorsOrigins(env.CORS_ORIGINS),
+].filter((origin): origin is string => Boolean(origin));
+const apiPublicUrl = env.API_PUBLIC_URL || env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export const config = {
     port: parseInt(env.API_PORT, 10),
@@ -281,14 +353,21 @@ export const config = {
 
     frontendUrl: env.FRONTEND_URL || env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') || 'http://localhost:3000',
     // Where browsers can reach this API (links in emails point here).
-    apiPublicUrl: env.API_PUBLIC_URL || env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
+    apiPublicUrl,
 
-    corsOrigins: [
-        env.NODE_ENV === 'development' ? 'http://localhost:3000' : null,
-        env.NODE_ENV === 'development' ? 'http://localhost:3001' : null,
-        env.FRONTEND_URL,
-        ...parseCorsOrigins(env.CORS_ORIGINS),
-    ].filter((origin): origin is string => Boolean(origin)),
+    corsOrigins,
+
+    /// Passed to Fastify's trustProxy (see resolveTrustProxy). Default 'loopback'.
+    trustProxy: resolveTrustProxy(env.TRUST_PROXY),
+
+    /// Cross-site login: SameSite=None refresh cookie + CSRF checks. Default off.
+    crossSiteAuth: resolveCrossSiteAuth({
+        flag: env.CROSS_SITE_AUTH,
+        devOverride: env.CROSS_SITE_AUTH_ALLOW_INSECURE_DEV,
+        nodeEnv: env.NODE_ENV,
+        apiPublicUrl,
+        corsOrigins,
+    }),
 
     featureFlags: {
         // PRODUCT mode (signup, product/order/inventory dashboards, product

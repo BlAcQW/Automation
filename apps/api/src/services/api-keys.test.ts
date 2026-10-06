@@ -157,7 +157,7 @@ describe('createApiKey', () => {
     it('knows every documented scope', () => {
         expect([...API_KEY_SCOPES].sort()).toEqual([
             'conversations:read', 'conversations:write', 'customers:read', 'customers:write',
-            'messages:write', 'payments:write',
+            'messages:write', 'payments:write', 'rides:read', 'rides:write',
         ]);
         expect(API_KEY_SCOPES).not.toContain('events:read' as never); // a scope no route checks is a trap
     });

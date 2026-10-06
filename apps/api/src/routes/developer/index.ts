@@ -34,6 +34,8 @@ const SCOPE_DESCRIPTIONS: Record<(typeof API_KEY_SCOPES)[number], string> = {
     'customers:read': 'Read customer records',
     'customers:write': 'Create and update customer records',
     'payments:write': 'Create payment links on your own Paystack account',
+    'rides:read': 'Read ride customers\' packages, balances and ride history',
+    'rides:write': 'Book package rides for ride customers',
 };
 
 const createKeyBody = z

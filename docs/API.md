@@ -56,6 +56,8 @@ the key lacks gets `403 forbidden`.
 | `customers:read` | `GET /v1/customers`, `/v1/customers/:id` |
 | `customers:write` | `POST /v1/customers`, `PATCH /v1/customers/:id` |
 | `payments:write` | `POST /v1/payment-links` |
+| `rides:read` | `GET /v1/rides/customers/:id/balance`, `/passes`, `/rides` (RIDES organisations) |
+| `rides:write` | `POST /v1/rides` (RIDES organisations) |
 
 There is no scope for reading events: events are pushed to your webhook, and the
 catalogue below is public. Keys never expose more than their scopes allow, but
@@ -396,6 +398,53 @@ Send the customer `url` (for example in a message through `POST /v1/messages`).
 Paystack account. Payments go to the organisation's own Paystack account, never
 through Bookly's.
 
+### Rides (RIDES organisations, e.g. TURBO)
+
+The same customers, packages and balances as the WhatsApp bot, so an app can
+take over a customer without migrating anything. Amounts are major-unit strings
+(`"960.00"`); `fare` is `null` for package rides (paid with a ride credit).
+
+> **Keep the API key on your server.** A `rides:*` key acts for the whole
+> organisation: it can read any customer's balance and trips and book a ride
+> for any customer. Never put it in a mobile app or a web page. The TURBO app
+> must call its own backend, which signs the customer in, decides which
+> `customerId` that person is, and only then calls Bookly with the key.
+
+**GET /v1/rides/customers/:id/balance** (`rides:read`): the current package and
+balance.
+
+```json
+{ "data": { "customerId": "ck...", "active": true, "purchased": 60, "used": 1, "remaining": 59,
+  "expiresAt": "2026-12-05T12:00:00.000Z",
+  "package": { "id": "ck...", "status": "ACTIVE", "ridesTotal": 60, "ridesUsed": 1, "ridesRemaining": 59,
+    "maxKm": 6, "price": "960.00", "currency": "GHS", "activatedAt": "...", "expiresAt": "...", "createdAt": "..." } } }
+```
+
+Package `status` is `ACTIVE`, `EXHAUSTED` (active, no rides left), `EXPIRED` or
+`CANCELLED`.
+
+**GET /v1/rides/customers/:id/passes** and **GET /v1/rides/customers/:id/rides**
+(`rides:read`): every paid package, and the ride history, newest first, with
+cursor pagination. A ride is `{ id, ref, kind (PACKAGE|PAYG), status
+(REQUESTED|ASSIGNED|EN_ROUTE|COMPLETED|CANCELLED), pickup, destination,
+distanceKm, fare, currency, driver, source (WHATSAPP|APP|CONSOLE), requestedAt,
+assignedAt, completedAt, cancelledAt }`.
+
+**POST /v1/rides** (`rides:write`): book a package ride.
+
+| Field | Type | Notes |
+|---|---|---|
+| `customerId` | string | Required. |
+| `pickup` | `{ label, lat, lng }` | Required. |
+| `destination` | `{ label, lat, lng }` | Exactly one of `destination` / `destinationId`. |
+| `destinationId` | string | One of the organisation's saved places. |
+
+`201 { data: ride }`. The same rules as WhatsApp apply: `409 no_package`,
+`409 no_rides_left`, `409 open_ride` (one ride in progress at a time),
+`422 too_far` (beyond the package distance). A retried request for the same
+trip while that ride is still waiting returns the same ride with `200`. A ride
+is deducted from the balance only when TURBO marks it completed.
+
 ---
 
 ## Webhooks
@@ -537,6 +586,10 @@ The authoritative, always-current list is served by the dashboard API
 | `booking.completed` | `bookingId` |
 | `order.created` | `orderId`, `customerId`, `total`, `currency` |
 | `flow.completed` | `flowKey`, `version`, `conversationId`, `customerId`, `vars` (see below) |
+| `ride.requested` | `rideId`, `ref`, `kind`, `customerId`, `distanceKm`, `fare` (minor units), `currency`, `source` |
+| `ride.assigned` | `rideId`, `ref`, `kind`, `customerId`, `driverId` |
+| `ride.completed` | `rideId`, `ref`, `kind`, `customerId`, `passId`, `ridesRemaining` |
+| `ride_pass.activated` | `passId`, `customerId`, `rides`, `expiresAt`, `reference` |
 
 `flow.completed.vars` holds only what the flow definition declares shareable:
 values set by menu choices, a choose step's value, label and attributes, and

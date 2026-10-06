@@ -14,6 +14,7 @@ import conversationRoutes from './conversations.js';
 import messageRoutes from './messages.js';
 import customerRoutes from './customers.js';
 import paymentLinkRoutes from './payment-links.js';
+import rideRoutes from './rides.js';
 
 const v1Routes: FastifyPluginAsync = async (fastify) => {
     // Payment links for external apps are useless without their fulfiller, so
@@ -29,6 +30,7 @@ const v1Routes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(messageRoutes);
     await fastify.register(customerRoutes);
     await fastify.register(paymentLinkRoutes);
+    await fastify.register(rideRoutes);
 };
 
 export default v1Routes;

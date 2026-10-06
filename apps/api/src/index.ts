@@ -50,9 +50,11 @@ import usersRoutes from './routes/users/index.js';
 import webhooksRoutes from './routes/webhooks/index.js';
 import v1Routes from './routes/v1/index.js';
 import developerRoutes from './routes/developer/index.js';
+import ridesRoutes from './routes/rides/index.js';
 import csrfPlugin from './plugins/csrf.js';
 import { registerExternalAppFulfiller } from './services/external-app.js';
 import { registerFlowPaymentFulfiller } from './services/flow-payments.js';
+import { registerRidesPack } from './services/rides/index.js';
 import websocket from '@fastify/websocket';
 import realtimeRoutes from './routes/realtime/index.js';
 
@@ -127,6 +129,8 @@ async function buildApp() {
     registerExternalAppFulfiller();
     // Payment steps of a conversation flow (fulfillment kind 'flow_payment').
     registerFlowPaymentFulfiller();
+    // RIDES pack (TURBO): ride_package / ride_payg payments and the turbo.* flow actions.
+    registerRidesPack(app.prisma);
 
     // Wire Sentry error handler — no-op when DSN unset.
     Sentry.setupFastifyErrorHandler(app);
@@ -202,6 +206,8 @@ async function buildApp() {
     // Public API for external apps (API-key auth, server-to-server).
     await app.register(v1Routes, { prefix: '/v1' });
     await app.register(developerRoutes, { prefix: '/developer' });
+    // TURBO console API (RIDES pack); staff login, cross-site when CROSS_SITE_AUTH is on.
+    await app.register(ridesRoutes, { prefix: '/rides' });
     // Live updates over WebSocket (GET /ws). Registered after the plugin so the
     // route can opt in with { websocket: true }.
     await app.register(websocket);

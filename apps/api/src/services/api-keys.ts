@@ -30,6 +30,9 @@ export const API_KEY_SCOPES = [
     'customers:read',
     'customers:write',
     'payments:write',
+    // RIDES pack (TURBO app): balances / passes / history, and booking a package ride.
+    'rides:read',
+    'rides:write',
     // No 'events:read': nothing in the API reads events with a key (webhooks are
     // pushed, and the catalogue is public documentation), so a scope that grants
     // nothing would only mislead. Add it back together with the first route that checks it.

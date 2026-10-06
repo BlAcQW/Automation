@@ -12,6 +12,7 @@ import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { useAdmin } from '../../admin-context';
 import { Empty, Panel, ReasonModal, Table, Td, Th, UsageBar } from '../../_components/parts';
 import { errorMessage, formatDate, formatDateTime, formatMinor, timeAgo } from '../../_components/format';
+import { ApiKeysPanel } from './api-keys-panel';
 
 interface Overview {
     tenant: any;
@@ -281,6 +282,8 @@ export default function OrganisationPage() {
                     </Table>
                 )}
             </Panel>
+
+            <ApiKeysPanel tenantId={tenant.id} tenantName={tenant.name} />
 
             {supportSessions.length > 0 && (
                 <Panel title="Support sessions">

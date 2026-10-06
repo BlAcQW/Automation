@@ -1139,16 +1139,22 @@ model ExternalApp {
 // raw key is shown once at creation. `prefix` is the public identifier used to
 // look the key up before the hash is compared.
 model ApiKey {
-  id         String    @id @default(cuid())
-  tenantId   String
-  name       String
-  prefix     String    @unique
-  secretHash String
-  scopes     String[]
-  lastUsedAt DateTime?
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
-  createdBy  String?
+  id            String    @id @default(cuid())
+  tenantId      String
+  name          String
+  prefix        String    @unique
+  secretHash    String
+  scopes        String[]
+  lastUsedAt    DateTime?
+  revokedAt     DateTime?
+  // Set when the key was rotated with a grace period: it keeps working until
+  // this moment, then authentication refuses it exactly like a revoked key.
+  expiresAt     DateTime?
+  // The key this one replaced (rotation). Plain id, no FK: a link for the UI
+  // and the audit trail, and both rows cascade with the tenant anyway.
+  rotatedFromId String?
+  createdAt     DateTime  @default(now())
+  createdBy     String?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

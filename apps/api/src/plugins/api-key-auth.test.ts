@@ -66,6 +66,46 @@ describe('authenticateApiKey', () => {
         expect(h.find('conversation', 'findMany')).toHaveLength(0);
     });
 
+    it('refuses an expired key with the same generic 401, and accepts one still inside its grace period', async () => {
+        await build();
+        const good = h.makeKey();
+        const expired = h.makeKey({ expiresAt: new Date(Date.now() - 1000) });
+        const inGrace = h.makeKey({ expiresAt: new Date(Date.now() + 3600_000) });
+        const bad = await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(expired) });
+        const revoked = await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(h.makeKey({ revoked: true })) });
+        expect(bad.statusCode).toBe(401);
+        expect(bad.body).toBe(revoked.body);
+        expect((await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(inGrace) })).statusCode).toBe(200);
+        expect((await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(good) })).statusCode).toBe(200);
+    });
+
+    it('a revoked or expired key presented with its real secret raises a deduped alert (no secret anywhere)', async () => {
+        await build();
+        const revoked = h.makeKey({ revoked: true, tenantId: 'tenant-a' });
+        const expired = h.makeKey({ expiresAt: new Date(Date.now() - 1000), tenantId: 'tenant-b' });
+        expect((await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(revoked) })).statusCode).toBe(401);
+        expect((await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(expired) })).statusCode).toBe(401);
+        const ups = h.find('platformAlert', 'upsert');
+        expect(ups).toHaveLength(2);
+        const day = new Date().toISOString().slice(0, 10);
+        expect(ups[0].args.where.dedupeKey).toBe(`api_key.revoked_used:key-${revoked.split('_')[2]}:${day}`);
+        expect(ups[0].args.create).toMatchObject({ kind: 'api_key.revoked_used', severity: 'warning', tenantId: 'tenant-a' });
+        expect(ups[1].args.create).toMatchObject({ tenantId: 'tenant-b', context: expect.objectContaining({ reason: 'expired' }) });
+        const all = JSON.stringify(ups);
+        expect(all).not.toContain(revoked.split('_')[3]);
+        expect(all).not.toContain(expired.split('_')[3]);
+    });
+
+    it('forged secrets, unknown prefixes and live keys raise no alert', async () => {
+        await build();
+        const revoked = h.makeKey({ revoked: true });
+        const forged = revoked.slice(0, -1) + (revoked.endsWith('a') ? 'b' : 'a');
+        await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(forged) });
+        await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(`bk_live_zzzzzzzzzz_${'a'.repeat(48)}`) });
+        await h.app.inject({ method: 'GET', url: '/whoami', headers: bearer(h.makeKey()) });
+        expect(h.find('platformAlert', 'upsert')).toHaveLength(0);
+    });
+
     it('rejects a key whose tenant is switched off', async () => {
         await build();
         const key = h.makeKey();

@@ -172,6 +172,14 @@ describe('support read allowlist', () => {
         for (const r of [undefined, null, '', '/', '*', '/*', '/unknown']) expect(isSupportReadRoute(r as any)).toBe(false);
     });
 
+    it('no developer route (API keys, rotation, external app) is reachable with a support token', async () => {
+        const { isSupportReadRoute, SUPPORT_READ_ROUTES } = await import('./support-session.js');
+        for (const r of ['/developer/scopes', '/developer/api-keys', '/developer/api-keys/:id', '/developer/api-keys/:id/rotate', '/developer/external-app']) {
+            expect(isSupportReadRoute(r), r).toBe(false);
+        }
+        expect(SUPPORT_READ_ROUTES.some((r) => r.startsWith('/developer'))).toBe(false);
+    });
+
     it('no entry is a prefix wildcard, and nothing sensitive is on the list', async () => {
         const { SUPPORT_READ_ROUTES } = await import('./support-session.js');
         const forbidden = /calendar|payment|whatsapp|channel|users|money|developer|webhook|billing|connect|callback|token|secret|key|media|reveal|invite|by-reference\/:ref$/;

@@ -34,13 +34,19 @@ Authorization: Bearer bk_live_AbCdEfGhIj_<48 characters>
 Keys look like `bk_live_<prefix>_<secret>`. The 10 character prefix is public:
 the dashboard shows it so you can tell keys apart and it is stored on messages
 you send. The secret is shown **once**, when the key is created, and Bookly
-stores only a hash of it. If you lose a key, revoke it and create another.
+stores only a hash of it. If you lose a key, rotate it (or revoke it and create another).
 
 - A key belongs to one organisation; every request acts as that organisation and
   can only see its data.
 - Revoking a key takes effect immediately.
-- A bad, unknown, revoked or malformed key always gets the same `401`, whatever
-  the reason, so keys cannot be probed.
+- A key that was rotated keeps working until its `expiresAt`, then stops; after
+  that it is treated exactly like a revoked key.
+- A bad, unknown, revoked, expired or malformed key always gets the same `401`,
+  whatever the reason, so keys cannot be probed.
+- If a revoked or expired key is presented with its correct secret, Bookly
+  records a security alert for the platform team (once per key per day). If
+  you see your integration getting `401` after a rotation, it is still using
+  the old key.
 - Repeated failed attempts are throttled with `429`, per source address **and** key prefix, so one client sending bad keys does not lock out your valid keys. The address is the real client address (the API trusts the local reverse proxy's `X-Forwarded-For`; see `TRUST_PROXY`).
 
 ## Scopes
@@ -101,7 +107,7 @@ Validation failures (`400`, code `validation_error`) also carry `error.details`:
 | HTTP | `error.code` | Meaning |
 |---|---|---|
 | 400 | `validation_error` / `bad_request` | The request is malformed. Fix it; do not retry as is. |
-| 401 | `unauthorized` | Missing, malformed, unknown or revoked key. |
+| 401 | `unauthorized` | Missing, malformed, unknown, revoked or expired key. |
 | 402 | `quota_exceeded` | The organisation's monthly message quota is used up. |
 | 403 | `forbidden` | The key lacks the required scope (the message names it). |
 | 404 | `not_found` | No such record **in your organisation**. Other organisations' ids look identical. |
@@ -695,15 +701,32 @@ endpoints. Responses use `{ "data": ... }`.
 | Method and path | Purpose |
 |---|---|
 | `GET /developer/scopes` | Scopes you can grant, with descriptions. |
-| `GET /developer/api-keys` | List keys: `id`, `name`, `prefix`, `scopes`, `lastUsedAt`, `revokedAt`, `createdAt`. Never the key. |
-| `POST /developer/api-keys` | Body `{ "name", "scopes": [...] }`. Returns `{ "data": { "key": "bk_live_...", "apiKey": {...} } }`. **The full key appears only here.** At most 20 active keys per organisation (`409` beyond). |
-| `DELETE /developer/api-keys/:id` | Revoke. Immediate and idempotent. |
+| `GET /developer/api-keys` | List keys: `id`, `name`, `prefix`, `scopes`, `lastUsedAt`, `revokedAt`, `expiresAt`, `rotatedFromId`, `createdAt`, and `status` (`active`, `expiring` = in a rotation grace period, `expired`, `revoked`). Never the key. |
+| `POST /developer/api-keys` | Body `{ "name", "scopes": [...] }`. Returns `{ "data": { "key": "bk_live_...", "apiKey": {...} } }`. **The full key appears only here.** At most 20 active keys per organisation (`409` beyond); keys in a grace period do not count. |
+| `POST /developer/api-keys/:id/rotate` | Body `{ "graceHours"?: 0-168 }` (default `24`). Creates a replacement with the same name and scopes and returns `{ "data": { "key", "apiKey", "previous": { "id", "prefix", "expiresAt", "revokedAt" } } }` (`201`). **The new key appears only here.** The old key keeps working until `previous.expiresAt`; `graceHours: 0` revokes it at once. Only an `active` key can be rotated (`409` for a revoked, expired or already rotating key; `404` for an unknown one). At most 40 keys may be working at once, counting keys in a grace period (`409` beyond). |
+| `DELETE /developer/api-keys/:id` | Revoke. Immediate and idempotent. Also ends a grace period early. |
 | `GET /developer/external-app` | `{ name, url, isActive, createdAt, updatedAt }` or `null`. Never the secret. |
 | `PUT /developer/external-app` | Body `{ "name", "url", "isActive"? }`. Creates or updates. On creation the response includes `signingSecret` (shown once). |
 | `POST /developer/external-app/rotate-secret` | New `signingSecret`, returned once. The old one stops working at once; update your app first or accept a gap. |
 | `DELETE /developer/external-app` | Remove the app and stop delivery. |
 
-`lastUsedAt` is approximate: it is updated at most every 5 minutes per key.
+`lastUsedAt` is approximate: it is updated at most once a minute per key.
+
+### Rotating a key without downtime
+
+1. `POST /developer/api-keys/:id/rotate` with a grace period long enough to
+   deploy everywhere (default 24 hours, up to 7 days). Store the returned `key`.
+2. Deploy the new key to every system that used the old one.
+3. Watch the old key's `lastUsedAt` in `GET /developer/api-keys` (or the
+   dashboard: Settings > Developer). Once it stops moving, everything has
+   switched over.
+4. Let the old key expire on its own, or `DELETE` it to end the grace period
+   early.
+
+If a key leaked, do not wait: rotate with `graceHours: 0` (or revoke it).
+
+Platform support can also revoke an organisation's keys (for example after a
+leak); the owner gets an in-app notification with the reason.
 
 Saving the external app maintains one managed webhook subscription (description
 `external-app`) with the same URL and secret, carrying the events listed above.

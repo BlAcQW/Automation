@@ -57,6 +57,14 @@ describe('role -> permission map', () => {
         }
     });
 
+    it('apikeys:revoke (admin revoke of an organisation\'s API keys) is OWNER and SUPPORT only', () => {
+        expect(ALL_PERMISSIONS).toContain('apikeys:revoke');
+        expect(allow('OWNER', 'apikeys:revoke', 'POST')).toBe(true);
+        expect(allow('SUPPORT', 'apikeys:revoke', 'POST')).toBe(true);
+        expect(allow('FINANCE', 'apikeys:revoke', 'POST')).toBe(false);
+        expect(allow('READONLY', 'apikeys:revoke', 'POST')).toBe(false);
+    });
+
     it('READONLY holds read permissions only', () => {
         for (const [perm, ] of Object.entries(ROLE_PERMISSIONS)) void perm;
         const writes = ALL_PERMISSIONS.filter((p) => !p.endsWith(':read') && p !== 'self');

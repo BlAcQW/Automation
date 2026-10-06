@@ -74,6 +74,9 @@ const TABLE: Row[] = [
     ['POST', '/admin/flows/validate', 'flows:read'],
     ['POST', '/admin/flows/main/versions', 'flows:write'],
     ['POST', '/admin/flows/main/activate', 'flows:write'],
+    ['GET', '/admin/organisations/t1/api-keys', 'tenants:read'],
+    ['POST', '/admin/organisations/t1/api-keys/k1/revoke', 'apikeys:revoke'],
+    ['POST', '/admin/organisations/t1/api-keys/revoke-all', 'apikeys:revoke'],
     // /admin/billing/** lives in routes/admin-billing but is part of the same admin surface.
     ['GET', '/admin/billing/event-types', 'billing:read'],
     ['GET', '/admin/billing/tenants', 'billing:read'],

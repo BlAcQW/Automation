@@ -56,6 +56,7 @@ describe('access control', () => {
         ['GET', '/developer/api-keys'],
         ['POST', '/developer/api-keys', { name: 'x', scopes: ['messages:write'] }],
         ['DELETE', '/developer/api-keys/k1'],
+        ['POST', '/developer/api-keys/k1/rotate', { graceHours: 24 }],
         ['GET', '/developer/external-app'],
         ['PUT', '/developer/external-app', { name: 'x', url: 'https://x.example/h' }],
         ['POST', '/developer/external-app/rotate-secret'],
@@ -155,6 +156,89 @@ describe('API keys', () => {
         const row = { id: 'k1', tenantId: 'tenant-a', name: 'n', prefix, secretHash: hashSecret(secret), scopes: ['messages:write'], lastUsedAt: null, revokedAt: new Date() };
         const stub: any = { apiKey: { findUnique: async () => row }, tenant: { findUnique: async () => ({ isActive: true }) } };
         expect(await verifyApiKey(stub, `bk_live_${prefix}_${secret}`)).toBeNull();
+    });
+});
+
+describe('API key rotation', () => {
+    const active = (over: Record<string, unknown> = {}) => ({
+        id: 'k1', tenantId: 'tenant-a', name: 'TURBO prod', prefix: 'oldprefix1', scopes: ['messages:write'], revokedAt: null, expiresAt: null, ...over,
+    });
+
+    it('returns the new key once, schedules the old key to expire after the grace period, and audits', async () => {
+        h.respond('apiKey.findFirst', active());
+        const before = Date.now();
+        const res = await call('POST', '/developer/api-keys/k1/rotate', owner(), { graceHours: 6 });
+        expect(res.statusCode).toBe(201);
+        const { key, apiKey, previous } = res.json().data;
+        expect(key).toMatch(/^bk_live_[A-Za-z0-9]{10}_[A-Za-z0-9]{48}$/);
+        expect(apiKey).toMatchObject({ name: 'TURBO prod', scopes: ['messages:write'], rotatedFromId: 'k1' });
+        expect(apiKey).not.toHaveProperty('secretHash');
+        const exp = new Date(previous.expiresAt).getTime();
+        expect(exp).toBeGreaterThanOrEqual(before + 6 * 3600_000);
+        expect(exp).toBeLessThanOrEqual(Date.now() + 6 * 3600_000);
+
+        expect(h.find('apiKey', 'findFirst')[0].args.where).toEqual({ id: 'k1', tenantId: 'tenant-a' });
+        expect(h.find('apiKey', 'updateMany')[0].args.where).toMatchObject({ id: 'k1', tenantId: 'tenant-a' });
+        expect(audit).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'api_key.rotated', tenantId: 'tenant-a', actorId: 'user-1', targetId: 'k1',
+            metadata: expect.objectContaining({ replacementId: apiKey.id, graceHours: 6 }),
+        }));
+        expect(JSON.stringify((audit as any).mock.calls)).not.toContain(key.split('_')[3]);
+        expect(h.violations).toEqual([]);
+    });
+
+    it('defaults the grace period to 24 hours', async () => {
+        h.respond('apiKey.findFirst', active());
+        const res = await call('POST', '/developer/api-keys/k1/rotate', owner(), {});
+        expect(res.statusCode).toBe(201);
+        const exp = new Date(res.json().data.previous.expiresAt).getTime();
+        expect(Math.round((exp - Date.now()) / 3600_000)).toBe(24);
+    });
+
+    it('works with no body at all', async () => {
+        h.respond('apiKey.findFirst', active());
+        const res = await h.app.inject({ method: 'POST', url: '/developer/api-keys/k1/rotate', headers: owner() });
+        expect(res.statusCode).toBe(201);
+    });
+
+    it('grace 0 revokes the old key immediately', async () => {
+        h.respond('apiKey.findFirst', active());
+        const res = await call('POST', '/developer/api-keys/k1/rotate', owner(), { graceHours: 0 });
+        expect(res.statusCode).toBe(201);
+        expect(res.json().data.previous.revokedAt).toEqual(expect.any(String));
+        expect(h.find('apiKey', 'updateMany')[0].args.data).toHaveProperty('revokedAt');
+    });
+
+    it.each([[-1], [169], [1.5], ['24']])('400 for graceHours %s', async (graceHours) => {
+        h.respond('apiKey.findFirst', active());
+        const res = await call('POST', '/developer/api-keys/k1/rotate', owner(), { graceHours });
+        expect(res.statusCode).toBe(400);
+        expect(h.find('apiKey', 'create')).toHaveLength(0);
+    });
+
+    it('404 for an unknown or other-tenant key', async () => {
+        const res = await call('POST', '/developer/api-keys/k1/rotate', owner(), { graceHours: 1 });
+        expect(res.statusCode).toBe(404);
+        expect(audit).not.toHaveBeenCalled();
+    });
+
+    it('409 for a key that is revoked or already rotating', async () => {
+        h.respond('apiKey.findFirst', active({ expiresAt: new Date(Date.now() + 3600_000) }));
+        const res = await call('POST', '/developer/api-keys/k1/rotate', owner(), { graceHours: 1 });
+        expect(res.statusCode).toBe(409);
+        expect(h.find('apiKey', 'create')).toHaveLength(0);
+    });
+
+    it('listing includes expiry, rotation link and a computed status', async () => {
+        const soon = new Date(Date.now() + 3600_000);
+        h.respond('apiKey.findMany', [
+            { id: 'k2', name: 'a', prefix: 'newprefix1', scopes: ['messages:write'], lastUsedAt: null, revokedAt: null, expiresAt: null, rotatedFromId: 'k1', createdAt: new Date() },
+            { id: 'k1', name: 'a', prefix: 'oldprefix1', scopes: ['messages:write'], lastUsedAt: null, revokedAt: null, expiresAt: soon, rotatedFromId: null, createdAt: new Date() },
+        ]);
+        const res = await call('GET', '/developer/api-keys', owner());
+        const [k2, k1] = res.json().data;
+        expect(k2).toMatchObject({ status: 'active', rotatedFromId: 'k1' });
+        expect(k1).toMatchObject({ status: 'expiring', expiresAt: soon.toISOString() });
     });
 });
 

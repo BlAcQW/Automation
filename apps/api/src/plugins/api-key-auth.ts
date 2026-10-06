@@ -8,9 +8,14 @@
  * applies to API traffic exactly as it does to dashboard traffic).
  *
  * ERRORS  401 for anything wrong with the key (one generic message: missing,
- * malformed, unknown, wrong secret, revoked and a switched-off tenant are
- * indistinguishable), 403 for a valid key that lacks a scope, 429 for rate
- * limits.
+ * malformed, unknown, wrong secret, revoked, expired (rotation grace over) and
+ * a switched-off tenant are indistinguishable), 403 for a valid key that lacks
+ * a scope, 429 for rate limits.
+ *
+ * ALERT  A revoked or expired key presented with its REAL secret raises a
+ * PlatformAlert (api_key.revoked_used, one per key per day) so a leaked key
+ * being tried is visible. A forged secret raises nothing. The response is the
+ * same 401 either way.
  *
  * RATE LIMITS  Two, deliberately separate:
  *  - per key (default 120/min), counted only AFTER the key verified, so someone
@@ -37,7 +42,7 @@ import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import rateLimit from '@fastify/rate-limit';
 import { bindTenantContext } from '../lib/tenant-context.js';
-import { verifyApiKey, touchLastUsed, hasScopes, parseApiKey, type ApiKeyScope } from '../services/api-keys.js';
+import { checkApiKey, alertRevokedKeyUse, touchLastUsed, hasScopes, parseApiKey, type ApiKeyScope } from '../services/api-keys.js';
 import { scoped } from '../lib/logger.js';
 
 const log = scoped('api-key-auth');
@@ -130,13 +135,19 @@ const apiKeyAuthPlugin: FastifyPluginAsync<ApiKeyAuthOptions> = async (fastify, 
                 throw fastify.httpErrors.tooManyRequests('Too many failed authentication attempts. Try again shortly.');
             }
 
-            const verified = match ? await verifyApiKey((fastify as any).prisma, match[1]) : null;
-            if (!verified) {
+            const prisma = (fastify as any).prisma;
+            const check = match ? await checkApiKey(prisma, match[1]) : null;
+            if (!check?.ok) {
                 // ... and count only a failed verification.
                 failuresByKey.record(keyBucket);
                 failuresByIp.record(request.ip);
+                if (check && (check.reason === 'revoked' || check.reason === 'expired')) {
+                    // Never throws. Awaited so the alert is written before the 401 (cheap, rare, rate limited above).
+                    await alertRevokedKeyUse(prisma, check.key, check.reason, { ip: request.ip });
+                }
                 throw unauthorized();
             }
+            const verified = check.key;
 
             request.apiKey = {
                 id: verified.id,
@@ -158,7 +169,7 @@ const apiKeyAuthPlugin: FastifyPluginAsync<ApiKeyAuthOptions> = async (fastify, 
             await perKey(request, reply);
 
             // Advisory and throttled: never let it fail or slow the request.
-            void touchLastUsed((fastify as any).prisma, verified).catch((err) =>
+            void touchLastUsed(prisma, verified).catch((err) =>
                 log.warn({ err, apiKeyPrefix: verified.prefix }, 'lastUsedAt update failed'),
             );
         };

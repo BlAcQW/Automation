@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
     Building, User as UserIcon, Lock, Calendar, Save, Loader2, CheckCircle, ExternalLink, CreditCard, BarChart3, Mail, MessageSquareMore, BellRing,
-    LayoutGrid, Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Copy, Banknote, Trash2,
+    LayoutGrid, Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Copy, Banknote, Trash2, Code2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -357,19 +357,22 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                     <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {(tenant?.businessType === 'PRODUCT'
-                            ? [
-                                  { name: 'Inventory', href: '/inventory', icon: Boxes },
-                                  { name: 'Customers', href: '/customers', icon: Users },
-                                  { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
-                                  { name: 'Message Templates', href: '/templates', icon: FileText },
-                              ]
-                            : [
-                                  { name: 'Availability', href: '/availability', icon: Clock },
-                                  { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
-                                  { name: 'Message Templates', href: '/templates', icon: FileText },
-                              ]
-                        ).map((link) => (
+                        {[
+                            ...(tenant?.businessType === 'PRODUCT'
+                                ? [
+                                      { name: 'Inventory', href: '/inventory', icon: Boxes },
+                                      { name: 'Customers', href: '/customers', icon: Users },
+                                      { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+                                      { name: 'Message Templates', href: '/templates', icon: FileText },
+                                  ]
+                                : [
+                                      { name: 'Availability', href: '/availability', icon: Clock },
+                                      { name: 'WhatsApp', href: '/whatsapp', icon: Smartphone },
+                                      { name: 'Message Templates', href: '/templates', icon: FileText },
+                                  ]),
+                            // API keys and webhooks: owner only (the page explains this to staff).
+                            ...(user?.role === 'OWNER' ? [{ name: 'Developer (API keys, webhooks)', href: '/settings/developer', icon: Code2 }] : []),
+                        ].map((link) => (
                             <Link
                                 key={link.href}
                                 href={link.href}

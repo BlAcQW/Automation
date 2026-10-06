@@ -16,8 +16,11 @@ import {
     API_KEY_SCOPES,
     ApiKeyError,
     createApiKey,
+    DEFAULT_ROTATION_GRACE_HOURS,
     listApiKeys,
+    MAX_ROTATION_GRACE_HOURS,
     revokeApiKey,
+    rotateApiKey,
 } from '../../services/api-keys.js';
 import {
     deleteExternalApp,
@@ -43,6 +46,10 @@ const createKeyBody = z
     .strict();
 
 const idParams = z.object({ id: z.string().min(1).max(64) }).strict();
+
+const rotateBody = z
+    .object({ graceHours: z.number().int().min(0).max(MAX_ROTATION_GRACE_HOURS).default(DEFAULT_ROTATION_GRACE_HOURS) })
+    .strict();
 
 const externalAppBody = z
     .object({
@@ -95,6 +102,35 @@ const developerRoutes: FastifyPluginAsync = async (fastify) => {
         } catch (err) {
             if (err instanceof ApiKeyError) {
                 if (err.code === 'key_limit_reached') throw fastify.httpErrors.conflict(err.message);
+                throw fastify.httpErrors.badRequest(err.message);
+            }
+            throw err;
+        }
+    });
+
+    // POST /developer/api-keys/:id/rotate - replacement key shown once; the old
+    // key keeps working for graceHours (default 24, 0 = revoke now) so a client
+    // can switch over without downtime.
+    fastify.post('/api-keys/:id/rotate', guard, async (request, reply) => {
+        const { tenantId, userId } = request.user;
+        const { id } = idParams.parse(request.params);
+        const { graceHours } = rotateBody.parse(request.body ?? {});
+        try {
+            const { key, apiKey, previous } = await rotateApiKey(fastify.prisma, { tenantId, id, graceHours, createdBy: userId });
+            await record(request, 'api_key.rotated', 'API_KEY', id, {
+                replacementId: apiKey.id,
+                prefix: previous.prefix,
+                replacementPrefix: apiKey.prefix,
+                graceHours,
+                expiresAt: previous.expiresAt,
+                revokedAt: previous.revokedAt,
+            });
+            reply.code(201);
+            return { data: { key, apiKey, previous } };
+        } catch (err) {
+            if (err instanceof ApiKeyError) {
+                if (err.code === 'not_found') throw fastify.httpErrors.notFound(err.message);
+                if (err.code === 'not_active' || err.code === 'key_limit_reached') throw fastify.httpErrors.conflict(err.message);
                 throw fastify.httpErrors.badRequest(err.message);
             }
             throw err;

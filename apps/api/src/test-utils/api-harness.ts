@@ -44,7 +44,7 @@ export interface Harness {
     queries: RecordedQuery[];
     violations: string[];
     respond: (key: string, fn: Responder | unknown) => void;
-    makeKey: (opts?: { scopes?: ApiKeyScope[]; tenantId?: string; revoked?: boolean; name?: string }) => string;
+    makeKey: (opts?: { scopes?: ApiKeyScope[]; tenantId?: string; revoked?: boolean; name?: string; expiresAt?: Date | null }) => string;
     find: (model: string, op: string) => RecordedQuery[];
     close: () => Promise<void>;
 }
@@ -138,11 +138,11 @@ export async function buildHarness(
         queries,
         violations,
         respond: (key, fn) => { responders.set(key, fn); },
-        makeKey: ({ scopes = ['messages:write'], tenantId = 'tenant-a', revoked = false, name = 'test key' } = {}) => {
+        makeKey: ({ scopes = ['messages:write'], tenantId = 'tenant-a', revoked = false, name = 'test key', expiresAt = null } = {}) => {
             const { key, prefix, secret } = generateApiKey();
             keyRows.set(prefix, {
                 id: `key-${prefix}`, tenantId, name, prefix, secretHash: hashSecret(secret), scopes,
-                lastUsedAt: null, revokedAt: revoked ? new Date() : null,
+                lastUsedAt: null, revokedAt: revoked ? new Date() : null, expiresAt,
             });
             return key;
         },

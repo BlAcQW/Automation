@@ -249,6 +249,10 @@ Already set and needing nothing: `BOOKINGFLOW_PAYSTACK_SECRET_KEY`,
 - [ ] **`git push origin Dev`** — your git hook blocks me from pushing, so
       everything built in this session exists only on this server.
 - [ ] After pulling: `npm install --legacy-peer-deps`, then rebuild both apps.
+- [ ] **API key rotation (6 Oct changes):** run `npm run db:deploy -w apps/api`
+      (migration `20261010090000_api_key_rotation`, two nullable columns on
+      `ApiKey`) **before** starting the new API build: the new key check reads
+      `expiresAt`, so the old schema would refuse every API key.
 - [ ] **Before deploying the 4 Oct changes**, check for duplicate outbound
       message ids — the new unique index refuses to build on them, and a failed
       migration stops the API starting:

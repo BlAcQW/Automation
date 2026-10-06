@@ -10,8 +10,8 @@
  *   FINANCE   money oversight, billing terms, promo codes, per-tenant and
  *             platform payout switches, audit log, read-only tenant/messaging views.
  *   SUPPORT   tenants, users, conversations, alerts, support access, the
- *             per-tenant outbound switch, read-only flows. No money, no payout
- *             switches, no admin management.
+ *             per-tenant outbound switch, revoking an organisation's API keys,
+ *             read-only flows. No money, no payout switches, no admin management.
  *   READONLY  GET requests for read permissions only. Nothing else, ever.
  *
  * `self` (own password, own 2FA, who am I) is open to every role: it touches
@@ -51,6 +51,8 @@ export const ALL_PERMISSIONS = [
     'flows:read',
     'flows:write',
     'security:policy',
+    // Revoke an organisation's API keys (one or all). Reading them is tenants:read.
+    'apikeys:revoke',
 ] as const;
 export type AdminPermission = (typeof ALL_PERMISSIONS)[number];
 
@@ -106,6 +108,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, ReadonlySet<AdminPermission>> =
         'support:access',
         'conversations:handoff',
         'outbound:switch',
+        'apikeys:revoke',
         'flows:read',
     ]),
     READONLY: new Set<AdminPermission>(READ_ONLY_PERMISSIONS),

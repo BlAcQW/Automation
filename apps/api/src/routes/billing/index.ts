@@ -5,9 +5,11 @@ import { audit } from '../../services/audit.js';
 import {
     getPlan,
     getPaystackPlanCode,
+    isPlanAvailableForVertical,
     isPlatformPaystackConfigured,
-    PLAN_CATALOG,
+    plansForVertical,
     PLAN_IDS,
+    subscribeBodySchema,
     type PlanId,
 } from '../../services/plans.js';
 import {
@@ -22,10 +24,6 @@ import {
     verifyPlatformWebhookSignature,
     PlatformPaystackError,
 } from '../../services/paystack-platform.js';
-
-const subscribeSchema = z.object({
-    planId: z.enum(['starter', 'pro'] as const),
-});
 
 interface PlatformWebhookEvent {
     event?: string;
@@ -58,6 +56,10 @@ const billingRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.get('/status', { preHandler: fastify.authenticate }, async (request) => {
         const resolved = await evaluateSubscription(fastify.prisma, request.user.tenantId);
         const quota = await getQuotaState(fastify.prisma, request.user.tenantId, resolved.plan.id);
+        const tenantRow = await fastify.prisma.tenant.findUnique({
+            where: { id: request.user.tenantId },
+            select: { vertical: true },
+        });
 
         return {
             plan: resolved.plan,
@@ -74,7 +76,8 @@ const billingRoutes: FastifyPluginAsync = async (fastify) => {
                 cycleStart: quota.cycleStart,
                 cycleEnd: quota.cycleEnd,
             },
-            availablePlans: Object.values(PLAN_CATALOG).sort(
+            // Only the plans this tenant's vertical may be on.
+            availablePlans: plansForVertical(tenantRow?.vertical ?? 'APPOINTMENTS').sort(
                 (a, b) => a.monthlyPrice - b.monthlyPrice,
             ),
             paystackConfigured: isPlatformPaystackConfigured(),
@@ -141,7 +144,7 @@ const billingRoutes: FastifyPluginAsync = async (fastify) => {
             );
         }
 
-        const body = subscribeSchema.parse(request.body);
+        const body = subscribeBodySchema.parse(request.body);
         const targetPlanCode = getPaystackPlanCode(body.planId);
         if (!targetPlanCode) {
             throw fastify.httpErrors.serviceUnavailable(
@@ -150,6 +153,13 @@ const billingRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const tenantId = request.user.tenantId;
+        const tenantRow = await fastify.prisma.tenant.findUnique({
+            where: { id: tenantId },
+            select: { vertical: true },
+        });
+        if (tenantRow && !isPlanAvailableForVertical(getPlan(body.planId), tenantRow.vertical)) {
+            throw fastify.httpErrors.badRequest('That plan is not available for your account type');
+        }
         const resolved = await evaluateSubscription(fastify.prisma, tenantId);
 
         // For 4b, allow only Free→paid. Switching between Starter and Pro

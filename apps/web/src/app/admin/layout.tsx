@@ -17,6 +17,7 @@ import {
     LogOut,
     Ticket,
     KeyRound,
+    Bell,
 } from 'lucide-react';
 import { AdminContext, type Admin } from './admin-context';
 
@@ -26,6 +27,7 @@ const navigation = [
     { name: 'Users', href: '/admin/users', icon: Users },
     { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
     { name: 'Statistics', href: '/admin/stats', icon: BarChart3 },
+    { name: 'Alerts', href: '/admin/alerts', icon: Bell },
     { name: 'Promo codes', href: '/admin/promo-codes', icon: Ticket },
     { name: 'My account', href: '/admin/account', icon: KeyRound },
 ];

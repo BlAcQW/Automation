@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { NewOrganisation } from './new-organisation';
 
 export default function AdminTenantsPage() {
     const [page, setPage] = useState(1);
@@ -33,11 +34,12 @@ export default function AdminTenantsPage() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-white">Tenants</h1>
                     <p className="text-slate-400">Manage all business tenants on the platform.</p>
                 </div>
+                <NewOrganisation />
             </div>
 
             {/* Search */}

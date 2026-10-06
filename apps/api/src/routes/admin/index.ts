@@ -6,7 +6,14 @@ import { config } from '../../config/index.js';
 import { audit } from '../../services/audit.js';
 import { PLAN_IDS } from '../../services/plans.js';
 import { buildTenantUpdateData, parseTenantUpdate } from './tenant-update.js';
-import { currentCycleKey } from '../../services/usage.js';
+import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
+import {
+    createTenantSchema,
+    createTenantWithOwner,
+    DuplicateOwnerEmailError,
+} from '../../services/tenant-onboarding.js';
+import { messagesThisCycleByTenant } from './tenant-usage.js';
+import { alertListQuerySchema, buildAlertWhere } from './alerts.js';
 import { generatePromoCode, normalizePromoCode } from '../../services/promo.js';
 
 // Validation schemas
@@ -124,6 +131,151 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     // TENANT MANAGEMENT
     // ============================================
 
+    // POST /admin/tenants - Create an organisation with an OWNER invite
+    fastify.post('/tenants', {
+        preHandler: [fastify.authenticateAdmin],
+    }, async (request, reply) => {
+        const parsed = createTenantSchema.safeParse(request.body);
+        if (!parsed.success) {
+            throw fastify.httpErrors.badRequest(
+                parsed.error.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; '),
+            );
+        }
+
+        // Account email always goes from the platform sender.
+        const creds = resolveGmailCreds({
+            tenantGmailUser: null,
+            tenantGmailAppPasswordEncrypted: null,
+            tenantGmailFromName: null,
+        });
+
+        let result;
+        try {
+            result = await createTenantWithOwner(
+                {
+                    prisma: fastify.prisma as any,
+                    secret: config.jwtSecret,
+                    frontendUrl: config.frontendUrl,
+                    emailConfigured: !!creds,
+                    sendInvite: (mail) => sendEmail({ ...creds!, ...mail }),
+                },
+                parsed.data,
+            );
+        } catch (err) {
+            if (err instanceof DuplicateOwnerEmailError) {
+                throw fastify.httpErrors.conflict('A user with this email already exists');
+            }
+            throw err;
+        }
+
+        // Never put the invite link in the audit trail: it is a credential.
+        await audit({
+            prisma: fastify.prisma,
+            action: 'tenant.created',
+            actorType: 'ADMIN',
+            actorId: request.admin!.adminId,
+            tenantId: result.tenant.id,
+            targetType: 'Tenant',
+            targetId: result.tenant.id,
+            metadata: {
+                name: result.tenant.name,
+                vertical: result.tenant.vertical,
+                planId: result.tenant.planId,
+                monthlyMessageQuotaOverride: result.tenant.monthlyMessageQuotaOverride ?? null,
+                ownerUserId: result.owner.id,
+                ownerEmail: result.owner.email,
+                inviteSent: result.invite.sent,
+            },
+            ipAddress: request.ip,
+        });
+
+        reply.code(201);
+        return {
+            tenant: {
+                id: result.tenant.id,
+                name: result.tenant.name,
+                timezone: result.tenant.timezone,
+                vertical: result.tenant.vertical,
+                planId: result.tenant.planId,
+                monthlyMessageQuotaOverride: result.tenant.monthlyMessageQuotaOverride ?? null,
+            },
+            owner: { id: result.owner.id, name: result.owner.name, email: result.owner.email },
+            invite: result.invite,
+        };
+    });
+
+    // ============================================
+    // PLATFORM ALERTS
+    // ============================================
+
+    // GET /admin/alerts - paginated, newest lastSeenAt first
+    fastify.get('/alerts', {
+        preHandler: [fastify.authenticateAdmin],
+    }, async (request) => {
+        const query = alertListQuerySchema.parse(request.query);
+        const where = buildAlertWhere(query);
+        const [alerts, total] = await Promise.all([
+            fastify.prisma.platformAlert.findMany({
+                where,
+                orderBy: { lastSeenAt: 'desc' },
+                skip: (query.page - 1) * query.limit,
+                take: query.limit,
+            }),
+            fastify.prisma.platformAlert.count({ where }),
+        ]);
+
+        const tenantIds = [...new Set(alerts.map((a) => a.tenantId).filter((x): x is string => !!x))];
+        const tenants = tenantIds.length
+            ? await fastify.prisma.tenant.findMany({
+                where: { id: { in: tenantIds } },
+                select: { id: true, name: true },
+            })
+            : [];
+        const names = new Map(tenants.map((t) => [t.id, t.name]));
+
+        return {
+            data: alerts.map((a) => ({ ...a, tenantName: a.tenantId ? names.get(a.tenantId) ?? null : null })),
+            pagination: {
+                page: query.page,
+                limit: query.limit,
+                total,
+                totalPages: Math.ceil(total / query.limit),
+            },
+        };
+    });
+
+    // POST /admin/alerts/:id/resolve
+    fastify.post('/alerts/:id/resolve', {
+        preHandler: [fastify.authenticateAdmin],
+    }, async (request) => {
+        const { id } = request.params as { id: string };
+        const adminId = request.admin!.adminId;
+
+        // Only flip an open alert, atomically: a double click must not
+        // overwrite who resolved it first.
+        const res = await fastify.prisma.platformAlert.updateMany({
+            where: { id, resolvedAt: null },
+            data: { resolvedAt: new Date(), resolvedBy: adminId },
+        });
+        const alert = await fastify.prisma.platformAlert.findUnique({ where: { id } });
+        if (!alert) throw fastify.httpErrors.notFound('Alert not found');
+
+        if (res.count > 0) {
+            await audit({
+                prisma: fastify.prisma,
+                action: 'alert.resolved',
+                actorType: 'ADMIN',
+                actorId: adminId,
+                tenantId: alert.tenantId,
+                targetType: 'PlatformAlert',
+                targetId: alert.id,
+                metadata: { kind: alert.kind, severity: alert.severity },
+                ipAddress: request.ip,
+            });
+        }
+        return alert;
+    });
+
     // GET /admin/tenants - List all tenants
     fastify.get('/tenants', {
         preHandler: [fastify.authenticateAdmin],
@@ -154,29 +306,17 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
                             services: true,
                         },
                     },
-                    // Phase 4c — each tenant has its own 30-day quota cycle
-                    // (keyed YYYY-MM-DD). Fetch the most-recent usage row;
-                    // we'll match it against the tenant's current cycle key
-                    // below — non-matching rows count as 0 this cycle.
-                    tenantUsages: {
-                        orderBy: { month: 'desc' },
-                        take: 1,
-                        select: { month: true, messageCount: true },
-                    },
                 },
             }),
             fastify.prisma.tenant.count({ where }),
         ]);
 
+        // Each tenant has its own 30-day quota cycle: read the exact row for it.
+        const usage = await messagesThisCycleByTenant(fastify.prisma, tenants);
+
         return {
             data: tenants.map((t) => {
-                const cycleKey = currentCycleKey({
-                    quotaCycleStart: t.quotaCycleStart,
-                    createdAt: t.createdAt,
-                });
-                const latestUsage = t.tenantUsages[0];
-                const messagesThisCycle =
-                    latestUsage?.month === cycleKey ? latestUsage.messageCount : 0;
+                const messagesThisCycle = usage.get(t.id) ?? 0;
                 return {
                     id: t.id,
                     name: t.name,
@@ -236,13 +376,17 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.notFound('Tenant not found');
         }
 
+        const usage = await messagesThisCycleByTenant(fastify.prisma, [tenant]);
+
         return {
             id: tenant.id,
             name: tenant.name,
             timezone: tenant.timezone,
             isActive: tenant.isActive,
+            planId: tenant.planId,
             vertical: tenant.vertical,
             monthlyMessageQuotaOverride: tenant.monthlyMessageQuotaOverride,
+            messagesThisMonth: usage.get(tenant.id) ?? 0,
             whatsappConnected: !!tenant.whatsappPhoneNumberId,
             whatsappDisplayNumber: tenant.whatsappDisplayNumber,
             users: tenant.users,

@@ -166,3 +166,54 @@ describe('pure choosers', () => {
         expect(choosePhone([{ id: '1' }, { id: '2' }], '2')).toEqual({ id: '2' });
     });
 });
+
+describe('completeEmbeddedSignup — number already has a two-step PIN (#133005)', () => {
+    const pinMismatch = () =>
+        new Response(
+            JSON.stringify({ error: { message: '(#133005) Two step verification PIN Mismatch', type: 'OAuthException', code: 133005, fbtrace_id: 'x' } }),
+            { status: 400 },
+        );
+    const start = () => [ok({ access_token: 'EAAGtoken1234567890' }), debug(), phones([{ id: 'pn-77' }]), ok({ success: true })];
+
+    it('sets our new PIN as the two-step code (form POST, business token), then registers again', async () => {
+        const spy = mockFetchSequence([...start(), pinMismatch(), ok({ success: true }), ok({ success: true })]);
+        const result = await completeEmbeddedSignup('c');
+
+        expect(spy).toHaveBeenCalledTimes(7);
+        const [setUrl, setInit] = spy.mock.calls[5] as [string, RequestInit];
+        expect(setUrl).toMatch(/\/pn-77$/);
+        expect(setInit.method).toBe('POST');
+        expect(String(setInit.body)).toBe(`pin=${result.registrationPin}`);
+        const setHeaders = setInit.headers as Record<string, string>;
+        expect(setHeaders['Content-Type']).toBe('application/x-www-form-urlencoded');
+        expect(setHeaders.Authorization).toBe('Bearer EAAGtoken1234567890');
+
+        // The retry registers with the same PIN that was just set (and is stored).
+        const [retryUrl, retryInit] = spy.mock.calls[6] as [string, RequestInit];
+        expect(retryUrl).toContain('/pn-77/register');
+        expect(String(retryInit.body)).toContain(`"pin":"${result.registrationPin}"`);
+        expect(result.registrationPin).toMatch(/^\d{6}$/);
+    });
+
+    it('fails with step set_two_step_pin when Meta will not set the PIN', async () => {
+        mockFetchSequence([...start(), pinMismatch(), new Response('{"error":{"message":"Permissions error","code":10}}', { status: 403 })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'set_two_step_pin' });
+    });
+
+    it('fails with step set_two_step_pin when the retry still reports a PIN mismatch (retries once only)', async () => {
+        const spy = mockFetchSequence([...start(), pinMismatch(), ok({ success: true }), pinMismatch()]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'set_two_step_pin' });
+        expect(spy).toHaveBeenCalledTimes(7);
+    });
+
+    it('other register errors are unchanged: no PIN reset, step register_number', async () => {
+        const spy = mockFetchSequence([...start(), new Response('{"error":{"message":"(#133010) Account not registered","code":133010}}', { status: 400 })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'register_number' });
+        expect(spy).toHaveBeenCalledTimes(5);
+    });
+
+    it('a retry that fails for another reason reports register_number', async () => {
+        mockFetchSequence([...start(), pinMismatch(), ok({ success: true }), new Response('{"error":{"message":"Service unavailable","code":2}}', { status: 503 })]);
+        await expect(completeEmbeddedSignup('c')).rejects.toMatchObject({ step: 'register_number' });
+    });
+});

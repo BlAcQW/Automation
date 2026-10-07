@@ -134,6 +134,13 @@ const envSchema = z.object({
     // unless production over https; the _DEV flag is a development-only escape.
     // Which hops to believe for X-Forwarded-For. Default 'loopback' (nginx on the same host).
     TRUST_PROXY: z.string().optional(),
+    // Shared with the TURBO console's /bookly proxy. When a request presents it
+    // (x-console-proxy-secret), x-console-client-ip is trusted as the client IP
+    // (plugins/console-proxy.ts). Unset = never trusted.
+    CONSOLE_PROXY_SECRET: z
+        .string()
+        .optional()
+        .refine((v) => !v?.trim() || v.trim().length >= 32, 'CONSOLE_PROXY_SECRET must be at least 32 characters (openssl rand -hex 32)'),
     CROSS_SITE_AUTH: z.string().optional(),
     CROSS_SITE_AUTH_ALLOW_INSECURE_DEV: z.string().optional(),
 
@@ -383,6 +390,9 @@ export const config = {
 
     /// Passed to Fastify's trustProxy (see resolveTrustProxy). Default 'loopback'.
     trustProxy: resolveTrustProxy(env.TRUST_PROXY),
+
+    /// Console proxy secret (plugins/console-proxy.ts). Blank = feature off.
+    consoleProxySecret: env.CONSOLE_PROXY_SECRET?.trim() || undefined,
 
     /// Cross-site login: SameSite=None refresh cookie + CSRF checks. Default off.
     crossSiteAuth: resolveCrossSiteAuth({

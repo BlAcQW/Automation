@@ -3,12 +3,14 @@ import {
     buildEmbeddedSignupSetup,
     buildWhatsappStatus,
     categoryFor,
+    classifyEmbeddedSignupError,
     classifyOnboardingError,
     META_BUSINESS_CATEGORIES,
     utcOffsetLabel,
     type TenantConnectionRow,
 } from './whatsapp-connection.js';
 import { NumberOnboardingError } from './meta-number-onboarding.js';
+import { EmbeddedSignupError } from './meta-embedded-signup.js';
 
 const row = (over: Partial<TenantConnectionRow> = {}): TenantConnectionRow => ({
     whatsappPhoneNumberId: null, whatsappDisplayNumber: null, whatsappHosted: false, whatsappNumberStatus: null,
@@ -65,5 +67,20 @@ describe('Embedded Signup prefill', () => {
     it('omits what Bookly does not know', () => {
         expect(buildEmbeddedSignupSetup({ name: '  Kim Salon ', vertical: 'APPOINTMENTS', businessType: 'SERVICE', timezone: 'Bad/Zone', paymentCurrency: 'USD' }, null))
             .toEqual({ business: { name: 'Kim Salon' }, phone: { displayName: 'Kim Salon', category: 'PROF_SERVICES', description: '' } });
+    });
+});
+
+describe('classifyEmbeddedSignupError', () => {
+    it('a two-step PIN Bookly cannot reset is TWO_STEP_PIN_LOCKED, telling the owner how to turn it off', () => {
+        const e = classifyEmbeddedSignupError(new EmbeddedSignupError('set_two_step_pin', 'http_403: {"error":{"code":10}}'));
+        expect(e.publicCode).toBe('TWO_STEP_PIN_LOCKED');
+        expect(e.statusCode).toBe(409);
+        expect(e.message).toMatch(/WhatsApp Manager/);
+        expect(e.message).toMatch(/Two-step verification/);
+    });
+
+    it('other register failures stay META_ERROR', () => {
+        const e = classifyEmbeddedSignupError(new EmbeddedSignupError('register_number', 'http_400: {"error":{"code":133010}}'));
+        expect(e.publicCode).toBe('META_ERROR');
     });
 });

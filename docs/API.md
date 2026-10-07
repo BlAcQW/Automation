@@ -786,6 +786,7 @@ Failures return `{ "statusCode", "error", "code", "message" }`. Branch on `code`
 | `TOO_MANY_ATTEMPTS` | 429 | Our rate limit or Meta's; wait (see `Retry-After` when present). |
 | `RESEND_TOO_SOON` | 429 | A code was sent under 60 seconds ago; `Retry-After` says how long to wait. |
 | `CODE_SEND_FAILED` | 502 | Meta could not deliver the code; try `VOICE`. |
+| `TWO_STEP_PIN_LOCKED` | 409 | Embedded Signup: the number already has a two-step verification PIN and Meta would not let Bookly reset it. The owner turns it off in WhatsApp Manager (Phone numbers > the number > Settings > Two-step verification > Turn off), then connects again. |
 | `META_ERROR` | 502 | Meta refused a step; start again. |
 | `NOT_CONNECTED` | 409 | (admin actions) nothing to act on. |
 | `MANUAL_CREDENTIALS_INVALID` | 400 | Manual connect: the token is not Bookly's app's, or the number is not on that account (or is a Bookly-hosted number). |
@@ -937,13 +938,17 @@ the number must be on that WABA. If the token was granted several WABAs, or the
 WABA has several numbers, the session's `waba_id` / `phone_number_id` are
 required: Bookly never guesses "the first one". It then subscribes its app to
 the WABA and registers the number for Cloud API with a random per-number PIN
-(stored encrypted). Response:
+(stored encrypted). If the number already has a two-step verification PIN (Meta
+error `#133005`, "Two step verification PIN Mismatch"), Bookly sets the number's
+two-step code to its new PIN with the business token (`POST /{phone_number_id}`,
+form `pin`) and registers once more; if Meta refuses that, or the retry still
+mismatches, the answer is `TWO_STEP_PIN_LOCKED`. Response:
 
 ```json
 { "success": true, "mode": "OWN_ACCOUNT", "displayNumber": "+233 30 000 0000", "verifiedName": "TURBO Rides", "connectedAt": "2026-10-06T09:00:00.000Z", "status": { "...": "same shape as GET /whatsapp/status" } }
 ```
 
-Errors: `META_ERROR`, `NUMBER_IN_USE`, `ALREADY_CONNECTED` (a live Bookly-hosted
+Errors: `META_ERROR`, `TWO_STEP_PIN_LOCKED`, `NUMBER_IN_USE`, `ALREADY_CONNECTED` (a live Bookly-hosted
 number exists; a hosted number still waiting for its code is replaced),
 `EMBEDDED_SIGNUP_NOT_AVAILABLE`, `TOO_MANY_ATTEMPTS` (10 per minute).
 

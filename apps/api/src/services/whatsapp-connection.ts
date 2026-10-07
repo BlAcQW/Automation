@@ -60,6 +60,7 @@ export const WA_ERRORS = {
     TOO_MANY_ATTEMPTS: [429, 'Too many attempts. Wait a while before trying again; each retry extends the wait.'],
     RESEND_TOO_SOON: [429, 'A code was sent moments ago. Wait a minute before asking for another.'],
     CODE_SEND_FAILED: [502, 'We could not send the code to that number. Check it can receive SMS, or try a voice call.'],
+    TWO_STEP_PIN_LOCKED: [409, 'This WhatsApp number has two-step verification turned on, and Meta would not let Bookly change its PIN. Turn it off in WhatsApp Manager: Phone numbers > (your number) > Settings > Two-step verification > Turn off two-step verification. Then connect again.'],
     META_ERROR: [502, 'WhatsApp (Meta) did not accept the request. Try again in a few minutes.'],
     NOT_CONNECTED: [409, 'WhatsApp is not connected.'],
     MANUAL_CREDENTIALS_INVALID: [400, 'Those WhatsApp details could not be verified with Meta: the token must belong to Bookly\'s app and the number must be on that WhatsApp Business Account.'],
@@ -99,6 +100,7 @@ export function classifyOnboardingError(err: NumberOnboardingError): ApiError {
 export function classifyEmbeddedSignupError(err: EmbeddedSignupError): ApiError {
     if (err.step === 'config') return waError('EMBEDDED_SIGNUP_NOT_AVAILABLE');
     if (RATE_LIMITED.test(err.details)) return waError('TOO_MANY_ATTEMPTS');
+    if (err.step === 'set_two_step_pin') return waError('TWO_STEP_PIN_LOCKED');
     if (err.step === 'phone_discovery' && err.details.includes('not on that WhatsApp Business Account')) {
         return waError('META_ERROR', 'The number chosen in the Meta window was not found on that WhatsApp account. Start the connection again.');
     }

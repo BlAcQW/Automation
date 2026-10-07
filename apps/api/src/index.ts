@@ -53,6 +53,7 @@ import v1Routes from './routes/v1/index.js';
 import developerRoutes from './routes/developer/index.js';
 import ridesRoutes from './routes/rides/index.js';
 import csrfPlugin from './plugins/csrf.js';
+import { registerConsoleProxyClientIp } from './plugins/console-proxy.js';
 import { registerExternalAppFulfiller } from './services/external-app.js';
 import { registerFlowPaymentFulfiller } from './services/flow-payments.js';
 import { registerRidesPack } from './services/rides/index.js';
@@ -71,6 +72,11 @@ const app = Fastify({
 });
 
 async function buildApp() {
+    // FIRST hook: a request relayed by the TURBO console's /bookly proxy carries
+    // the staff member's IP, signed with CONSOLE_PROXY_SECRET. Applied before
+    // CORS, CSRF, auth and the rate limiter so they all see the real client.
+    registerConsoleProxyClientIp(app, config.consoleProxySecret);
+
     // Register CORS
     await app.register(cors, corsOptions(config.corsOrigins));
 

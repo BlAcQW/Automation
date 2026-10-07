@@ -120,6 +120,36 @@ describe('csrf plugin (flag OFF = today)', () => {
     });
 });
 
+describe('requests relayed by the TURBO console /bookly proxy', () => {
+    // Through the proxy the browser is on the console's own origin, so it sends
+    // that Origin, the (first-party, SameSite=Lax) refresh cookie and the
+    // console's X-Requested-With header; nginx adds X-Forwarded-For.
+    const relayed = {
+        cookie: COOKIE,
+        origin: ALLOWED,
+        [CSRF_HEADER]: 'XMLHttpRequest',
+        'x-forwarded-for': '76.76.21.9',
+        'content-type': 'application/json',
+    };
+
+    it.each([true, false])('/auth/refresh and /auth/logout pass (CROSS_SITE_AUTH=%s)', async (enabled) => {
+        const app = await build({ enabled });
+        for (const url of ['/auth/refresh', '/auth/logout']) {
+            const res = await app.inject({ method: 'POST', url, headers: relayed, payload: '{}' });
+            expect(res.statusCode).toBe(200);
+        }
+    });
+
+    it('the Lax cookie the API sets without CROSS_SITE_AUTH is fine first-party', () => {
+        expect(crossSiteCookieOptions({ path: '/' }, { crossSite: false, nodeEnv: 'production' })).toEqual({
+            httpOnly: true,
+            secure: true,
+            sameSite: 'lax',
+            path: '/',
+        });
+    });
+});
+
 describe('crossSiteCookieOptions', () => {
     const base = { path: '/', maxAge: 604800 };
     it('flag off: exactly the legacy attributes (lax, secure only in production)', () => {

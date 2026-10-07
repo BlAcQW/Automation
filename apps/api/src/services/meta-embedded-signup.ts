@@ -11,6 +11,7 @@ export type EmbeddedSignupStep =
     | 'phone_discovery'
     | 'subscribe_app'
     | 'register_number'
+    | 'set_two_step_pin'
     | 'config';
 
 export class EmbeddedSignupError extends Error {
@@ -157,6 +158,56 @@ export function newRegistrationPin(): string {
     return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
 }
 
+/** Graph error #133005: the number already has a two-step PIN and ours does not match it. */
+export function isTwoStepPinMismatch(err: unknown): boolean {
+    return err instanceof EmbeddedSignupError && err.step === 'register_number' && /\b133005\b/.test(err.details);
+}
+
+/**
+ * Register the number for Cloud API with `pin` as its two-step code.
+ *
+ * A number that already has a two-step PIN (set in the WhatsApp app or by a
+ * previous provider) refuses registration with another PIN (#133005). Then the
+ * business token sets the number's two-step code to our PIN (Meta's "set
+ * two-step verification code": POST /{phone_number_id}, form pin=...) and
+ * registration is retried once. If Meta will not set it, or the retry still
+ * mismatches, the step is `set_two_step_pin`: only the owner can turn two-step
+ * verification off in WhatsApp Manager.
+ */
+async function registerWithPin(phoneNumberId: string, pin: string, authHeader: { Authorization: string }): Promise<void> {
+    const register = () =>
+        fetchJson<{ success?: boolean }>(
+            `${GRAPH_BASE}/${encodeURIComponent(phoneNumberId)}/register`,
+            {
+                method: 'POST',
+                headers: { ...authHeader, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messaging_product: 'whatsapp', pin }),
+            },
+            'register_number',
+        );
+    try {
+        await register();
+        return;
+    } catch (err) {
+        if (!isTwoStepPinMismatch(err)) throw err;
+    }
+
+    const form = formBody({ pin });
+    await fetchJson<{ success?: boolean }>(
+        `${GRAPH_BASE}/${encodeURIComponent(phoneNumberId)}`,
+        { method: 'POST', body: form.body, headers: { ...authHeader, ...form.headers } },
+        'set_two_step_pin',
+    );
+    try {
+        await register();
+    } catch (err) {
+        if (isTwoStepPinMismatch(err)) {
+            throw new EmbeddedSignupError('set_two_step_pin', `two-step PIN still mismatched after reset: ${(err as EmbeddedSignupError).details}`);
+        }
+        throw err;
+    }
+}
+
 /**
  * Complete Meta's WhatsApp Embedded Signup:
  *   1. Exchange the code for the customer's business token (POST form).
@@ -166,7 +217,8 @@ export function newRegistrationPin(): string {
  *      else the only granted one. Several and no hint is an error.
  *   4. Choose the number on that WABA the same way.
  *   5. Subscribe our app to the WABA so inbound webhooks fire.
- *   6. Register the number for Cloud API with a fresh random PIN.
+ *   6. Register the number for Cloud API with a fresh random PIN (resetting
+ *      an existing two-step PIN to it first if Meta reports #133005).
  *
  * Each step throws an `EmbeddedSignupError` tagged with the failing step.
  */
@@ -224,15 +276,7 @@ export async function completeEmbeddedSignup(
     // Step 6 — register for Cloud API (else every send fails with #133010).
     // The PIN becomes the number's two-step code; it is per number and random.
     const registrationPin = newRegistrationPin();
-    await fetchJson<{ success?: boolean }>(
-        `${GRAPH_BASE}/${encodeURIComponent(phone.id)}/register`,
-        {
-            method: 'POST',
-            headers: { ...authHeader, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messaging_product: 'whatsapp', pin: registrationPin }),
-        },
-        'register_number',
-    );
+    await registerWithPin(phone.id, registrationPin, authHeader);
 
     const expiresAt = token.expires_in
         ? new Date(Date.now() + token.expires_in * 1000)

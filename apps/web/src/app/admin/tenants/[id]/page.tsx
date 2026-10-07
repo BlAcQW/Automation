@@ -16,13 +16,14 @@ import { ApiKeysPanel } from './api-keys-panel';
 import { ChannelsPanel } from './channels-panel';
 import { BotsPanel } from './bots-panel';
 import { DangerZonePanel } from './danger-zone-panel';
+import { PeoplePanel, type Person } from './people-panel';
 
 interface Overview {
     tenant: any;
     checklist: Array<{ key: string; label: string; status: 'done' | 'todo' | 'na'; detail?: string }>;
     plan: { planId: string; limit: number; used: number; percent: number; overridden: boolean; cycleStart: string; cycleEnd: string };
     switches: { outbound: { pausedAt: string | null }; payouts: { pausedAt: string | null }; reason: string | null };
-    staff: any[];
+    staff: Person[];
     usage: Array<{ cycle: string; messages: number; platformSms: number }>;
     money: any | null;
     recentConversations: any[];
@@ -255,21 +256,7 @@ export default function OrganisationPage() {
 
             <BotsPanel tenantId={tenant.id} tenantName={tenant.name} />
 
-            <Panel title={`Staff (${staff.length})`}>
-                {!staff.length ? <Empty>No users.</Empty> : (
-                    <Table>
-                        <thead><tr><Th>Name</Th><Th>Email</Th><Th>Role</Th><Th>Status</Th></tr></thead>
-                        <tbody>
-                            {staff.map((u) => (
-                                <tr key={u.id} className="border-t border-white/5">
-                                    <Td className="text-white">{u.name}</Td><Td>{u.email}</Td><Td>{u.role}</Td>
-                                    <Td><Badge variant={u.isActive ? 'default' : 'red'}>{u.isActive ? 'Active' : 'Inactive'}</Badge></Td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </Table>
-                )}
-            </Panel>
+            <PeoplePanel tenantId={tenant.id} tenantActive={tenant.isActive} vertical={tenant.vertical} people={staff} />
 
             <Panel title="Recent conversations">
                 {!recentConversations.length ? <Empty>No conversations yet.</Empty> : (

@@ -73,6 +73,17 @@ describe('role -> permission map', () => {
         expect(allow('READONLY', 'channels:manage', 'POST')).toBe(false);
     });
 
+    it('users:reset_link (mint a copyable password-reset link) is OWNER only; emailing one is users:write', () => {
+        expect(ALL_PERMISSIONS).toContain('users:reset_link');
+        expect(allow('OWNER', 'users:reset_link', 'POST')).toBe(true);
+        expect(allow('SUPPORT', 'users:reset_link', 'POST')).toBe(false);
+        expect(allow('FINANCE', 'users:reset_link', 'POST')).toBe(false);
+        expect(allow('READONLY', 'users:reset_link', 'POST')).toBe(false);
+        expect(allow('READONLY', 'users:reset_link', 'GET')).toBe(false);
+        expect(allow('SUPPORT', 'users:write', 'POST')).toBe(true);
+        expect(allow('FINANCE', 'users:write', 'POST')).toBe(false);
+    });
+
     it('READONLY holds read permissions only', () => {
         for (const [perm, ] of Object.entries(ROLE_PERMISSIONS)) void perm;
         const writes = ALL_PERMISSIONS.filter((p) => !p.endsWith(':read') && p !== 'self');

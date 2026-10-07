@@ -26,11 +26,11 @@ vi.mock('../../plugins/redis.js', () => ({
 }));
 
 // No SMTP in tests. Capture what would have been sent.
-const sent: Array<{ to: string; text: string }> = [];
+const sent: Array<{ to: string; text: string; html: string }> = [];
 vi.mock('../../services/gmail-smtp.js', () => ({
     resolveGmailCreds: () => ({ user: 'noreply@bookly.test', appPassword: 'x', source: 'platform' }),
     sendEmail: vi.fn(async (args: any) => {
-        sent.push({ to: args.to, text: args.text });
+        sent.push({ to: args.to, text: args.text, html: args.html });
         return { ok: true, messageId: 'stub' };
     }),
 }));
@@ -72,6 +72,7 @@ beforeAll(async () => {
     process.env.NODE_ENV = 'test';
     process.env.JWT_SECRET ??= 'test-secret-that-is-long-enough-for-validation';
     process.env.FRONTEND_URL = 'https://app.bookly.test';
+    process.env.CORS_ORIGINS = 'https://turbo-gh.vercel.app';
     dbUser.passwordHash = await bcrypt.hash('OldPassword1', 4);
     const { buildApp } = await import('../../index.js');
     app = await buildApp();
@@ -115,6 +116,60 @@ describe('POST /auth/forgot-password', () => {
     it('rejects a malformed email with 400, not 500', async () => {
         const res = await app.inject({ method: 'POST', url: '/auth/forgot-password', payload: { email: 'not-an-email' } });
         expect(res.statusCode).toBe(400);
+    });
+});
+
+describe('POST /auth/forgot-password with resetUrl (console reset pages)', () => {
+    // A fresh client address per request so the 5-per-15-minutes limit does not trip.
+    let ip = 0;
+    const nextIp = () => `10.9.0.${++ip}`;
+    const ask = (resetUrl: unknown) =>
+        app.inject({ method: 'POST', url: '/auth/forgot-password', remoteAddress: nextIp(), payload: { email: dbUser.email, resetUrl } as any });
+    const onlyLink = () => {
+        expect(sent).toHaveLength(1);
+        const links = sent[0].text.match(/https?:\/\/\S+/g) ?? [];
+        expect(links).toHaveLength(1);
+        return new URL(links[0]!);
+    };
+
+    it('uses the caller\'s reset page when its origin is an allowed one', async () => {
+        const res = await ask('https://turbo-gh.vercel.app/reset-password');
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ success: true });
+        const link = onlyLink();
+        expect(link.origin).toBe('https://turbo-gh.vercel.app');
+        expect(link.pathname).toBe('/reset-password');
+        expect(link.searchParams.get('token')).toMatch(/^[\w-]+\.[\w-]+$/);
+    });
+
+    it('the token in a console link resets the password like a Bookly one', async () => {
+        await ask('https://turbo-gh.vercel.app/reset-password');
+        const token = onlyLink().searchParams.get('token')!;
+        const ok = await app.inject({ method: 'POST', url: '/auth/reset-password', payload: { token, password: 'ConsolePass9' } });
+        expect(ok.statusCode).toBe(200);
+    });
+
+    it.each([
+        ['a foreign origin', 'https://evil.example.com/reset-password'],
+        ['http', 'http://turbo-gh.vercel.app/reset-password'],
+        ['javascript:', 'javascript:alert(document.cookie)'],
+        ['a lookalike host', 'https://turbo-gh.vercel.app.evil.com/reset-password'],
+        ['a non-string', 42],
+    ])('ignores %s and sends the default Bookly link, same answer', async (_label, resetUrl) => {
+        const res = await ask(resetUrl);
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ success: true });
+        const link = onlyLink();
+        expect(link.origin).toBe('https://app.bookly.test');
+        expect(link.pathname).toBe('/reset-password');
+        expect(sent[0].html).not.toContain('evil');
+    });
+
+    it('an unknown email with a resetUrl still answers the same and sends nothing', async () => {
+        const res = await app.inject({ method: 'POST', url: '/auth/forgot-password', remoteAddress: nextIp(), payload: { email: 'nobody@example.com', resetUrl: 'https://turbo-gh.vercel.app/reset-password' } });
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ success: true });
+        expect(sent).toHaveLength(0);
     });
 });
 

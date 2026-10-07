@@ -13,6 +13,8 @@
  *             per-tenant outbound switch, revoking an organisation's API keys,
  *             managing its channels (disconnect, resend OTP, health check),
  *             read-only flows. No money, no payout switches, no admin management.
+ *             SUPPORT can email a user the standard reset link (users:write)
+ *             but not mint a copyable one (users:reset_link, OWNER only).
  *   READONLY  GET requests for read permissions only. Nothing else, ever.
  *
  * `self` (own password, own 2FA, who am I) is open to every role: it touches
@@ -58,6 +60,11 @@ export const ALL_PERMISSIONS = [
     // Instagram, resend a hosted-number OTP, run a WhatsApp health check.
     // Reading channel status is tenants:read.
     'channels:manage',
+    // Mint a password-reset link for an organisation user and see it, to pass
+    // on by hand (WhatsApp). Whoever holds the link can set that user's
+    // password, so this is an account-takeover capability: OWNER only.
+    // Emailing the standard reset link to the user is users:write.
+    'users:reset_link',
 ] as const;
 export type AdminPermission = (typeof ALL_PERMISSIONS)[number];
 

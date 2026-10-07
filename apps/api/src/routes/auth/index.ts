@@ -9,12 +9,9 @@ import type { ExtendedPrismaClient } from '../../plugins/prisma.js';
 import { crossSiteClearOptions, crossSiteCookieOptions } from '../../plugins/csrf.js';
 import { extractRefreshToken, isMobileClient } from '../../lib/auth-transport.js';
 import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
-import {
-    createResetToken,
-    parseResetToken,
-    passwordResetEmail,
-    verifyResetToken,
-} from '../../services/password-reset.js';
+import { parseResetToken, verifyResetToken } from '../../services/password-reset.js';
+import { issueResetLink, resetLinkConfig, sendResetEmail } from '../../services/password-reset-delivery.js';
+import { resolveResetBase } from '../../services/reset-link.js';
 import { claimOwnerEmail, EmailTakenError } from '../../services/email-claim.js';
 import { createVerifyToken, verifyEmailToken, verificationEmail } from '../../services/email-verification.js';
 
@@ -603,11 +600,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
     //
     // Always answers 200 with the same body: the form must not reveal which
     // addresses have accounts. Tight rate limit because it sends mail.
+    //
+    // Optional `resetUrl`: the caller's own reset page (an external console
+    // such as TURBO's). Used only when it is https on an allowed origin
+    // (services/reset-link.ts); anything else silently gets the Bookly link.
     fastify.post(
         '/forgot-password',
         { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
         async (request) => {
-            const body = z.object({ email: z.string().email() }).parse(request.body);
+            const body = z.object({ email: z.string().email(), resetUrl: z.unknown().optional() }).parse(request.body);
 
             const user = await fastify.prisma.user.findFirst({
                 where: { email: body.email, isActive: true },
@@ -615,26 +616,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
             });
 
             if (user) {
-                const token = createResetToken(user, config.jwtSecret);
-                const link = `${config.frontendUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
-
-                // Account email always goes from the platform sender, never
-                // from a tenant's connected Gmail: this is Bookly writing to
-                // its own customer.
-                const creds = resolveGmailCreds({
-                    tenantGmailUser: null,
-                    tenantGmailAppPasswordEncrypted: null,
-                    tenantGmailFromName: null,
-                });
-                if (!creds) {
-                    request.log.error({ userId: user.id }, 'Password reset requested but no platform email sender is configured');
-                } else {
-                    const mail = passwordResetEmail({ name: user.name, link });
-                    const result = await sendEmail({ ...creds, to: user.email, ...mail });
-                    if (!result.ok) {
-                        request.log.error({ err: result.error, userId: user.id }, 'Password reset email failed to send');
-                    }
-                }
+                const target = resolveResetBase(body.resetUrl, resetLinkConfig());
+                const { link } = issueResetLink(user, target.base);
+                await sendResetEmail(user, link, request.log);
 
                 await audit({
                     prisma: fastify.prisma,
@@ -642,6 +626,7 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                     actorType: 'USER',
                     tenantId: user.tenantId,
                     actorId: user.id,
+                    ...(target.custom && { metadata: { resetOrigin: target.origin } }),
                     ipAddress: request.ip,
                 });
             }

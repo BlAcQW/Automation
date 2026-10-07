@@ -21,6 +21,7 @@ webhooks, and your app answers and acts through this API with a scoped key.
 9. [Payments for your own entities](#payments-for-your-own-entities)
 10. [Managing keys and the external app](#managing-keys-and-the-external-app)
 11. [Connect WhatsApp from your own app](#connect-whatsapp-from-your-own-app)
+12. [Password reset from your own console](#password-reset-from-your-own-console)
 
 ---
 
@@ -1036,3 +1037,62 @@ Embedded Signup runs in your console's browser page, so Meta must trust its doma
 3. The configuration must be a **v4** Embedded Signup configuration (Facebook
    Login for Business -> Configurations -> WhatsApp Embedded Signup, with the
    WhatsApp Cloud API product selected). v2/v3 stop working on 15 October 2026.
+
+---
+
+## Password reset from your own console
+
+Organisation users sign in to your console with their Bookly login, so a
+"Forgot password?" link in your console uses Bookly's endpoints. These are
+dashboard endpoints (no API key, no login), called from the browser.
+
+### `POST /auth/forgot-password`
+
+Body `{ "email": "kofi@example.com", "resetUrl"?: "https://console.turbo.example/reset-password" }`.
+Always `200 { "success": true }`, whether or not the address has an account.
+Rate limit: 5 per 15 minutes per client address.
+
+If the address belongs to an active user, Bookly emails a link that works
+**once, for one hour**. The link is `resetUrl` with `?token=<token>` set on it
+(any query string or fragment you sent is dropped), or Bookly's own
+`<FRONTEND_URL>/reset-password?token=...` when `resetUrl` is missing or not
+allowed. `resetUrl` is used only when:
+
+- it parses as an absolute URL with no user name or password in it;
+- it is `https` (plain `http` only for `localhost` when the API runs in
+  development or test);
+- its origin (scheme, host and port) is **exactly** one of the API's allowed
+  origins: `FRONTEND_URL` plus `CORS_ORIGINS`. Lookalike hosts, subdomains and
+  other ports do not match.
+
+Otherwise it is ignored silently: no error, same answer, Bookly link in the
+email. Your console's origin must therefore be in `CORS_ORIGINS` (it already is
+if your console calls the API from the browser).
+
+### `POST /auth/reset-password`
+
+Your reset page reads `token` from its own URL and sends
+`{ "token": "<token>", "password": "<at least 8 characters>" }`.
+`200 { "success": true }`, or `400` "This reset link is invalid or has expired"
+(already used, older than an hour, or the password changed since). Rate limit:
+10 per 15 minutes. Then send the user to your sign-in page.
+
+### Platform admin: helping a user back in
+
+Bookly's admin console (organisation page, **People** panel) can do the same on
+a user's behalf. Admins never see or set the password. Admin token only: an
+organisation login or a support-session token gets `401`.
+
+| Method and path | Permission | Request | Response |
+|---|---|---|---|
+| `POST /admin/tenants/:id/users/:userId/password-reset/email` | `users:write` (OWNER, SUPPORT) | no body | `200 { "success": true, "email": "<user email>" }`. Sends the standard reset email with the **Bookly** link. `503` with `code: "RESET_EMAIL_NOT_SENT"` if the email could not be sent (nothing audited). |
+| `POST /admin/tenants/:id/users/:userId/password-reset/link` | `users:reset_link` (OWNER only) | `{ "resetUrl"?: string }` (no other fields) | `200 { "link": "https://.../reset-password?token=...", "expiresAt": "<ISO, 1 hour>" }`, `Cache-Control: no-store`. Nothing is emailed. A `resetUrl` is checked by the same rule as above, but an admin gets `400` instead of a silent fallback. |
+| `GET /admin/password-reset/link-options` | `users:reset_link` | | `200 { "data": [{ "label", "origin", "resetUrl", "isDefault" }] }`: Bookly first, then `<origin>/reset-password` for each other allowed https origin. The admin UI offers these in a select and preselects the first console for `RIDES` organisations. |
+
+Both POSTs: `404` if the user is not in that organisation, `409` if the user or
+the organisation is deactivated, rate limit 5 per 10 minutes per admin per user.
+They are audited as `auth.password_reset.admin_sent` and
+`auth.password_reset.admin_link_created` (actor: the admin; target: the user;
+for the link only the origin it points at is recorded, never the link or token).
+A copied link is shown once in the admin's browser and is not stored anywhere.
+Every token issued for a user stops working the moment their password changes.

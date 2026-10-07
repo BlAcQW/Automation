@@ -238,7 +238,7 @@ export async function createWithdrawal(
                     availableMinor: balances.availableMinor,
                     // A destination Paystack never gave a code for cannot be
                     // paid, whatever its cooling-off says.
-                    destinationUsable: destinationIsUsable(destination) && !!destination?.providerCode,
+                    destinationUsable: destinationIsUsable(destination, now) && !!destination?.providerCode,
                     inFlightCount: inFlight,
                     payoutsToday: todays.filter((p) => p.status !== 'FAILED').length,
                     withdrawnTodayMinor: todays

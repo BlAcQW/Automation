@@ -89,7 +89,11 @@ interface TenantPauseRow {
     outboundPausedAt?: Date | null;
     payoutsPausedAt?: Date | null;
     pauseReason?: string | null;
+    /** A deactivated organisation sends nothing (outbound only; payouts are unaffected). */
+    isActive?: boolean | null;
 }
+
+export const DEACTIVATED_REASON = 'Organisation is deactivated';
 
 /** Combine a tenant row with the platform key. Pure, so callers that already hold the row avoid a query. */
 export function combineSwitch(
@@ -97,6 +101,7 @@ export function combineSwitch(
     tenant: TenantPauseRow | null | undefined,
     platformValue: unknown,
 ): SwitchState {
+    if (kind === 'outbound' && tenant?.isActive === false) return { paused: true, reason: DEACTIVATED_REASON };
     const platform = platformState(platformValue);
     if (platform.paused) return platform;
     const at = kind === 'outbound' ? tenant?.outboundPausedAt : tenant?.payoutsPausedAt;
@@ -114,7 +119,7 @@ export async function resolveOutboundPause(
     prisma: AnyPrismaClient,
     tenant: TenantPauseRow | null | undefined,
 ): Promise<SwitchState> {
-    if (tenant?.outboundPausedAt) return combineSwitch('outbound', tenant, null);
+    if (tenant?.outboundPausedAt || tenant?.isActive === false) return combineSwitch('outbound', tenant, null);
     try {
         return combineSwitch('outbound', tenant, await getPlatformSetting(prisma, OUTBOUND_PAUSED_KEY));
     } catch (err) {
@@ -127,7 +132,7 @@ export async function resolveOutboundPause(
 async function loadTenantPause(prisma: AnyPrismaClient, tenantId: string): Promise<TenantPauseRow | null> {
     return prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { outboundPausedAt: true, payoutsPausedAt: true, pauseReason: true },
+        select: { outboundPausedAt: true, payoutsPausedAt: true, pauseReason: true, isActive: true },
     });
 }
 

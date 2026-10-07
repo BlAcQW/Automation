@@ -254,6 +254,7 @@ async function outboundPauseFor(prisma: AnyPrismaClient, tenantId: string, resol
     const pause = await resolveOutboundPause(prisma, {
         outboundPausedAt: resolved.outboundPausedAt,
         pauseReason: resolved.pauseReason,
+        isActive: resolved.isActive,
     });
     if (pause.paused) {
         if (notePauseLogged(tenantId)) {
@@ -371,6 +372,8 @@ export interface ResolvedPlan {
     /** Emergency outbound pause (A5), straight from the tenant row. */
     outboundPausedAt: Date | null;
     pauseReason: string | null;
+    /** False for a deactivated organisation: treated as an outbound pause. */
+    isActive: boolean;
 }
 
 /**
@@ -400,6 +403,7 @@ export async function evaluateSubscription(
             monthlyMessageQuotaOverride: true,
             outboundPausedAt: true,
             pauseReason: true,
+            isActive: true,
         },
     });
     if (!tenant) {
@@ -412,6 +416,7 @@ export async function evaluateSubscription(
             quotaOverride: null,
             outboundPausedAt: null,
             pauseReason: null,
+            isActive: true,
         };
     }
 
@@ -423,6 +428,8 @@ export async function evaluateSubscription(
     const quotaOverride = tenant.monthlyMessageQuotaOverride ?? null;
     const outboundPausedAt = tenant.outboundPausedAt ?? null;
     const pauseReason = tenant.pauseReason ?? null;
+    // Absent in partial rows (older stubs): only an explicit false deactivates.
+    const isActive = tenant.isActive !== false;
     const now = Date.now();
     const status = tenant.subscriptionStatus;
     const trialExpired =
@@ -451,6 +458,7 @@ export async function evaluateSubscription(
             quotaOverride,
             outboundPausedAt,
             pauseReason,
+            isActive,
         };
     }
 
@@ -463,5 +471,6 @@ export async function evaluateSubscription(
         quotaOverride,
         outboundPausedAt,
         pauseReason,
+        isActive,
     };
 }

@@ -347,6 +347,11 @@ async function processMessagingWebhook(
             fastify.log.warn({ accountId: entry.id, channel }, 'No tenant for messaging account');
             continue;
         }
+        if (tenant.isActive === false) {
+            // Deactivated organisation: no conversation, no stored turn, no bot reply.
+            fastify.log.info({ tenantId: tenant.id, channel }, 'inbound messages ignored: organisation is deactivated');
+            continue;
+        }
 
         for (const event of entry.messaging ?? []) {
             // Echoes are our own outbound messages coming back. Handling them
@@ -613,8 +618,15 @@ export async function processWebhook(
                 continue;
             }
 
+            // A deactivated organisation's messages are not handled (no bot
+            // reply); delivery statuses for what it sent before still are.
+            const inactive = tenant.isActive === false;
+            if (inactive && value.messages?.length) {
+                fastify.log.info({ tenantId: tenant.id, channel: 'WHATSAPP' }, 'inbound messages ignored: organisation is deactivated');
+            }
+
             // Process messages
-            if (value.messages) {
+            if (value.messages && !inactive) {
                 for (const message of value.messages) {
                     // Same customer, same lock: two messages for one conversation
                     // never run (and reply) concurrently.

@@ -51,6 +51,8 @@ beforeAll(async () => {
             a.decorate('prisma', {
                 booking: { findMany: guarded('Booking', 'findMany') },
                 admin: { findUnique: async () => ({ id: 'adm', isSuperAdmin: true, isActive: true }) },
+                // authenticate refuses an inactive organisation (services/tenant-active.ts).
+                tenant: { findUnique: async () => ({ isActive: true }) },
             } as never);
         }, { name: 'prisma' }),
     );

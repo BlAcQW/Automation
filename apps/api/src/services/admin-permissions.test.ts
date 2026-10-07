@@ -82,6 +82,13 @@ describe('role -> permission map', () => {
         }
     });
 
+    it('tenants:delete (deactivate, reactivate, permanent delete) is OWNER only', () => {
+        const holders = ADMIN_ROLES.filter((r) => ROLE_PERMISSIONS[r].has('tenants:delete'));
+        expect(holders).toEqual(['OWNER']);
+        expect(allow('OWNER', 'tenants:delete', 'POST')).toBe(true);
+        for (const r of ['FINANCE', 'SUPPORT', 'READONLY'] as const) expect(allow(r, 'tenants:delete', 'POST')).toBe(false);
+    });
+
     it('READONLY is GET only even for a read permission', () => {
         expect(authorizeAdmin('READONLY', 'tenants:read', 'POST').ok).toBe(false);
         expect(authorizeAdmin('READONLY', 'tenants:read', 'GET').ok).toBe(true);

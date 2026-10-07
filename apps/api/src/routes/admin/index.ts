@@ -16,6 +16,7 @@ import flowRoutes from './flows.js';
 import adminApiKeyRoutes from './api-keys.js';
 import adminChannelRoutes from './channels.js';
 import adminPackRoutes from './packs.js';
+import tenantLifecycleRoutes from './tenant-lifecycle.js';
 import { PLAN_IDS } from '../../services/plans.js';
 import { buildTenantUpdateData, parseTenantUpdate } from './tenant-update.js';
 import { resolveGmailCreds, sendEmail } from '../../services/gmail-smtp.js';
@@ -107,6 +108,7 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(adminApiKeyRoutes);
     await fastify.register(adminChannelRoutes);
     await fastify.register(adminPackRoutes);
+    await fastify.register(tenantLifecycleRoutes);
 
     // ============================================
     // TENANT MANAGEMENT
@@ -459,34 +461,9 @@ const adminRoutes: FastifyPluginAsync = async (fastify) => {
         };
     });
 
-    // DELETE /admin/tenants/:id - Disable tenant (soft delete)
-    fastify.delete('/tenants/:id', {
-        preHandler: adminGuard(fastify, 'tenants:delete'),
-    }, async (request) => {
-        const { id } = request.params as { id: string };
-
-        const existing = await fastify.prisma.tenant.findUnique({ where: { id }, select: { id: true, isActive: true } });
-        if (!existing) throw fastify.httpErrors.notFound('Tenant not found');
-
-        await fastify.prisma.tenant.update({
-            where: { id },
-            data: { isActive: false },
-        });
-
-        await audit({
-            prisma: fastify.prisma,
-            action: 'tenant.deactivated',
-            actorType: 'ADMIN',
-            actorId: request.admin!.adminId,
-            tenantId: id,
-            targetType: 'Tenant',
-            targetId: id,
-            metadata: { wasActive: existing.isActive },
-            ipAddress: request.ip,
-        });
-
-        return { success: true };
-    });
+    // Deactivate / reactivate / delete-check / permanent delete (and the
+    // legacy DELETE /admin/tenants/:id alias of deactivate) live in
+    // ./tenant-lifecycle.ts.
 
     // ============================================
     // USER MANAGEMENT

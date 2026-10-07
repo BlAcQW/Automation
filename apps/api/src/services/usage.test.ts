@@ -438,7 +438,7 @@ describe('platform SMS metering shares the message cycle key', () => {
 
 describe('emergency outbound pause (A5)', () => {
     const now = new Date();
-    function pausedPrisma(opts: { tenantPausedAt?: Date | null; platform?: unknown; reason?: string | null } = {}) {
+    function pausedPrisma(opts: { tenantPausedAt?: Date | null; platform?: unknown; reason?: string | null; isActive?: boolean } = {}) {
         return {
             tenant: {
                 findUnique: vi.fn().mockResolvedValue({
@@ -446,6 +446,7 @@ describe('emergency outbound pause (A5)', () => {
                     quotaCycleStart: now, createdAt: now, monthlyMessageQuotaOverride: null,
                     outboundPausedAt: opts.tenantPausedAt ?? null,
                     pauseReason: opts.reason ?? null,
+                    isActive: opts.isActive ?? true,
                 }),
                 update: vi.fn(),
             },
@@ -467,6 +468,17 @@ describe('emergency outbound pause (A5)', () => {
         expect(out).toMatchObject({ ok: false, reason: 'paused', pauseReason: 'spam complaints' });
         expect(prisma.tenantUsage.upsert).not.toHaveBeenCalled();
         expect(prisma.tenantUsage.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('a DEACTIVATED organisation is refused as paused (the bot and every send stop) and touches no counter', async () => {
+        clearSwitchCache();
+        const prisma = pausedPrisma({ isActive: false });
+        const out = await tryReserveOutbound(prisma, 't-inactive');
+        expect(out).toMatchObject({ ok: false, reason: 'paused', pauseReason: 'Organisation is deactivated' });
+        expect(prisma.tenantUsage.upsert).not.toHaveBeenCalled();
+        expect(prisma.tenantUsage.updateMany).not.toHaveBeenCalled();
+        const state = await checkOutboundQuota(pausedPrisma({ isActive: false }), 't-inactive');
+        expect(state).toMatchObject({ ok: false, paused: true, pauseReason: 'Organisation is deactivated' });
     });
 
     it('a platform-wide outbound pause refuses every tenant', async () => {

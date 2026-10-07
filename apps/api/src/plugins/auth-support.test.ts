@@ -45,6 +45,8 @@ beforeAll(async () => {
                     }),
                 },
                 admin: { findUnique: vi.fn(async () => db.admin) },
+                // authenticate refuses an inactive organisation (services/tenant-active.ts).
+                tenant: { findUnique: vi.fn(async () => ({ isActive: true })) },
                 platformSetting: { findUnique: vi.fn(async () => (db.require2fa ? { value: { enabled: true } } : null)) },
             } as never);
         }, { name: 'prisma' }),

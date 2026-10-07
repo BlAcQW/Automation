@@ -15,6 +15,7 @@ import { errorMessage, formatDate, formatDateTime, formatMinor, timeAgo } from '
 import { ApiKeysPanel } from './api-keys-panel';
 import { ChannelsPanel } from './channels-panel';
 import { BotsPanel } from './bots-panel';
+import { DangerZonePanel } from './danger-zone-panel';
 
 interface Overview {
     tenant: any;
@@ -340,6 +341,8 @@ export default function OrganisationPage() {
                     </Table>
                 )}
             </Panel>
+
+            <DangerZonePanel tenantId={tenant.id} tenantName={tenant.name} isActive={tenant.isActive} />
 
             <ReasonModal
                 isOpen={pending?.kind === 'pause'}

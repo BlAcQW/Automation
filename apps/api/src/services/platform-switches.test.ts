@@ -55,6 +55,14 @@ describe('isPayoutsPaused / isOutboundPaused', () => {
         expect(await isOutboundPaused(p, 't1')).toEqual({ paused: true, reason: 'Paused platform-wide' });
     });
 
+    it('a deactivated organisation counts as outbound-paused, but its payouts are not paused by that', async () => {
+        const p = stub({ outboundPausedAt: null, payoutsPausedAt: null, pauseReason: null, isActive: false });
+        expect(await isOutboundPaused(p, 't1')).toEqual({ paused: true, reason: 'Organisation is deactivated' });
+        expect(await isPayoutsPaused(p, 't1')).toEqual({ paused: false });
+        expect(combineSwitch('outbound', { isActive: false }, null)).toEqual({ paused: true, reason: 'Organisation is deactivated' });
+        expect(combineSwitch('outbound', { isActive: true }, null)).toEqual({ paused: false });
+    });
+
     it('a platform setting with paused:false is not a pause', async () => {
         const p = stub({}, { 'payouts.paused': { paused: false, reason: 'old' } });
         expect(await isPayoutsPaused(p, 't1')).toEqual({ paused: false });

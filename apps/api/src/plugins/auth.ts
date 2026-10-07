@@ -6,6 +6,7 @@ import { bindTenantContext, tenantContextOnRequest } from '../lib/tenant-context
 import { resolveAdminRole, type AdminRole } from '../services/admin-permissions.js';
 import { checkSupportEntitlement, findLiveSession, isSupportReadRoute } from '../services/support-session.js';
 import { isTwoFactorRequired } from '../services/admin-totp.js';
+import { isTenantActive } from '../services/tenant-active.js';
 
 // =============================================================
 // Type augmentation
@@ -105,10 +106,16 @@ const authPlugin: FastifyPluginAsync = async (fastify) => {
             return;
         }
 
+        if (decoded.type !== 'access') {
+            throw fastify.httpErrors.unauthorized('Invalid or expired token');
+        }
+        // A deactivated or deleted organisation is cut off at once, not when
+        // its 15-minute access token runs out (positive answers cached briefly).
+        if (!(await isTenantActive(fastify.prisma, decoded.tenantId))) {
+            throw fastify.httpErrors.unauthorized('Account has been disabled');
+        }
+
         try {
-            if (decoded.type !== 'access') {
-                throw new Error('Invalid token type');
-            }
             request.user = {
                 userId: decoded.userId,
                 tenantId: decoded.tenantId,

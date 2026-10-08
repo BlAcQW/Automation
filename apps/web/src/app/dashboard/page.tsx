@@ -53,7 +53,7 @@ export default function DashboardPage() {
     });
 
     return (
-        <div className="space-y-5 sm:space-y-6">
+        <div className="space-y-5 sm:space-y-6 lg:space-y-8">
             <VerifyEmailBanner />
             <GettingStarted />
 
@@ -122,13 +122,19 @@ export default function DashboardPage() {
     );
 }
 
-/** Same shape as the loaded card, so nothing jumps when the numbers arrive. */
+/** Same shape as the loaded dark stat card, so nothing jumps when the numbers arrive. */
 function StatSkeleton() {
     return (
-        <div className="rounded-2xl border border-ink-700/70 bg-ink-900 p-4 sm:p-5 animate-pulse" aria-hidden>
-            <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-ink-800" />
-            <div className="mt-4 sm:mt-5 h-7 w-16 rounded-md bg-ink-800" />
-            <div className="mt-2 h-3.5 w-24 rounded bg-ink-800" />
+        <div
+            className="rounded-xl bg-[#1C2C22] dark:bg-[#1A2A20] p-3.5 sm:p-4 shadow-[0_30px_50px_-28px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)] animate-pulse"
+            aria-hidden
+        >
+            <div className="flex items-start justify-between gap-2">
+                <div className="mt-1 h-3 w-20 rounded-sm bg-white/10" />
+                <div className="h-[26px] w-[26px] rounded bg-white/[0.08]" />
+            </div>
+            <div className="mt-5 sm:mt-7 h-7 sm:h-9 w-16 rounded-sm bg-white/10" />
+            <div className="mt-2.5 h-px w-8 bg-white/15" />
         </div>
     );
 }

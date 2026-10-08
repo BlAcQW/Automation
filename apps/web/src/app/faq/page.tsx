@@ -34,7 +34,7 @@ export default function FaqPage() {
     ];
 
     return (
-        <main id="main" className="theme-site min-h-screen">
+        <main id="main" className="theme-site">
             <Nav />
             <PageHero
                 eyebrow="Questions"
@@ -44,26 +44,37 @@ export default function FaqPage() {
 
             {groups.map((g, i) => (
                 <Section key={g.h} tint={i % 2 === 1}>
-                    <h2 className="font-display text-2xl" style={{ color: 'var(--primary)' }}>{g.h}</h2>
-                    <div className="mt-4 divide-y" style={{ borderColor: 'var(--border)' }}>
-                        {g.qs.map(([q, a]) => (
-                            <details key={q} className="group py-5">
-                                <summary
-                                    className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-6 text-[16px] font-medium"
-                                    style={{ color: 'var(--foreground)' }}
-                                >
-                                    {q}
-                                    <span
-                                        className="shrink-0 text-xl transition-transform group-open:rotate-45"
-                                        style={{ color: 'var(--primary)' }}
-                                        aria-hidden="true"
+                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-12">
+                        <div>
+                            <p className="fs-key">/{String(i + 1).padStart(2, '0')}/</p>
+                            <h2
+                                className="text-[2rem] font-normal leading-none tracking-[-0.045em] sm:text-[2.4rem]"
+                                style={{ color: 'var(--foreground)' }}
+                            >
+                                {g.h}
+                            </h2>
+                        </div>
+                        <div className="border-t" style={{ borderColor: 'var(--border)' }}>
+                            {g.qs.map(([q, a]) => (
+                                <details key={q} className="group border-b py-4" style={{ borderColor: 'var(--border)' }}>
+                                    <summary
+                                        className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-6 text-[16px] font-medium tracking-[-0.015em] [&::-webkit-details-marker]:hidden"
+                                        style={{ color: 'var(--foreground)' }}
                                     >
-                                        +
-                                    </span>
-                                </summary>
-                                <p className="mt-3 max-w-2xl text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{a}</p>
-                            </details>
-                        ))}
+                                        {q}
+                                        <span
+                                            className="relative grid h-7 w-7 shrink-0 place-items-center rounded-[3px] transition-transform duration-300 group-open:rotate-45 motion-reduce:transition-none"
+                                            style={{ boxShadow: 'inset 0 0 0 1px var(--border)', color: 'var(--foreground)' }}
+                                            aria-hidden="true"
+                                        >
+                                            <span className="absolute h-px w-3 bg-current" />
+                                            <span className="absolute h-3 w-px bg-current" />
+                                        </span>
+                                    </summary>
+                                    <p className="mt-2 max-w-[60ch] pb-1 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{a}</p>
+                                </details>
+                            ))}
+                        </div>
                     </div>
                 </Section>
             ))}

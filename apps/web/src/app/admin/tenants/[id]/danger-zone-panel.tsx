@@ -199,7 +199,7 @@ function DeleteModal({
     useEffect(() => { if (!isOpen) { setReason(''); setTyped(''); } }, [isOpen]);
     const nameOk = typed.trim().length > 0 && typed.trim() === tenantName.trim();
     const reasonOk = reason.trim().length >= 3;
-    const field = 'w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-rose-500 focus:outline-none';
+    const field = 'w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-rose-500 focus:outline-none';
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Delete ${tenantName} permanently`}>

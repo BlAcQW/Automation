@@ -106,7 +106,7 @@ export default function AdminLayout({
     // Loading state
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+            <div className="dark min-h-screen bg-ink-950 flex items-center justify-center">
                 <BooklyDots size="lg" />
             </div>
         );
@@ -125,25 +125,28 @@ export default function AdminLayout({
 
     return (
         <AdminContext.Provider value={{ admin, isLoading, logout, can, reload: fetchAdmin }}>
-            <div className="min-h-screen bg-slate-900 flex">
+            {/* The console is always night forest: its pages are written for a dark
+                surface, so it scopes the dark tokens itself instead of following the
+                app theme (light by default). */}
+            <div className="dark min-h-screen bg-slate-900 text-slate-100 flex">
                 {/* Sidebar */}
                 <aside className="fixed left-0 top-0 bottom-0 w-64 bg-slate-800 border-r border-slate-700 flex flex-col z-40">
                     {/* Logo */}
                     <div className="h-16 flex items-center px-6 border-b border-slate-700">
                         <Link href="/admin" className="flex items-center space-x-2">
-                            <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center">
-                                <Shield className="w-5 h-5 text-slate-300" />
+                            <div className="w-8 h-8 bg-forest-brand rounded-[5px] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,.14)]">
+                                <Shield className="w-5 h-5 text-forest-cream" />
                             </div>
-                            <span className="text-lg font-bold text-white">Admin Panel</span>
+                            <span className="text-lg font-medium tracking-[-0.03em] text-white">Admin Panel</span>
                         </Link>
                     </div>
 
                     {/* Admin Info */}
                     <div className="px-4 py-4 border-b border-slate-700">
-                        <div className="bg-slate-700/50 rounded-lg px-3 py-2">
+                        <div className="bg-slate-700/50 rounded-[5px] px-3 py-2">
                             <p className="text-xs text-slate-400">Logged in as</p>
                             <p className="font-medium text-white truncate">{admin.name}</p>
-                            <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">
+                            <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-forest-glow/15 text-forest-glow rounded-[3px]">
                                 {ROLE_LABEL[admin.role] ?? admin.role}
                             </span>
                         </div>
@@ -160,10 +163,10 @@ export default function AdminLayout({
                                     key={item.name}
                                     href={item.href}
                                     className={clsx(
-                                        'flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                                        'relative flex items-center px-3 py-2.5 rounded-[5px] text-sm font-medium transition-colors',
                                         isActive
-                                            ? 'bg-slate-700 text-white'
-                                            : 'text-slate-400 hover:bg-slate-700/50 hover:text-white'
+                                            ? 'bg-slate-700/70 text-white before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-full before:bg-emerald-300'
+                                            : 'text-slate-400 hover:bg-slate-700/40 hover:text-white'
                                     )}
                                 >
                                     <item.icon className="w-5 h-5 mr-3" />
@@ -177,7 +180,7 @@ export default function AdminLayout({
                     <div className="p-4 border-t border-slate-700">
                         <button
                             onClick={logout}
-                            className="flex items-center w-full px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-700/50 hover:text-red-400 transition-all"
+                            className="flex items-center w-full px-3 py-2.5 rounded-[5px] text-sm font-medium text-slate-400 hover:bg-slate-700/40 hover:text-rose-300 transition-colors"
                         >
                             <LogOut className="w-5 h-5 mr-3" />
                             Sign Out
@@ -190,7 +193,7 @@ export default function AdminLayout({
                     {mustEnrol && (
                         <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
                             Two-factor sign-in is required for all admins. Until you set it up under{' '}
-                            <Link href="/admin/account" className="font-semibold underline">My account</Link>,
+                            <Link href="/admin/account" className="font-medium underline">My account</Link>,
                             the rest of the console is locked.
                         </div>
                     )}

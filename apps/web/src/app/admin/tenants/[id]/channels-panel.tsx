@@ -156,8 +156,8 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
                         <div className="flex items-start gap-3">
                             <MessageCircle className="mt-1 h-5 w-5 text-emerald-400" aria-hidden />
                             <div>
-                                <p className="text-xs uppercase tracking-wide text-slate-500">WhatsApp</p>
-                                <p className={`text-2xl font-semibold ${state.tone}`}>{state.label}</p>
+                                <p className="text-xs font-medium text-slate-500">WhatsApp</p>
+                                <p className={`text-2xl font-light tracking-[-0.04em] ${state.tone}`}>{state.label}</p>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                     {mode && <Badge variant={wa.mode === 'BOOKLY_HOSTED' ? 'blue' : 'purple'}>{mode}</Badge>}
                                     {wa.billedBy && <span className="text-xs text-slate-500">Meta bills {wa.billedBy === 'BOOKLY' ? 'Bookly' : tenantName}</span>}
@@ -254,7 +254,7 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
 
                 {data.recentEvents.length > 0 && (
                     <div className="border-t border-white/5 px-6 py-4">
-                        <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">Recent channel events</p>
+                        <p className="mb-2 text-xs font-medium text-slate-500">Recent channel events</p>
                         <ul className="space-y-1.5">
                             {data.recentEvents.slice(0, 8).map((e) => (
                                 <li key={e.id} className="flex flex-wrap gap-x-2 text-xs text-slate-400">

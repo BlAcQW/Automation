@@ -43,7 +43,7 @@ const PRINT_CSS = `@media print {
   .statement-print { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
 }`;
 
-const SELECT_CLASS = 'w-full rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-60';
+const SELECT_CLASS = 'w-full rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-60';
 
 export default function AdminTenantBillingPage() {
     const { tenantId } = useParams<{ tenantId: string }>();
@@ -143,7 +143,7 @@ export default function AdminTenantBillingPage() {
                 <Link href="/admin/billing" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white">
                     <ArrowLeft className="w-4 h-4" /> All organisations
                 </Link>
-                <h1 className="text-2xl font-bold text-white mt-2">{loaded.tenant.name}</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white mt-2">{loaded.tenant.name}</h1>
                 <p className="text-slate-400">
                     {loaded.tenant.vertical === 'RIDES' ? 'Rides' : 'Appointments'} · {loaded.tenant.planId} plan · {loaded.tenant.timezone}
                 </p>
@@ -214,7 +214,7 @@ export default function AdminTenantBillingPage() {
                                 type="month"
                                 value={month}
                                 onChange={(e) => setMonth(e.target.value)}
-                                className="rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                             />
                         </label>
                         <Button variant="ghost" onClick={() => window.print()} disabled={!statement}>
@@ -232,7 +232,7 @@ export default function AdminTenantBillingPage() {
                     ) : (
                         <div className="statement-print space-y-4">
                             <div>
-                                <div className="text-lg font-semibold text-white">{statement.tenantName ?? loaded.tenant.name}</div>
+                                <div className="text-lg font-medium tracking-[-0.02em] text-white">{statement.tenantName ?? loaded.tenant.name}</div>
                                 <div className="text-sm text-slate-400">
                                     Statement for {statement.period.month} ({statement.period.timezone})
                                     {' '}
@@ -263,7 +263,7 @@ export default function AdminTenantBillingPage() {
                                     </tbody>
                                 </table>
                             )}
-                            <div className="flex justify-end text-white text-lg font-semibold tabular-nums">
+                            <div className="flex justify-end text-white text-lg font-normal tracking-[-0.02em] tabular-nums">
                                 Total {statement.currency ?? ''} {formatMinor(statement.totalMinor)}
                             </div>
                             {statement.notes.map((n) => (

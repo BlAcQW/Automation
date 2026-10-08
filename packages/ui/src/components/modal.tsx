@@ -34,33 +34,33 @@ export function Modal({ isOpen, onClose, title, children, className, maxWidth = 
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        className="absolute inset-0 bg-[rgba(18,29,23,0.55)] backdrop-blur-[6px]"
                         onClick={onClose}
                     />
 
                     {/* Content */}
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        initial={{ opacity: 0, scale: 0.96, y: 14 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                        exit={{ opacity: 0, scale: 0.98, y: 8, transition: { duration: 0.15 } }}
+                        transition={{ duration: 0.32, ease: [0.2, 0.8, 0.2, 1] }}
                         className={cn(
-                            'relative w-full bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700',
+                            'relative w-full rounded-3xl bg-ink-950 text-ink-50 shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.08),0_40px_80px_-36px_rgba(0,0,0,0.6)]',
                             maxWidth,
                             className
                         )}
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-                            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h2>
-                            <motion.button
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
+                        <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-ink-50/[0.08]">
+                            <h2 className="text-[1.25rem] font-normal leading-tight tracking-[-0.035em] text-ink-50">{title}</h2>
+                            <button
+                                type="button"
                                 onClick={onClose}
-                                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                aria-label="Close"
+                                className="-mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded text-ink-300 hover:bg-ink-50/[0.06] hover:text-ink-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
                             >
-                                <X className="w-5 h-5 text-slate-500" />
-                            </motion.button>
+                                <X className="w-5 h-5" />
+                            </button>
                         </div>
 
                         {/* Body */}

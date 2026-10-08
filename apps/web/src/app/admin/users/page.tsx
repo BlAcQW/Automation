@@ -41,7 +41,7 @@ export default function AdminUsersPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Users</h1>
+                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Users</h1>
                     <p className="text-slate-400">View all users across all tenants.</p>
                 </div>
             </div>

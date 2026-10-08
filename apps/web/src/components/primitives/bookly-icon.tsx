@@ -26,8 +26,8 @@ export function BooklyIcon({ className, ...rest }: BooklyIconProps) {
         >
             <defs>
                 <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#34D399" />
-                    <stop offset="100%" stopColor="#10B981" />
+                    <stop offset="0%" stopColor="#3F6B4C" />
+                    <stop offset="100%" stopColor="#2F5640" />
                 </linearGradient>
             </defs>
 
@@ -38,9 +38,9 @@ export function BooklyIcon({ className, ...rest }: BooklyIconProps) {
             />
 
             {/* Three booking-slot bars knocked out inside the bubble. */}
-            <rect x="6.5" y="6.5" width="11" height="1.6" rx="0.8" fill="#050807" />
-            <rect x="6.5" y="9.7" width="9" height="1.6" rx="0.8" fill="#050807" />
-            <rect x="6.5" y="12.9" width="10" height="1.6" rx="0.8" fill="#050807" />
+            <rect x="6.5" y="6.5" width="11" height="1.6" rx="0.8" fill="#ECEBE1" />
+            <rect x="6.5" y="9.7" width="9" height="1.6" rx="0.8" fill="#ECEBE1" />
+            <rect x="6.5" y="12.9" width="10" height="1.6" rx="0.8" fill="#FFD98A" />
         </svg>
     );
 }

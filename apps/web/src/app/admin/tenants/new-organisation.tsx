@@ -20,7 +20,7 @@ interface CreateResult {
 }
 
 const SELECT_CLASS =
-    'w-full rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30';
+    'w-full rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30';
 
 function timezones(): string[] {
     const fn = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;

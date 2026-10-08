@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SupportLinks } from '@/components/support-links';
-import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
+import { Nav, Footer } from '@/components/marketing/site/chrome';
+import { PageHero, Section, Eyebrow, Heading } from '@/components/marketing/site/pieces';
 import { hasSupportContact } from '@/lib/site';
 
 export const metadata: Metadata = {
@@ -38,43 +39,60 @@ const FAQ = [
 
 export default function SupportPage() {
     return (
-        <main className="min-h-screen bg-ink-950 text-ink-50">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-                <Link href="/" className="inline-block">
-                    <BooklyWordmark size="lg" />
-                </Link>
+        <main id="main" className="theme-site">
+            <Nav />
+            <PageHero
+                eyebrow="Support"
+                title="Support"
+                sub="A person replies during business hours, Ghana time. Most questions are answered the same day."
+            />
 
-                <h1 className="mt-10 font-display text-display-md text-ink-50">Support</h1>
-                <p className="mt-3 text-body-lg text-ink-300 max-w-[48ch]">
-                    A person replies during business hours, Ghana time. Most questions are answered the same day.
-                </p>
-
-                <div className="mt-6">
-                    {hasSupportContact ? (
-                        <SupportLinks />
-                    ) : (
-                        <p className="text-body-sm text-ink-300">
-                            Contact details are being set up. In the meantime, reply to any email you received from Bookly.
-                        </p>
-                    )}
+            <Section>
+                <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:items-end">
+                    <div>
+                        <Eyebrow>Talk to a person</Eyebrow>
+                        <Heading>Reach the Bookly team.</Heading>
+                    </div>
+                    <div>
+                        {hasSupportContact ? (
+                            <SupportLinks />
+                        ) : (
+                            <p className="max-w-[48ch] text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
+                                Contact details are being set up. In the meantime, reply to any email you received from Bookly.
+                            </p>
+                        )}
+                    </div>
                 </div>
+            </Section>
 
-                <h2 className="mt-14 font-display text-h2 text-ink-50">Common questions</h2>
-                <dl className="mt-6 divide-y divide-ink-700/70 border-y border-ink-700/70">
-                    {FAQ.map((item) => (
-                        <div key={item.q} className="py-5">
-                            <dt className="text-body font-semibold text-ink-50">{item.q}</dt>
-                            <dd className="mt-1.5 text-body-sm text-ink-300 leading-relaxed max-w-[64ch]">{item.a}</dd>
-                        </div>
-                    ))}
-                </dl>
+            <Section tint>
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-12">
+                    <h2
+                        className="text-[2rem] font-normal leading-none tracking-[-0.045em] sm:text-[2.4rem]"
+                        style={{ color: 'var(--foreground)' }}
+                    >
+                        Common questions
+                    </h2>
+                    <div>
+                        <dl className="border-t" style={{ borderColor: 'var(--border)' }}>
+                            {FAQ.map((item) => (
+                                <div key={item.q} className="border-b py-5" style={{ borderColor: 'var(--border)' }}>
+                                    <dt className="text-[16px] font-medium tracking-[-0.015em]" style={{ color: 'var(--foreground)' }}>{item.q}</dt>
+                                    <dd className="mt-1.5 max-w-[64ch] text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{item.a}</dd>
+                                </div>
+                            ))}
+                        </dl>
 
-                <p className="mt-10 text-body-sm text-ink-300">
-                    <Link href="/privacy" className="underline underline-offset-2 hover:text-ink-50">Privacy</Link>
-                    {' · '}
-                    <Link href="/terms" className="underline underline-offset-2 hover:text-ink-50">Terms</Link>
-                </p>
-            </div>
+                        <p className="mt-8 text-[14px]" style={{ color: 'var(--muted-foreground)' }}>
+                            <Link href="/privacy" className="underline underline-offset-2 hover:text-[color:var(--foreground)]">Privacy</Link>
+                            {' · '}
+                            <Link href="/terms" className="underline underline-offset-2 hover:text-[color:var(--foreground)]">Terms</Link>
+                        </p>
+                    </div>
+                </div>
+            </Section>
+
+            <Footer />
         </main>
     );
 }

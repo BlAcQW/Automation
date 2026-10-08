@@ -123,11 +123,11 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
                 {/* Header Info */}
                 <div className="flex flex-col sm:flex-row justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <div className="flex items-center gap-2 text-sm tabular-nums text-slate-500">
                             <Clock className="w-4 h-4" />
                             {format(new Date(order.createdAt), 'PPP p')}
                         </div>
-                        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(order.status)}`}>
+                        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium border ${getStatusColor(order.status)}`}>
                             {order.status}
                         </div>
                     </div>
@@ -152,7 +152,7 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Customer Details */}
                     <div className="space-y-4">
-                        <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                        <h3 className="font-medium tracking-[-0.02em] text-slate-900 dark:text-white flex items-center gap-2">
                             <User className="w-4 h-4 text-emerald-500" />
                             Customer Details
                         </h3>
@@ -176,7 +176,7 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
 
                     {/* Payment & Total */}
                     <div className="space-y-4">
-                        <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                        <h3 className="font-medium tracking-[-0.02em] text-slate-900 dark:text-white flex items-center gap-2">
                             <DollarSign className="w-4 h-4 text-emerald-500" />
                             Payment
                         </h3>
@@ -188,7 +188,7 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
                                 </span>
                             </p>
                             <div className="pt-2 border-t border-slate-200 dark:border-slate-700 mt-2">
-                                <p className="flex items-center justify-between text-lg font-bold text-slate-900 dark:text-white">
+                                <p className="flex items-center justify-between text-lg font-medium tabular-nums text-slate-900 dark:text-white">
                                     <span>Total:</span>
                                     <span>${Number(order.totalAmount).toFixed(2)}</span>
                                 </p>
@@ -199,7 +199,7 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
 
                 {/* Items */}
                 <div className="space-y-4">
-                    <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <h3 className="font-medium tracking-[-0.02em] text-slate-900 dark:text-white flex items-center gap-2">
                         <Package className="w-4 h-4 text-emerald-500" />
                         Order Items
                     </h3>
@@ -221,13 +221,13 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
                                                 {item.product.name}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 text-center text-slate-600 dark:text-slate-300">
+                                        <td className="px-4 py-3 text-center tabular-nums text-slate-600 dark:text-slate-300">
                                             {item.quantity}
                                         </td>
-                                        <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">
+                                        <td className="px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
                                             ${Number(item.unitPrice).toFixed(2)}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-white">
+                                        <td className="px-4 py-3 text-right font-medium tabular-nums text-slate-900 dark:text-white">
                                             ${Number(item.totalPrice).toFixed(2)}
                                         </td>
                                     </tr>

@@ -37,10 +37,10 @@ export function VerifyEmailBanner() {
     };
 
     return (
-        <div role="status" className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5">
-            <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" aria-hidden />
+        <div role="status" className="flex items-start gap-3 rounded-xl bg-[#F1E3C2] px-4 py-3.5 shadow-[0_0_0_1px_rgba(122,85,18,0.18)] dark:bg-forest-glow/[0.08] dark:shadow-[0_0_0_1px_rgba(255,217,138,0.18)]">
+            <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#7A5512] dark:text-forest-glow" aria-hidden />
             <div className="min-w-0 flex-1">
-                <p className="text-body-sm font-medium text-ink-50">
+                <p className="text-[14px] font-medium tracking-[-0.01em] text-ink-50">
                     Confirm your email: <span className="text-ink-200">{user.email}</span>
                 </p>
                 <p className="mt-0.5 text-[13px] text-ink-300">
@@ -48,13 +48,13 @@ export function VerifyEmailBanner() {
                 </p>
                 <div className="mt-2">
                     {state === 'sent' ? (
-                        <span className="text-[13px] text-bookly-emerald-400">Sent. Check your inbox and spam folder.</span>
+                        <span className="text-[13px] text-forest-brand dark:text-bookly-emerald-300">Sent. Check your inbox and spam folder.</span>
                     ) : (
                         <button
                             type="button"
                             onClick={resend}
                             disabled={state === 'sending'}
-                            className="text-[13px] font-medium text-bookly-emerald-400 hover:text-bookly-emerald-300 underline underline-offset-2 disabled:opacity-60"
+                            className="text-[13px] font-medium text-forest-brand hover:text-bookly-emerald-800 dark:text-bookly-emerald-300 dark:hover:text-bookly-emerald-200 underline underline-offset-2 disabled:opacity-60"
                         >
                             {state === 'sending' ? 'Sending…' : state === 'failed' ? 'Could not send. Try again' : 'Resend the link'}
                         </button>
@@ -65,7 +65,7 @@ export function VerifyEmailBanner() {
                 type="button"
                 onClick={dismiss}
                 aria-label="Hide for now"
-                className="shrink-0 rounded-lg p-1.5 text-ink-300 hover:bg-ink-800 hover:text-ink-50 transition-colors"
+                className="shrink-0 rounded p-1.5 text-ink-300 hover:bg-ink-50/[0.06] hover:text-ink-50 transition-colors"
             >
                 <X className="h-4 w-4" />
             </button>

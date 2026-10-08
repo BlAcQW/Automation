@@ -117,14 +117,14 @@ function FlowEditor() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Workflows</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Workflows</h1>
                 <p className="text-slate-400">
                     Edit wording, options and prices as JSON. A change is always saved as a <em>new</em> version; nothing is edited in place. Activate a version to publish it, or activate an older one to roll back.
                 </p>
             </div>
 
             <form
-                className="flex flex-wrap items-end gap-3 rounded-2xl border border-white/5 p-4 glass-card"
+                className="flex flex-wrap items-end gap-3 rounded-xl border border-white/5 p-4 glass-card"
                 onSubmit={(e) => { e.preventDefault(); if (ready) { setLoadedScope(scopeQuery); setSelected(null); setText(''); setErrors([]); } }}
             >
                 <div className="space-y-1.5">
@@ -193,7 +193,7 @@ function FlowEditor() {
                                     spellCheck={false}
                                     readOnly={!canWrite}
                                     rows={24}
-                                    className="w-full rounded-xl border border-slate-700 bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:border-emerald-500 focus:outline-none"
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:border-emerald-500 focus:outline-none"
                                 />
                                 {jsonError && <p className="flex items-center gap-2 text-sm text-amber-300"><AlertTriangle className="h-4 w-4" /> Not valid JSON yet: {jsonError}</p>}
                                 {errors.length > 0 && (

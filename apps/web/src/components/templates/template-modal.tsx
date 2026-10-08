@@ -183,7 +183,7 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                             });
                         }}
                         disabled={!!existing}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
                     >
                         {PURPOSES.map((p) => (
                             <option key={p} value={p}>
@@ -206,7 +206,7 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                         <ol className="text-xs text-slate-500 dark:text-slate-400 list-decimal list-inside space-y-0.5">
                             {expectedOrder.map((v, i) => (
                                 <li key={v}>
-                                    <code className="text-emerald-700 dark:text-emerald-400">
+                                    <code className="text-emerald-700 dark:text-emerald-300">
                                         {`{{${i + 1}}}`}
                                     </code>{' '}
                                     → {v}
@@ -223,7 +223,7 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                     <select
                         value={form.category}
                         onChange={(e) => setForm({ ...form, category: e.target.value as TemplateCategory })}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                     >
                         {CATEGORIES.map((c) => (
                             <option key={c} value={c}>
@@ -254,7 +254,7 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                         onChange={(e) => setForm({ ...form, bodyPreview: e.target.value })}
                         placeholder="Hi {{1}}, your {{2}} booking on {{3}} at {{4}} is confirmed. Ref: {{5}}"
                         rows={3}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                     />
                 </div>
 
@@ -263,7 +263,7 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                         type="checkbox"
                         checked={form.isApproved}
                         onChange={(e) => setForm({ ...form, isApproved: e.target.checked })}
-                        className="accent-emerald-500"
+                        className="accent-emerald-600"
                     />
                     Approved by Meta (turn on once the template is approved in Business Manager)
                 </label>

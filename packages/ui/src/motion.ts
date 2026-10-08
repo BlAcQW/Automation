@@ -6,8 +6,10 @@
 import type { Transition, Variants } from 'framer-motion';
 
 export const ease = {
-    /** Expo out — the default for reveals and hovers. */
-    out: [0.16, 1, 0.3, 1] as const,
+    /** Forest ledger ease — the reference's cubic-bezier(.2,.8,.2,1). Default for reveals and hovers. */
+    out: [0.2, 0.8, 0.2, 1] as const,
+    /** Expo out — snappier, for micro-interactions. */
+    expo: [0.16, 1, 0.3, 1] as const,
     inOut: [0.65, 0, 0.35, 1] as const,
     /** Spring used for tactile/physical motion (button press, drawer). */
     spring: { type: 'spring', stiffness: 260, damping: 24 } satisfies Transition,
@@ -21,11 +23,11 @@ export const durations = {
 } as const;
 
 /**
- * Default reveal variants — fade + 24px up. Used by `<ScrollReveal>` and
+ * Default reveal variants — the one entrance: fade + 18px rise over 0.9s. Used by `<ScrollReveal>` and
  * any component that wants a consistent enter animation.
  */
 export const revealVariants: Variants = {
-    hidden: { opacity: 0, y: 24 },
+    hidden: { opacity: 0, y: 18 },
     visible: {
         opacity: 1,
         y: 0,

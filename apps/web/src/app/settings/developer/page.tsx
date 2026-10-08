@@ -20,7 +20,7 @@ export default function DeveloperSettingsPage() {
                 <Link href="/settings" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white">
                     <ArrowLeft className="h-4 w-4" /> Settings
                 </Link>
-                <h1 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Developer</h1>
+                <h1 className="mt-2 text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">Developer</h1>
                 <p className="mt-1 text-slate-500 dark:text-slate-400">
                     Connect your own systems to Bookly with API keys and webhooks.
                 </p>

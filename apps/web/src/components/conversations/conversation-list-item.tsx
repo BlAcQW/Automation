@@ -30,7 +30,7 @@ export function ConversationListItem({ index = 0, conversation, active, unread, 
             transition={{ duration: 0.18, delay: Math.min(index * 0.03, 0.3) }}
             onClick={onClick}
             className={cn(
-                'w-full flex items-center gap-3 px-3 py-3 text-left rounded-2xl transition-colors',
+                'w-full flex items-center gap-3 px-3 py-3 text-left rounded-lg transition-colors',
                 active
                     ? 'bg-emerald-50 dark:bg-emerald-900/20'
                     : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/60 active:bg-slate-100 dark:active:bg-slate-800',
@@ -47,21 +47,21 @@ export function ConversationListItem({ index = 0, conversation, active, unread, 
                         className={cn(
                             'flex-1 min-w-0 truncate text-sm',
                             unread
-                                ? 'font-bold text-slate-900 dark:text-white'
-                                : 'font-semibold text-slate-800 dark:text-slate-100',
+                                ? 'font-medium tracking-[-0.01em] text-slate-900 dark:text-white'
+                                : 'font-normal text-slate-800 dark:text-slate-100',
                         )}
                     >
                         {title}
                     </span>
                     {channel && (
-                        <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                        <span className="shrink-0 rounded-[3px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-300">
                             {channel}
                         </span>
                     )}
                     <span
                         className={cn(
-                            'shrink-0 text-[11px]',
-                            unread ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-slate-400',
+                            'shrink-0 text-[11px] tabular-nums',
+                            unread ? 'text-emerald-600 dark:text-emerald-300 font-medium' : 'text-slate-400',
                         )}
                     >
                         {formatTime(conversation.lastMessageAt)}

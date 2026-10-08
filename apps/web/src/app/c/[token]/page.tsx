@@ -1,6 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
+import {
+    PaperCard,
+    PublicPage,
+    SummaryCard,
+    publicBody,
+    publicDangerBtn,
+    publicEyebrow,
+    publicFine,
+    publicTitle,
+} from '@/components/pay/public-shell';
 
 interface BookingData {
     bookingReference: string;
@@ -46,83 +57,81 @@ export default function CancelBookingPage({ params }: { params: { token: string 
     }
 
     return (
-        <main className="min-h-screen bg-slate-50 flex items-start justify-center px-4 py-10">
-            <div className="w-full max-w-md">
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                    {phase === 'loading' && (
-                        <p className="text-center text-slate-500 py-12">Loading…</p>
-                    )}
+        <PublicPage>
+            <PaperCard>
+                {phase === 'loading' && (
+                    <p className={`text-center py-12 ${publicBody}`}>Loading…</p>
+                )}
 
-                    {phase === 'not_found' && (
-                        <>
-                            <h1 className="text-lg font-semibold text-slate-900">Appointment not found</h1>
-                            <p className="text-sm text-slate-500 mt-2">
-                                This link is invalid or has expired.
+                {phase === 'not_found' && (
+                    <>
+                        <h1 className={publicTitle}>Appointment not found</h1>
+                        <p className={`mt-3 ${publicBody}`}>
+                            This link is invalid or has expired.
+                        </p>
+                    </>
+                )}
+
+                {phase === 'error' && (
+                    <>
+                        <h1 className={publicTitle}>Something went wrong</h1>
+                        <p className={`mt-3 ${publicBody}`}>Please try again in a moment.</p>
+                    </>
+                )}
+
+                {phase === 'already' && data && (
+                    <>
+                        <h1 className={publicTitle}>Already cancelled</h1>
+                        <p className={`mt-3 ${publicBody}`}>
+                            Your {data.serviceName} appointment with {data.businessName} is already cancelled.
+                        </p>
+                    </>
+                )}
+
+                {phase === 'cancelled' && data && (
+                    <>
+                        <div className="w-11 h-11 rounded-[5px] bg-forest-night text-forest-glow flex items-center justify-center mx-auto">
+                            <Check className="w-5 h-5" strokeWidth={2.4} aria-hidden />
+                        </div>
+                        <h1 className={`${publicTitle} text-center mt-4`}>
+                            Appointment cancelled
+                        </h1>
+                        <p className={`mt-3 text-center ${publicBody}`}>
+                            Your {data.serviceName} appointment with {data.businessName} has been cancelled.
+                            Reference {data.bookingReference}.
+                        </p>
+                    </>
+                )}
+
+                {(phase === 'show' || phase === 'cancelling') && data && (
+                    <>
+                        <p className={publicEyebrow}>{data.businessName}</p>
+                        <h1 className={`${publicTitle} mt-2`}>
+                            Cancel this appointment?
+                        </h1>
+                        <SummaryCard className="mt-5">
+                            <p className="text-[15px] font-medium tracking-[-0.02em]">{data.serviceName}</p>
+                            <p className="mt-1 text-[14px] text-forest-cream/75 tabular-nums">
+                                {new Date(data.startTime).toLocaleString([], {
+                                    weekday: 'short', month: 'short', day: 'numeric',
+                                    hour: '2-digit', minute: '2-digit',
+                                })}
                             </p>
-                        </>
-                    )}
-
-                    {phase === 'error' && (
-                        <>
-                            <h1 className="text-lg font-semibold text-slate-900">Something went wrong</h1>
-                            <p className="text-sm text-slate-500 mt-2">Please try again in a moment.</p>
-                        </>
-                    )}
-
-                    {phase === 'already' && data && (
-                        <>
-                            <h1 className="text-lg font-semibold text-slate-900">Already cancelled</h1>
-                            <p className="text-sm text-slate-500 mt-2">
-                                Your {data.serviceName} appointment with {data.businessName} is already cancelled.
-                            </p>
-                        </>
-                    )}
-
-                    {phase === 'cancelled' && data && (
-                        <>
-                            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
-                                <span className="text-emerald-600 text-xl">✓</span>
-                            </div>
-                            <h1 className="text-lg font-semibold text-slate-900 text-center mt-3">
-                                Appointment cancelled
-                            </h1>
-                            <p className="text-sm text-slate-500 mt-2 text-center">
-                                Your {data.serviceName} appointment with {data.businessName} has been cancelled.
-                                Reference {data.bookingReference}.
-                            </p>
-                        </>
-                    )}
-
-                    {(phase === 'show' || phase === 'cancelling') && data && (
-                        <>
-                            <p className="text-xs uppercase tracking-wide text-slate-400">{data.businessName}</p>
-                            <h1 className="text-xl font-semibold text-slate-900 mt-1">
-                                Cancel this appointment?
-                            </h1>
-                            <div className="mt-4 rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 text-sm">
-                                <p className="text-slate-900 font-medium">{data.serviceName}</p>
-                                <p className="text-slate-500 mt-1">
-                                    {new Date(data.startTime).toLocaleString([], {
-                                        weekday: 'short', month: 'short', day: 'numeric',
-                                        hour: '2-digit', minute: '2-digit',
-                                    })}
-                                </p>
-                                <p className="text-slate-400 text-xs mt-1">Ref: {data.bookingReference}</p>
-                            </div>
-                            <button
-                                onClick={doCancel}
-                                disabled={phase === 'cancelling'}
-                                className="mt-5 w-full rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-medium py-3 transition-colors"
-                            >
-                                {phase === 'cancelling' ? 'Cancelling…' : 'Cancel Appointment'}
-                            </button>
-                            <p className="text-xs text-slate-400 mt-3 text-center">
-                                Changed your mind? Just close this page. Nothing happens.
-                            </p>
-                        </>
-                    )}
-                </div>
-            </div>
-        </main>
+                            <p className="mt-3 pt-3 border-t border-forest-cream/10 font-mono text-[11px] text-forest-cream/55">Ref: {data.bookingReference}</p>
+                        </SummaryCard>
+                        <button
+                            onClick={doCancel}
+                            disabled={phase === 'cancelling'}
+                            className={`mt-5 ${publicDangerBtn}`}
+                        >
+                            {phase === 'cancelling' ? 'Cancelling…' : 'Cancel Appointment'}
+                        </button>
+                        <p className={`mt-3 text-center ${publicFine}`}>
+                            Changed your mind? Just close this page. Nothing happens.
+                        </p>
+                    </>
+                )}
+            </PaperCard>
+        </PublicPage>
     );
 }

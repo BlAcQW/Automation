@@ -9,6 +9,26 @@ export const metadata = {
     description: 'Solo, Team and Enterprise. Prices announced shortly; free to start.',
 };
 
+/** Light tiers: a raised panel on the paper inset. */
+const PLAIN_CARD: React.CSSProperties = {
+    background: '#FBFAF7',
+    boxShadow: '0 14px 30px -22px rgba(20,26,22,0.45), 0 0 0 1px var(--border)',
+};
+
+/**
+ * The featured tier is a dark forest card. It re-scopes the text tokens so
+ * the children (written against --foreground / --muted-foreground) read
+ * cream-on-forest.
+ */
+const FEATURED_CARD: React.CSSProperties = {
+    background: 'var(--forest-card)',
+    color: 'var(--forest-cream)',
+    boxShadow: '0 30px 50px -28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
+    ['--foreground' as string]: 'var(--forest-cream)',
+    ['--muted-foreground' as string]: 'rgba(236,235,225,0.62)',
+    ['--border' as string]: 'rgba(236,235,225,0.12)',
+};
+
 /**
  * Pricing, deliberately unpriced. The tiers are named and shaped so a reader
  * can place themselves; the numbers wait until the product can show what it
@@ -22,7 +42,7 @@ export default function PricingPage() {
     ];
 
     return (
-        <main id="main" className="theme-site min-h-screen">
+        <main id="main" className="theme-site">
             <Nav />
             <PageHero
                 eyebrow="Pricing"
@@ -30,37 +50,35 @@ export default function PricingPage() {
                 sub="We're still setting the prices. What we can tell you now is the shape — and that there's a free way to start."
             />
 
-            <Section>
-                <Reveal className="grid gap-4 lg:grid-cols-3">
+            <Section tint>
+                <Reveal className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
                     {tiers.map((t) => (
                         <LiftCard
                             key={t.name}
-                            className="flex flex-col rounded-2xl p-7"
-                            style={{
-                                background: t.featured ? 'var(--secondary)' : 'var(--card)',
-                                border: `1px solid ${t.featured ? 'var(--primary)' : 'var(--border)'}`,
-                            }}
+                            className="flex flex-col rounded-[6px] p-7"
+                            style={t.featured ? FEATURED_CARD : PLAIN_CARD}
                         >
                             <div className="flex items-center justify-between gap-3">
-                                <h2 className="font-display text-2xl" style={{ color: 'var(--foreground)' }}>{t.name}</h2>
+                                <h2 className="text-[26px] font-normal leading-none tracking-[-0.04em]" style={{ color: 'var(--foreground)' }}>{t.name}</h2>
                                 {t.featured && (
-                                    <span
-                                        className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider"
-                                        style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
-                                    >
+                                    // Inside the paper inset fs-badge turns night; pin it cream on the dark card.
+                                    <span className="fs-badge" style={{ background: 'var(--forest-cream)', color: 'var(--forest-night)' }}>
                                         Most shops
                                     </span>
                                 )}
                             </div>
-                            <p className="mt-1 text-sm" style={{ color: 'var(--muted-foreground)' }}>{t.who}</p>
+                            <p className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>{t.who}</p>
 
-                            <p className="mt-6 text-2xl font-semibold" style={{ color: 'var(--primary)' }}>Coming soon</p>
-                            <p className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Pricing announced shortly</p>
+                            <p className="mt-8 text-[2.1rem] font-light leading-none tracking-[-0.045em]" style={{ color: 'var(--foreground)' }}>Coming soon</p>
+                            <p className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>Pricing announced shortly</p>
 
-                            <ul className="mt-6 flex-1 space-y-2.5">
+                            <ul className="mt-6 flex-1 space-y-2.5 border-t pt-6" style={{ borderColor: 'var(--border)' }}>
                                 {t.points.map((p) => (
                                     <li key={p} className="flex gap-2.5 text-[14px]" style={{ color: 'var(--foreground)' }}>
-                                        <Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: 'var(--primary)' }} />
+                                        <Check
+                                            className="mt-0.5 h-4 w-4 shrink-0"
+                                            style={{ color: t.featured ? 'var(--forest-glow)' : 'var(--forest-brand)' }}
+                                        />
                                         {p}
                                     </li>
                                 ))}
@@ -68,10 +86,7 @@ export default function PricingPage() {
 
                             <Link
                                 href="/register"
-                                className="mt-7 inline-flex min-h-[48px] items-center justify-center rounded-xl text-sm font-semibold"
-                                style={t.featured
-                                    ? { background: 'var(--primary)', color: 'var(--primary-foreground)' }
-                                    : { border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                                className={`fs-btn fs-btn--wide mt-8 ${t.featured ? 'fs-btn--cream' : 'fs-btn--brand'}`}
                             >
                                 Start free
                             </Link>

@@ -112,7 +112,7 @@ export default function OrdersPage() {
             case 'CONFIRMED': return 'text-blue-600 bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400';
             case 'PROCESSING': return 'text-purple-600 bg-purple-100 dark:bg-purple-500/10 dark:text-purple-400';
             case 'SHIPPED': return 'text-indigo-600 bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400';
-            case 'DELIVERED': return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400';
+            case 'DELIVERED': return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300';
             case 'CANCELLED': return 'text-red-600 bg-red-100 dark:bg-red-500/10 dark:text-red-400';
             default: return 'text-slate-600 bg-slate-100 dark:bg-slate-500/10 dark:text-slate-400';
         }
@@ -158,7 +158,7 @@ export default function OrdersPage() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
                 <div className="relative flex-1 w-full sm:max-w-md group">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                     <DashboardInput
@@ -186,7 +186,7 @@ export default function OrdersPage() {
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
@@ -232,7 +232,7 @@ export default function OrdersPage() {
                             ) : (
                                 filteredOrders.map((order: Order) => (
                                     <tr key={order.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => handleViewOrder(order)}>
-                                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-300 font-medium">
+                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-600 dark:text-slate-300 font-medium">
                                             {order.orderRef ?? order.orderNumber}
                                         </td>
                                         <td className="px-6 py-4">
@@ -243,12 +243,12 @@ export default function OrdersPage() {
                                             {format(new Date(order.createdAt), 'MMM d, yyyy')}
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium ${getStatusColor(order.status)}`}>
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium ${getStatusColor(order.status)}`}>
                                                 {order.status}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
                                                 {order.paymentStatus}
                                             </span>
                                             {order.paymentStatus === 'UNPAID' && (
@@ -256,7 +256,7 @@ export default function OrdersPage() {
                                                     {order.paymentAuthorizationUrl && (
                                                         <button
                                                             onClick={(e) => copyPaymentLink(order, e)}
-                                                            className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
+                                                            className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300 hover:underline"
                                                             aria-label="Copy payment link"
                                                         >
                                                             <Link2 className="w-3 h-3" /> Copy link
@@ -265,7 +265,7 @@ export default function OrdersPage() {
                                                     <button
                                                         onClick={(e) => resendPaymentLink(order, e)}
                                                         disabled={resendingId === order.id}
-                                                        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline disabled:opacity-50"
+                                                        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline disabled:opacity-50"
                                                         aria-label="Generate new payment link"
                                                     >
                                                         <RefreshCw className={`w-3 h-3 ${resendingId === order.id ? 'animate-spin' : ''}`} />
@@ -274,7 +274,7 @@ export default function OrdersPage() {
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 font-mono text-slate-900 dark:text-white font-medium">
+                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-900 dark:text-white font-medium">
                                             ${Number(order.totalAmount).toFixed(2)}
                                         </td>
                                         <td className="px-6 py-4 text-right">
@@ -315,17 +315,17 @@ export default function OrdersPage() {
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <p className="font-medium text-slate-900 dark:text-white truncate">{order.customerName}</p>
-                                        <p className="text-xs text-slate-500 font-mono">{order.orderRef ?? order.orderNumber}</p>
+                                        <p className="text-xs text-slate-500 font-mono tabular-nums">{order.orderRef ?? order.orderNumber}</p>
                                     </div>
-                                    <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white shrink-0">
+                                    <span className="font-mono tabular-nums text-sm font-medium text-slate-900 dark:text-white shrink-0">
                                         ${Number(order.totalAmount).toFixed(2)}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium ${getStatusColor(order.status)}`}>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-medium ${getStatusColor(order.status)}`}>
                                         {order.status}
                                     </span>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
                                         {order.paymentStatus}
                                     </span>
                                     <span className="text-[11px] text-slate-400 ml-auto">
@@ -337,7 +337,7 @@ export default function OrdersPage() {
                                         {order.paymentAuthorizationUrl && (
                                             <span
                                                 onClick={(e) => copyPaymentLink(order, e)}
-                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"
+                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"
                                             >
                                                 <Link2 className="w-3 h-3" /> Copy link
                                             </span>

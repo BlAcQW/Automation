@@ -53,7 +53,7 @@ export default function AdminAlertsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Alerts</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Alerts</h1>
                 <p className="text-slate-400">Open platform alerts, newest activity first. Repeats of the same problem raise the count instead of adding rows.</p>
             </div>
 

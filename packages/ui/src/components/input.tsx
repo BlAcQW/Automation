@@ -34,7 +34,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                 )}
                 <div className="relative group">
                     {icon && (
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-300 group-focus-within:text-accent-400 transition-colors">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 ui-field-icon text-ink-300 group-focus-within:text-accent-600 dark:group-focus-within:text-[#FFD98A] transition-colors">
                             {icon}
                         </div>
                     )}
@@ -43,13 +43,13 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                         id={inputId}
                         type={resolvedType}
                         className={cn(
-                            'w-full rounded-xl border bg-ink-900 text-ink-50 placeholder:text-ink-400 transition-colors duration-200',
-                            'focus:outline-none focus:ring-4 focus:ring-accent-500/15 focus:border-accent-500',
+                            'w-full rounded-lg border bg-white dark:bg-ink-1000 text-ink-50 placeholder:text-ink-400 transition-[border-color,box-shadow] duration-200',
+                            'focus:outline-none focus:ring-[3px] focus:ring-accent-600/15 focus:border-accent-600 dark:focus:ring-[#FFD98A]/20 dark:focus:border-[#FFD98A]/70',
                             'border-ink-700 hover:border-ink-600',
                             icon ? 'pl-12' : 'pl-4',
                             isPassword ? 'pr-12' : 'pr-4',
                             'py-3 text-base',
-                            error && 'border-rose-500/60 focus:ring-rose-500/15 focus:border-rose-500',
+                            error && 'border-[#B03A2E]/60 focus:ring-[#B03A2E]/15 focus:border-[#B03A2E] dark:focus:border-[#B03A2E] dark:focus:ring-[#B03A2E]/20',
                             className
                         )}
                         {...props}
@@ -60,14 +60,14 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                             onClick={() => setRevealed((v) => !v)}
                             aria-label={revealed ? 'Hide password' : 'Show password'}
                             aria-pressed={revealed}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:text-ink-50 hover:bg-ink-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 transition-colors"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded text-ink-300 hover:text-ink-50 hover:bg-ink-50/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] transition-colors"
                         >
                             {revealed ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         </button>
                     )}
                 </div>
                 {error && (
-                    <p className="text-sm text-rose-300">{error}</p>
+                    <p className="ui-field-error text-[13px] text-[#B03A2E] dark:text-[#F0B8B0]">{error}</p>
                 )}
             </div>
         );
@@ -95,7 +95,7 @@ const DashboardInput = forwardRef<HTMLInputElement, DashboardInputProps>(
                 )}
                 <div className="relative group">
                     {icon && (
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300 group-focus-within:text-accent-400 transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 ui-field-icon text-ink-300 group-focus-within:text-accent-600 dark:group-focus-within:text-[#FFD98A] transition-colors">
                             {icon}
                         </div>
                     )}
@@ -103,21 +103,21 @@ const DashboardInput = forwardRef<HTMLInputElement, DashboardInputProps>(
                         ref={ref}
                         id={inputId}
                         className={cn(
-                            'w-full rounded-xl border transition-colors duration-200',
-                            'bg-ink-900 border-ink-700',
+                            'w-full rounded-lg border transition-[border-color,box-shadow] duration-200',
+                            'bg-white dark:bg-ink-1000 border-ink-700',
                             'text-ink-50 placeholder:text-ink-400',
-                            'focus:outline-none focus:ring-4 focus:ring-accent-500/15 focus:border-accent-500',
+                            'focus:outline-none focus:ring-[3px] focus:ring-accent-600/15 focus:border-accent-600 dark:focus:ring-[#FFD98A]/20 dark:focus:border-[#FFD98A]/70',
                             'hover:border-ink-600',
                             icon ? 'pl-10 pr-4' : 'px-4',
                             'py-2.5',
-                            error && 'border-rose-500 focus:ring-rose-500/15 focus:border-rose-500',
+                            error && 'border-[#B03A2E] focus:ring-[#B03A2E]/15 focus:border-[#B03A2E] dark:focus:border-[#B03A2E] dark:focus:ring-[#B03A2E]/20',
                             className
                         )}
                         {...props}
                     />
                 </div>
                 {error && (
-                    <p className="text-sm text-rose-300">{error}</p>
+                    <p className="ui-field-error text-[13px] text-[#B03A2E] dark:text-[#F0B8B0]">{error}</p>
                 )}
             </div>
         );

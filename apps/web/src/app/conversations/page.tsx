@@ -181,8 +181,8 @@ export default function ConversationsPage() {
             >
                 <div className="px-4 pt-4 pb-2 space-y-3">
                     <div className="flex items-baseline justify-between">
-                        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Chats</h1>
-                        <span className="text-xs text-slate-400">{conversations.length} total</span>
+                        <h1 className="text-[28px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">Chats</h1>
+                        <span className="text-xs tabular-nums text-slate-400">{conversations.length} total</span>
                     </div>
                     <div className="relative">
                         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -191,7 +191,7 @@ export default function ConversationsPage() {
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="Search chats…"
-                            className="w-full h-11 pl-10 pr-4 rounded-full bg-slate-100 dark:bg-slate-800 border-0 text-sm
+                            className="w-full h-11 pl-10 pr-4 rounded-lg bg-slate-100 dark:bg-slate-800 border-0 text-sm
                                        text-slate-900 dark:text-white placeholder:text-slate-400
                                        focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                         />

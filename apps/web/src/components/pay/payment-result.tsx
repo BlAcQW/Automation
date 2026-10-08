@@ -4,6 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Loader2, AlertCircle, Clock, ArrowRight } from 'lucide-react';
+import {
+    PaperCard,
+    PublicPage,
+    SummaryCard,
+    publicBody,
+    publicBrandBtn,
+    publicFine,
+    publicTitle,
+} from './public-shell';
 
 type Kind = 'order' | 'booking';
 type ViewState = 'verifying' | 'paid' | 'pending' | 'failed' | 'not_found' | 'error';
@@ -69,151 +78,142 @@ export function PaymentResult({ kind }: { kind: Kind }) {
     const noun = kind === 'order' ? 'order' : 'booking';
 
     return (
-        <main className="min-h-screen bg-slate-50 flex items-start justify-center px-4 py-12">
-            <div className="w-full max-w-md">
-                <Card>
-                    {state === 'verifying' && (
-                        <Centered>
-                            <Loader2 className="w-10 h-10 text-emerald-500 animate-spin" />
-                            <h1 className="text-lg font-semibold text-slate-900 mt-4">
-                                Confirming your payment…
-                            </h1>
-                            <p className="text-sm text-slate-500 mt-1">This only takes a moment.</p>
-                        </Centered>
-                    )}
+        <PublicPage>
+            <PaperCard className="sm:p-8">
+                {state === 'verifying' && (
+                    <Centered>
+                        <Loader2 className="w-9 h-9 text-forest-brand animate-spin" />
+                        <h1 className={`${publicTitle} mt-5`}>
+                            Confirming your payment…
+                        </h1>
+                        <p className={`mt-2 ${publicBody}`}>This only takes a moment.</p>
+                    </Centered>
+                )}
 
-                    {state === 'paid' && (
-                        <Centered>
-                            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
-                                <CheckCircle2 className="w-9 h-9 text-emerald-600" />
-                            </div>
-                            <h1 className="text-xl font-semibold text-slate-900 mt-4">
-                                Payment confirmed
-                            </h1>
-                            {data?.businessName && (
-                                <p className="text-xs uppercase tracking-wide text-slate-400 mt-1">
-                                    {data.businessName}
-                                </p>
-                            )}
-                            <p className="text-sm text-slate-500 mt-2">
-                                Your {noun}{' '}
-                                {data?.ref && <span className="font-mono text-slate-700">{data.ref}</span>}{' '}
-                                is confirmed.
-                            </p>
+                {state === 'paid' && (
+                    <Centered>
+                        <StatusMark tone="ok"><CheckCircle2 className="w-6 h-6" /></StatusMark>
+                        <h1 className={`${publicTitle} mt-5`}>
+                            Payment confirmed
+                        </h1>
+                        <p className={`mt-2 ${publicBody}`}>
+                            Your {noun}{' '}
+                            {data?.ref && <span className="font-mono text-[13px] text-forest-ink">{data.ref}</span>}{' '}
+                            is confirmed.
+                        </p>
 
-                            {typeof data?.amount === 'number' && (
-                                <p className="text-2xl font-bold text-slate-900 mt-3">
-                                    {data.currency} {data.amount.toFixed(2)}
-                                </p>
-                            )}
+                        {(data?.businessName || typeof data?.amount === 'number' || (kind === 'booking' && data?.startTime)) && (
+                            <SummaryCard className="mt-6 w-full text-left">
+                                {data?.businessName && (
+                                    <p className="text-[12px] font-medium text-forest-cream/60">
+                                        {data.businessName}
+                                    </p>
+                                )}
+                                {typeof data?.amount === 'number' && (
+                                    <p className="mt-2 text-[30px] font-light leading-none tracking-[-0.04em] tabular-nums">
+                                        {data.currency} {data.amount.toFixed(2)}
+                                    </p>
+                                )}
+                                {kind === 'booking' && data?.startTime && (
+                                    <p className="mt-3 pt-3 border-t border-forest-cream/10 text-[14px] text-forest-cream/80 tabular-nums">
+                                        {new Date(data.startTime).toLocaleString()}
+                                    </p>
+                                )}
+                            </SummaryCard>
+                        )}
 
-                            {kind === 'booking' && data?.startTime && (
-                                <p className="text-sm text-slate-600 mt-2">
-                                    {new Date(data.startTime).toLocaleString()}
-                                </p>
-                            )}
-
-                            {kind === 'order' && data?.trackToken && (
-                                <Link
-                                    href={`/track/${data.trackToken}`}
-                                    className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
-                                >
-                                    Track your order
-                                    <ArrowRight className="w-4 h-4" />
-                                </Link>
-                            )}
-
-                            <p className="text-xs text-slate-400 mt-6">
-                                You can close this page — a confirmation has been sent to you on WhatsApp.
-                            </p>
-                        </Centered>
-                    )}
-
-                    {state === 'pending' && (
-                        <Centered>
-                            <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
-                                <Clock className="w-9 h-9 text-amber-600" />
-                            </div>
-                            <h1 className="text-xl font-semibold text-slate-900 mt-4">
-                                Still processing
-                            </h1>
-                            <p className="text-sm text-slate-500 mt-2">
-                                Your payment hasn&apos;t been confirmed yet. This can take a minute —
-                                check again shortly.
-                            </p>
-                            <button
-                                onClick={verify}
-                                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
+                        {kind === 'order' && data?.trackToken && (
+                            <Link
+                                href={`/track/${data.trackToken}`}
+                                className={`mt-6 fs-btn--wide ${publicBrandBtn}`}
                             >
-                                Check again
-                            </button>
-                        </Centered>
-                    )}
+                                Track your order
+                                <ArrowRight className="w-4 h-4" />
+                            </Link>
+                        )}
 
-                    {state === 'failed' && (
-                        <Centered>
-                            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-                                <AlertCircle className="w-9 h-9 text-red-600" />
-                            </div>
-                            <h1 className="text-xl font-semibold text-slate-900 mt-4">
-                                Payment not completed
-                            </h1>
-                            <p className="text-sm text-slate-500 mt-2">
-                                We couldn&apos;t confirm this payment. If you were charged, message the
-                                business on WhatsApp and they&apos;ll help sort it out.
-                            </p>
-                            <button
-                                onClick={verify}
-                                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
-                            >
-                                Try again
-                            </button>
-                        </Centered>
-                    )}
+                        <p className={`mt-6 ${publicFine}`}>
+                            You can close this page — a confirmation has been sent to you on WhatsApp.
+                        </p>
+                    </Centered>
+                )}
 
-                    {state === 'not_found' && (
-                        <Centered>
-                            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
-                                <AlertCircle className="w-9 h-9 text-slate-400" />
-                            </div>
-                            <h1 className="text-lg font-semibold text-slate-900 mt-4">
-                                Payment not found
-                            </h1>
-                            <p className="text-sm text-slate-500 mt-2">
-                                This link is invalid or has expired. Check the link in your message
-                                and try again.
-                            </p>
-                        </Centered>
-                    )}
+                {state === 'pending' && (
+                    <Centered>
+                        <StatusMark tone="wait"><Clock className="w-6 h-6" /></StatusMark>
+                        <h1 className={`${publicTitle} mt-5`}>
+                            Still processing
+                        </h1>
+                        <p className={`mt-2 ${publicBody}`}>
+                            Your payment hasn&apos;t been confirmed yet. This can take a minute —
+                            check again shortly.
+                        </p>
+                        <button onClick={verify} className={`mt-6 ${publicBrandBtn}`}>
+                            Check again
+                        </button>
+                    </Centered>
+                )}
 
-                    {state === 'error' && (
-                        <Centered>
-                            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
-                                <AlertCircle className="w-9 h-9 text-slate-400" />
-                            </div>
-                            <h1 className="text-lg font-semibold text-slate-900 mt-4">
-                                Something went wrong
-                            </h1>
-                            <p className="text-sm text-slate-500 mt-2">
-                                We couldn&apos;t reach the server. Please try again in a moment.
-                            </p>
-                            <button
-                                onClick={verify}
-                                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
-                            >
-                                Try again
-                            </button>
-                        </Centered>
-                    )}
-                </Card>
-            </div>
-        </main>
+                {state === 'failed' && (
+                    <Centered>
+                        <StatusMark tone="bad"><AlertCircle className="w-6 h-6" /></StatusMark>
+                        <h1 className={`${publicTitle} mt-5`}>
+                            Payment not completed
+                        </h1>
+                        <p className={`mt-2 ${publicBody}`}>
+                            We couldn&apos;t confirm this payment. If you were charged, message the
+                            business on WhatsApp and they&apos;ll help sort it out.
+                        </p>
+                        <button onClick={verify} className={`mt-6 ${publicBrandBtn}`}>
+                            Try again
+                        </button>
+                    </Centered>
+                )}
+
+                {state === 'not_found' && (
+                    <Centered>
+                        <StatusMark tone="muted"><AlertCircle className="w-6 h-6" /></StatusMark>
+                        <h1 className={`${publicTitle} mt-5`}>
+                            Payment not found
+                        </h1>
+                        <p className={`mt-2 ${publicBody}`}>
+                            This link is invalid or has expired. Check the link in your message
+                            and try again.
+                        </p>
+                    </Centered>
+                )}
+
+                {state === 'error' && (
+                    <Centered>
+                        <StatusMark tone="muted"><AlertCircle className="w-6 h-6" /></StatusMark>
+                        <h1 className={`${publicTitle} mt-5`}>
+                            Something went wrong
+                        </h1>
+                        <p className={`mt-2 ${publicBody}`}>
+                            We couldn&apos;t reach the server. Please try again in a moment.
+                        </p>
+                        <button onClick={verify} className={`mt-6 ${publicBrandBtn}`}>
+                            Try again
+                        </button>
+                    </Centered>
+                )}
+            </PaperCard>
+        </PublicPage>
     );
 }
 
-function Card({ children }: { children: React.ReactNode }) {
+const MARK_TONES = {
+    ok: 'bg-forest-night text-forest-glow',
+    wait: 'bg-[#E0A43A]/15 text-[#8A5A12]',
+    bad: 'bg-[#B03A2E]/10 text-[#B03A2E]',
+    muted: 'bg-forest-ink/[.06] text-[#7F857B]',
+} as const;
+
+function StatusMark({ tone, children }: { tone: keyof typeof MARK_TONES; children: React.ReactNode }) {
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">{children}</div>
+        <div className={`w-14 h-14 rounded-[6px] flex items-center justify-center ${MARK_TONES[tone]}`} aria-hidden>
+            {children}
+        </div>
     );
 }
 

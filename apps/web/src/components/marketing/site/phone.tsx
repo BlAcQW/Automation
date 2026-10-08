@@ -80,24 +80,27 @@ export function PhoneChat() {
     const Icon = c.icon;
 
     return (
-        <div className="flex flex-col items-center gap-5">
+        <div className="flex flex-col items-center gap-4">
             {/* The phone. Bezel and screen are plain CSS — no image to load. */}
             <div
-                className="relative w-full max-w-[310px] rounded-[2.6rem] p-2.5 shadow-2xl"
-                style={{ background: 'var(--ink-800)', border: '1px solid var(--ink-600)' }}
+                className="relative w-full max-w-[310px] rounded-[2.6rem] p-2.5"
+                style={{
+                    background: 'linear-gradient(160deg, #2F4436, #1C2C22 60%)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 40px 70px -36px rgba(20,26,22,0.75), 0 0 0 1px rgba(0,0,0,0.25)',
+                }}
             >
                 {/* Notch */}
                 <div
                     className="absolute left-1/2 top-3 z-10 h-5 w-24 -translate-x-1/2 rounded-full"
-                    style={{ background: 'var(--ink-800)' }}
+                    style={{ background: '#1C2C22' }}
                     aria-hidden="true"
                 />
 
-                <div className="overflow-hidden rounded-[2.1rem]" style={{ background: 'var(--ink-1000)' }}>
+                <div className="overflow-hidden rounded-[2.1rem]" style={{ background: '#FBFAF7' }}>
                     {/* Status bar */}
                     <div
                         className="flex items-center justify-between px-5 pb-1.5 pt-3 text-[10px] font-medium"
-                        style={{ color: 'var(--ink-200)' }}
+                        style={{ color: '#3D4640' }}
                         aria-hidden="true"
                     >
                         <span>9:41</span>
@@ -131,11 +134,11 @@ export function PhoneChat() {
                         {SCRIPT.slice(0, shown).map((m, i) => (
                             <div key={`${channel}-${i}`} className={m.from === 'us' ? 'flex justify-end' : 'flex justify-start'}>
                                 <p
-                                    className={`${playing ? 'site-bubble ' : ''}max-w-[82%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug`}
+                                    className={`${playing ? 'site-bubble ' : ''}max-w-[82%] rounded-[14px] px-3 py-2 text-[12.5px] leading-snug`}
                                     style={
                                         m.from === 'us'
                                             ? { background: c.brand, color: '#fff', borderBottomRightRadius: 5 }
-                                            : { background: 'var(--ink-700)', color: 'var(--ink-50)', borderBottomLeftRadius: 5 }
+                                            : { background: '#ECEBE1', color: '#141A16', borderBottomLeftRadius: 5 }
                                     }
                                 >
                                     {m.text}
@@ -146,7 +149,7 @@ export function PhoneChat() {
                         {typing && (
                             <div className="flex justify-end" aria-hidden="true">
                                 <div
-                                    className="flex items-center gap-1 rounded-2xl px-3 py-2.5"
+                                    className="flex items-center gap-1 rounded-[14px] px-3 py-2.5"
                                     style={{ background: c.brand, borderBottomRightRadius: 5 }}
                                 >
                                     {[0, 1, 2].map((i) => (
@@ -172,14 +175,14 @@ export function PhoneChat() {
                             role="tab"
                             aria-selected={on}
                             onClick={() => setChannel(k)}
-                            className="inline-flex min-h-[44px] items-center gap-2 rounded-full px-3.5 text-xs font-medium transition-colors"
+                            className="inline-flex min-h-[40px] items-center gap-2 rounded-[3px] px-3.5 text-xs font-medium transition-colors"
                             style={{
-                                background: on ? ch.brand : 'transparent',
-                                color: on ? '#fff' : 'var(--muted-foreground)',
-                                border: `1px solid ${on ? ch.brand : 'var(--border)'}`,
+                                background: on ? '#141A16' : 'rgba(251,250,247,0.7)',
+                                color: on ? '#FBFAF7' : '#3D4640',
+                                boxShadow: on ? '0 8px 18px -10px rgba(0,0,0,0.6)' : 'inset 0 0 0 1px rgba(20,26,22,0.1)',
                             }}
                         >
-                            <ChIcon className="h-3.5 w-3.5" />
+                            <ChIcon className="h-3.5 w-3.5" style={{ color: on ? ch.brand : undefined }} />
                             {ch.label}
                         </button>
                     );

@@ -52,7 +52,7 @@ export function ExternalAppCard() {
         <Card>
             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                 <CardTitle>
-                    <Plug className="h-5 w-5 text-emerald-500" />
+                    <Plug className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                     External app
                 </CardTitle>
                 {app && <Badge variant={app.isActive ? 'default' : 'slate'}>{app.isActive ? 'Receiving events' : 'Paused'}</Badge>}

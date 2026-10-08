@@ -48,11 +48,11 @@ function AuditLog() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Audit log</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Audit log</h1>
                 <p className="text-slate-400">Everything admins, staff and the system did. Newest first; shows the last 7 days unless you pick a window (90 days at most).</p>
             </div>
 
-            <form onSubmit={apply} className="grid grid-cols-1 gap-3 rounded-2xl border border-white/5 p-4 glass-card sm:grid-cols-2 xl:grid-cols-6">
+            <form onSubmit={apply} className="grid grid-cols-1 gap-3 rounded-xl border border-white/5 p-4 glass-card sm:grid-cols-2 xl:grid-cols-6">
                 <Input label="Organisation id" value={draft.tenantId} onChange={set('tenantId')} placeholder="any" />
                 <Input label="Actor id" value={draft.actorId} onChange={set('actorId')} placeholder="any" />
                 <div className="space-y-1.5">

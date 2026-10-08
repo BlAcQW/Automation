@@ -107,26 +107,27 @@ export function GettingStarted() {
     const doneCount = steps.length - remaining;
 
     return (
-        <section className="rounded-2xl border border-bookly-emerald-500/30 bg-ink-900 overflow-hidden">
+        <section className="rounded-xl bg-ink-900 shadow-card overflow-hidden">
             <header className="px-5 pt-5 pb-4 sm:px-6">
-                <p className="text-[13px] font-medium text-bookly-emerald-400">
+                <p className="flex items-center gap-2 font-mono text-[11px] text-ink-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-forest-brand dark:bg-forest-glow" aria-hidden />
                     {doneCount} of {steps.length} done
                 </p>
-                <h2 className="mt-1 font-display text-h2 text-ink-50">
+                <h2 className="mt-2 font-display text-[1.625rem] font-normal leading-[1.05] tracking-[-0.04em] text-ink-50">
                     {doneCount === 0 ? 'Set up your business' : 'Almost there'}
                 </h2>
-                <p className="mt-1 text-body-sm text-ink-300 max-w-[60ch]">
+                <p className="mt-2 text-[14px] text-ink-300 max-w-[60ch]">
                     A few steps and your customers can book by sending a WhatsApp message.
                 </p>
             </header>
-            <ol className="border-t border-ink-700/70 divide-y divide-ink-700/70">
+            <ol className="border-t border-ink-50/[0.08] divide-y divide-ink-50/[0.06]">
                 {steps.map((step, i) => (
                     <li key={step.key}>
                         {step.done ? (
                             <div className="flex items-center gap-4 px-5 py-4 sm:px-6 opacity-70">
                                 <StepMarker done index={i} />
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-body-sm font-medium text-ink-100 line-through decoration-ink-500">
+                                    <p className="text-[14px] font-medium text-ink-300 line-through decoration-ink-500">
                                         {step.title}
                                     </p>
                                 </div>
@@ -134,14 +135,14 @@ export function GettingStarted() {
                         ) : (
                             <Link
                                 href={step.href}
-                                className="flex items-center gap-4 px-5 py-4 sm:px-6 hover:bg-ink-800/60 active:bg-ink-800 transition-colors"
+                                className="group flex items-center gap-4 px-5 py-4 sm:px-6 hover:bg-ink-50/[0.03] active:bg-ink-50/[0.05] transition-colors"
                             >
                                 <StepMarker index={i} />
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-body-sm font-semibold text-ink-50">{step.title}</p>
+                                    <p className="text-[14px] font-medium tracking-[-0.01em] text-ink-50">{step.title}</p>
                                     <p className="mt-0.5 text-[13px] leading-snug text-ink-300">{step.detail}</p>
                                 </div>
-                                <ChevronRight className="h-5 w-5 shrink-0 text-ink-300" />
+                                <ChevronRight className="h-5 w-5 shrink-0 text-ink-400 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-ink-50" />
                             </Link>
                         )}
                     </li>
@@ -155,10 +156,10 @@ function StepMarker({ done, index }: { done?: boolean; index: number }) {
     return (
         <span
             className={cn(
-                'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold tabular-nums',
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded text-[13px] font-medium tabular-nums',
                 done
-                    ? 'bg-bookly-emerald-500 text-on-accent'
-                    : 'border border-ink-600 text-ink-200',
+                    ? 'bg-forest-brand text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
+                    : 'bg-white dark:bg-ink-1000 shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.12)] text-ink-200',
             )}
             aria-hidden
         >

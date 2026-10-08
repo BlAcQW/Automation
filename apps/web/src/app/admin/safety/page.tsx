@@ -47,7 +47,7 @@ export default function AdminSafetyPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Safety switches</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Safety switches</h1>
                 <p className="text-slate-400">Platform-wide emergency stops, and who has been looking at organisations. Per-organisation switches are on each organisation&apos;s page.</p>
             </div>
 

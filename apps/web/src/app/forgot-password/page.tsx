@@ -4,9 +4,19 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Mail, ArrowRight, ArrowLeft } from 'lucide-react';
 import { api } from '@/lib/api';
-import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
-import { GlowButton } from '@/components/primitives/glow-button';
 import { Input } from '@bookingflow/ui';
+import {
+    AuthFrame,
+    authErrorBox,
+    authFormClass,
+    authGhostBtn,
+    authHeading,
+    authInputClass,
+    authMutedLink,
+    authPrimaryBtn,
+    authPrimaryBtnInline,
+    authSub,
+} from '@/components/auth/auth-frame';
 
 /**
  * Forgot password. One field, one button. The confirmation is worded the
@@ -37,78 +47,74 @@ export default function ForgotPasswordPage() {
     };
 
     return (
-        <div className="min-h-screen bg-ink-950 text-ink-50 flex items-center justify-center px-4 py-12">
-            <div className="w-full max-w-md">
-                <div className="mb-10">
-                    <Link href="/" className="inline-block">
-                        <BooklyWordmark size="lg" />
-                    </Link>
-                </div>
-
-                {sent ? (
-                    <div>
-                        <h1 className="font-display text-display-md text-ink-50 mb-3 tracking-tight">
-                            Check your email
-                        </h1>
-                        <p className="text-body text-ink-300 max-w-[42ch]">
-                            If there is a Bookly account for <span className="text-ink-50">{email.trim()}</span>, we
-                            have sent it a link to choose a new password. The link works for one hour.
-                        </p>
-                        <p className="mt-4 text-body-sm text-ink-300">
-                            Nothing there after a minute? Look in the spam folder, or try again with the email you signed up with.
-                        </p>
-                        <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                            <GlowButton href="/login" size="md">
-                                Back to sign in
-                            </GlowButton>
-                            <button
-                                type="button"
-                                onClick={() => setSent(false)}
-                                className="h-12 px-6 rounded-xl border border-ink-700 text-[15px] font-medium text-ink-50 hover:border-ink-600 hover:bg-ink-900/60 transition-colors"
-                            >
-                                Use a different email
-                            </button>
-                        </div>
+        <AuthFrame
+            statement={
+                <>
+                    It happens.{' '}
+                    <span className="text-forest-cream/50">Your bookings keep coming in while you sort it out.</span>
+                </>
+            }
+        >
+            {sent ? (
+                <div>
+                    <h1 className={`${authHeading} mb-4`}>Check your email.</h1>
+                    <p className={`${authSub} max-w-[42ch]`}>
+                        If there is a Bookly account for <span className="text-forest-ink font-medium">{email.trim()}</span>, we
+                        have sent it a link to choose a new password. The link works for one hour.
+                    </p>
+                    <p className="mt-4 text-[13px] text-[#5F675E]">
+                        Nothing there after a minute? Look in the spam folder, or try again with the email you signed up with.
+                    </p>
+                    <div className="mt-8 flex flex-col sm:flex-row gap-2">
+                        <Link href="/login" className={authPrimaryBtnInline}>
+                            Back to sign in
+                        </Link>
+                        <button
+                            type="button"
+                            onClick={() => setSent(false)}
+                            className={authGhostBtn}
+                        >
+                            Use a different email
+                        </button>
                     </div>
-                ) : (
-                    <>
-                        <h1 className="font-display text-display-md text-ink-50 mb-2 tracking-tight">
-                            Forgot your password?
-                        </h1>
-                        <p className="text-body text-ink-300 mb-8 max-w-[42ch]">
-                            Type the email you signed up with and we will send you a link to choose a new one.
-                        </p>
+                </div>
+            ) : (
+                <>
+                    <h1 className={`${authHeading} mb-3`}>Forgot your password?</h1>
+                    <p className={`${authSub} mb-8 max-w-[42ch]`}>
+                        Type the email you signed up with and we will send you a link to choose a new one.
+                    </p>
 
-                        {error && (
-                            <div role="alert" className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-3 rounded-xl mb-6 text-body-sm">
-                                {error}
-                            </div>
-                        )}
+                    {error && (
+                        <div role="alert" className={`${authErrorBox} mb-5`}>
+                            {error}
+                        </div>
+                    )}
 
-                        <form onSubmit={handleSubmit} className="space-y-5">
-                            <Input
-                                type="email"
-                                label="Email"
-                                icon={<Mail className="w-5 h-5" />}
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                placeholder="you@example.com"
-                                autoComplete="email"
-                                required
-                            />
-                            <GlowButton type="submit" disabled={isLoading || !email.trim()} className="w-full" size="lg">
-                                {isLoading ? 'Sending…' : (<>Send reset link <ArrowRight className="w-4 h-4" /></>)}
-                            </GlowButton>
-                        </form>
+                    <form onSubmit={handleSubmit} className={authFormClass}>
+                        <Input
+                            type="email"
+                            label="Email"
+                            icon={<Mail className="w-[18px] h-[18px]" />}
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="you@example.com"
+                            autoComplete="email"
+                            className={authInputClass}
+                            required
+                        />
+                        <button type="submit" disabled={isLoading || !email.trim()} className={authPrimaryBtn}>
+                            {isLoading ? 'Sending…' : (<>Send reset link <ArrowRight className="w-4 h-4" /></>)}
+                        </button>
+                    </form>
 
-                        <p className="mt-8">
-                            <Link href="/login" className="inline-flex items-center gap-1.5 text-body-sm text-ink-300 hover:text-ink-50 transition-colors">
-                                <ArrowLeft className="w-4 h-4" /> Back to sign in
-                            </Link>
-                        </p>
-                    </>
-                )}
-            </div>
-        </div>
+                    <p className="mt-8">
+                        <Link href="/login" className={`${authMutedLink} inline-flex items-center gap-1.5 min-h-[44px]`}>
+                            <ArrowLeft className="w-4 h-4" /> Back to sign in
+                        </Link>
+                    </p>
+                </>
+            )}
+        </AuthFrame>
     );
 }

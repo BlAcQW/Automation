@@ -5,9 +5,18 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Lock, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
-import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
-import { GlowButton } from '@/components/primitives/glow-button';
 import { Input } from '@bookingflow/ui';
+import {
+    AuthFrame,
+    authErrorBox,
+    authFormClass,
+    authHeading,
+    authInputClass,
+    authInputErrorClass,
+    authPrimaryBtn,
+    authPrimaryBtnInline,
+    authSub,
+} from '@/components/auth/auth-frame';
 
 /** Landing page for the link in the reset email. */
 export default function ResetPasswordPage() {
@@ -45,99 +54,86 @@ function ResetPasswordForm() {
     };
 
     return (
-        <div className="min-h-screen bg-ink-950 text-ink-50 flex items-center justify-center px-4 py-12">
-            <div className="w-full max-w-md">
-                <div className="mb-10">
-                    <Link href="/" className="inline-block">
-                        <BooklyWordmark size="lg" />
-                    </Link>
-                </div>
-
-                {!token ? (
-                    <Expired />
-                ) : done ? (
-                    <div>
-                        <h1 className="font-display text-display-md text-ink-50 mb-3 tracking-tight">
-                            Password updated
-                        </h1>
-                        <p className="text-body text-ink-300 max-w-[42ch]">
-                            You can sign in with your new password now.
-                        </p>
-                        <div className="mt-8">
-                            <GlowButton href="/login" size="lg">
-                                Sign in <ArrowRight className="w-4 h-4" />
-                            </GlowButton>
-                        </div>
+        <AuthFrame>
+            {!token ? (
+                <Expired />
+            ) : done ? (
+                <div>
+                    <h1 className={`${authHeading} mb-4`}>Password updated.</h1>
+                    <p className={`${authSub} max-w-[42ch]`}>
+                        You can sign in with your new password now.
+                    </p>
+                    <div className="mt-8">
+                        <Link href="/login" className={authPrimaryBtnInline}>
+                            Sign in <ArrowRight className="w-4 h-4" />
+                        </Link>
                     </div>
-                ) : (
-                    <>
-                        <h1 className="font-display text-display-md text-ink-50 mb-2 tracking-tight">
-                            Choose a new password
-                        </h1>
-                        <p className="text-body text-ink-300 mb-8">At least 8 characters.</p>
+                </div>
+            ) : (
+                <>
+                    <h1 className={`${authHeading} mb-3`}>Choose a new password.</h1>
+                    <p className={`${authSub} mb-8`}>At least 8 characters.</p>
 
-                        {error && (
-                            <div role="alert" className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-3 rounded-xl mb-6 text-body-sm">
-                                {error}{' '}
-                                <Link href="/forgot-password" className="underline underline-offset-2 text-rose-200">
-                                    Request a new link
-                                </Link>
-                            </div>
-                        )}
+                    {error && (
+                        <div role="alert" className={`${authErrorBox} mb-5`}>
+                            {error}{' '}
+                            <Link href="/forgot-password" className="underline underline-offset-2 font-medium">
+                                Request a new link
+                            </Link>
+                        </div>
+                    )}
 
-                        <form onSubmit={handleSubmit} className="space-y-5">
-                            <Input
-                                type="password"
-                                label="New password"
-                                icon={<Lock className="w-5 h-5" />}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••"
-                                autoComplete="new-password"
-                                minLength={8}
-                                required
-                            />
-                            <Input
-                                type="password"
-                                label="Type it again"
-                                icon={<Lock className="w-5 h-5" />}
-                                value={confirm}
-                                onChange={(e) => setConfirm(e.target.value)}
-                                placeholder="••••••••"
-                                autoComplete="new-password"
-                                minLength={8}
-                                error={mismatch ? 'These do not match.' : undefined}
-                                required
-                            />
-                            <GlowButton
-                                type="submit"
-                                disabled={isLoading || password.length < 8 || password !== confirm}
-                                className="w-full"
-                                size="lg"
-                            >
-                                {isLoading ? 'Saving…' : (<>Save new password <ArrowRight className="w-4 h-4" /></>)}
-                            </GlowButton>
-                        </form>
-                    </>
-                )}
-            </div>
-        </div>
+                    <form onSubmit={handleSubmit} className={authFormClass}>
+                        <Input
+                            type="password"
+                            label="New password"
+                            icon={<Lock className="w-[18px] h-[18px]" />}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                            autoComplete="new-password"
+                            minLength={8}
+                            className={authInputClass}
+                            required
+                        />
+                        <Input
+                            type="password"
+                            label="Type it again"
+                            icon={<Lock className="w-[18px] h-[18px]" />}
+                            value={confirm}
+                            onChange={(e) => setConfirm(e.target.value)}
+                            placeholder="••••••••"
+                            autoComplete="new-password"
+                            minLength={8}
+                            error={mismatch ? 'These do not match.' : undefined}
+                            className={mismatch ? `${authInputClass} ${authInputErrorClass}` : authInputClass}
+                            required
+                        />
+                        <button
+                            type="submit"
+                            disabled={isLoading || password.length < 8 || password !== confirm}
+                            className={authPrimaryBtn}
+                        >
+                            {isLoading ? 'Saving…' : (<>Save new password <ArrowRight className="w-4 h-4" /></>)}
+                        </button>
+                    </form>
+                </>
+            )}
+        </AuthFrame>
     );
 }
 
 function Expired() {
     return (
         <div>
-            <h1 className="font-display text-display-md text-ink-50 mb-3 tracking-tight">
-                This link is not valid
-            </h1>
-            <p className="text-body text-ink-300 max-w-[42ch]">
+            <h1 className={`${authHeading} mb-4`}>This link is not valid.</h1>
+            <p className={`${authSub} max-w-[42ch]`}>
                 Reset links work for one hour and only once. Ask for a fresh one and use it straight away.
             </p>
             <div className="mt-8">
-                <GlowButton href="/forgot-password" size="lg">
+                <Link href="/forgot-password" className={authPrimaryBtnInline}>
                     Request a new link
-                </GlowButton>
+                </Link>
             </div>
         </div>
     );

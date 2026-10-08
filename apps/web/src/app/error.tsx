@@ -27,37 +27,40 @@ export default function ErrorPage({
     const detail = process.env.NODE_ENV === 'production' ? null : error.message;
 
     return (
-        <main id="main" className="min-h-screen bg-ink-950 text-ink-50 flex items-center justify-center px-4 py-12">
-            <div className="w-full max-w-md">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-rose-500/10 text-rose-300">
-                    <AlertTriangle className="h-6 w-6" aria-hidden />
-                </div>
-                <h1 className="mt-5 font-display text-display-md text-ink-50">Something went wrong</h1>
-                <p className="mt-3 text-body text-ink-300 max-w-[42ch]">
+        <main id="main" className="relative isolate flex min-h-screen items-center bg-ink-950 px-4 py-12 text-ink-50 sm:px-8">
+            <div className="fs-hero-grid" aria-hidden />
+            <div className="mx-auto w-full max-w-xl">
+                <p className="flex items-center gap-2 font-mono text-[11px] text-ink-300">
+                    <AlertTriangle className="h-3.5 w-3.5 text-rose-600 dark:text-rose-300" aria-hidden />
+                    /error/
+                </p>
+                <h1 className="mt-4 max-w-[14ch] text-[clamp(40px,7vw,72px)] font-normal leading-[0.98] tracking-[-0.05em] text-ink-50">
+                    Something went wrong
+                </h1>
+                <p className="mt-5 max-w-[42ch] text-[15px] leading-relaxed text-ink-300">
                     This is on our side, not yours. Your bookings and chats are safe. Try again; if it keeps
                     happening, send us the reference below.
                 </p>
-                {detail && <p className="mt-3 text-body-sm text-rose-300 break-words">{detail}</p>}
+                {detail && <p className="mt-3 break-words text-[13px] text-rose-700 dark:text-rose-300">{detail}</p>}
                 {error.digest && (
-                    <p className="mt-3 font-mono text-[13px] text-ink-400">Reference: {error.digest}</p>
+                    <p className="mt-4 inline-flex rounded-[3px] bg-ink-900 px-2.5 py-1.5 font-mono text-[12px] tabular-nums text-ink-300 ring-1 ring-ink-700/60">
+                        Reference: {error.digest}
+                    </p>
                 )}
-                <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <div className="mt-9 flex flex-col gap-2 sm:flex-row">
                     <button
                         type="button"
                         onClick={() => reset()}
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-bookly-emerald-500 px-6 text-[15px] font-medium text-on-accent hover:bg-bookly-emerald-400 transition-colors"
+                        className="fs-btn fs-btn--lg fs-btn--brand"
                     >
                         <RotateCw className="h-4 w-4" aria-hidden />
                         Try again
                     </button>
-                    <Link
-                        href="/dashboard"
-                        className="inline-flex h-12 items-center justify-center rounded-xl border border-ink-700 px-6 text-[15px] font-medium text-ink-50 hover:border-ink-600 hover:bg-ink-900/60 transition-colors"
-                    >
+                    <Link href="/dashboard" className="fs-btn fs-btn--lg fs-btn--ghost text-ink-50">
                         Back to dashboard
                     </Link>
                 </div>
-                <div className="mt-10">
+                <div className="mt-12 border-t border-ink-700/60 pt-5">
                     <SupportLinks topic={`something went wrong${error.digest ? ` (ref ${error.digest})` : ''}`} />
                 </div>
             </div>

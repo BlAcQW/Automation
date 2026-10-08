@@ -81,7 +81,7 @@ export default function ServicesPage() {
                 title="Services"
                 subtitle="Manage your service offerings and pricing"
                 actions={
-                    <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-emerald-500/20">
+                    <Button onClick={() => setIsModalOpen(true)} className="shadow-[inset_0_1px_0_rgba(255,255,255,.14)]">
                         <Plus className="w-4 h-4 mr-2" />
                         Add Service
                     </Button>
@@ -112,7 +112,7 @@ export default function ServicesPage() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
                 <div className="relative flex-1 w-full sm:max-w-md group">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                     <DashboardInput
@@ -124,7 +124,7 @@ export default function ServicesPage() {
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
@@ -173,11 +173,11 @@ export default function ServicesPage() {
                                             {service.name}
                                         </td>
                                         <td className="px-6 py-4 text-slate-500">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
                                                 {service.category || 'Uncategorized'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-300">
+                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-600 dark:text-slate-300">
                                             ${Number(service.price).toFixed(2)}
                                         </td>
                                         <td className="px-6 py-4 text-slate-500">
@@ -187,7 +187,7 @@ export default function ServicesPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className={`flex items-center gap-2 text-xs font-medium ${service.isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                            <div className={`flex items-center gap-2 text-xs font-medium ${service.isActive ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400'}`}>
                                                 {service.isActive ? (
                                                     <CheckCircle className="w-3.5 h-3.5" />
                                                 ) : (
@@ -235,7 +235,7 @@ export default function ServicesPage() {
                                 <div className="flex-1 min-w-0">
                                     <p className="font-medium text-slate-900 dark:text-white truncate">{service.name}</p>
                                     <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                                        <span className="font-mono text-slate-600 dark:text-slate-300">
+                                        <span className="font-mono tabular-nums text-slate-600 dark:text-slate-300">
                                             ${Number(service.price).toFixed(2)}
                                         </span>
                                         <span className="flex items-center gap-1">

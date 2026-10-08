@@ -7,9 +7,9 @@ import { Button, Modal } from '@bookingflow/ui';
 /** A titled panel in the admin's card style. */
 export function Panel({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
     return (
-        <section className="rounded-2xl border border-white/5 glass-card overflow-hidden">
+        <section className="rounded-xl border border-white/5 glass-card overflow-hidden">
             <header className="flex items-center justify-between gap-3 border-b border-white/5 px-6 py-4">
-                <h2 className="text-base font-semibold text-white">{title}</h2>
+                <h2 className="text-base font-medium tracking-[-0.02em] text-white">{title}</h2>
                 {action}
             </header>
             <div>{children}</div>
@@ -35,7 +35,7 @@ export function isUnavailable(section: unknown): section is { error: 'unavailabl
 }
 
 export function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
-    return <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 ${className}`}>{children}</th>;
+    return <th className={`px-6 py-3 text-left text-xs font-medium text-slate-400 ${className}`}>{children}</th>;
 }
 
 export function Td({ children, className = '' }: { children?: ReactNode; className?: string }) {
@@ -100,7 +100,7 @@ export function ReasonModal({
                         onChange={(e) => setReason(e.target.value)}
                         maxLength={300}
                         rows={3}
-                        className="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
                         placeholder="Why is this needed?"
                     />
                     {reasonRequired && !valid && trimmed.length > 0 && (

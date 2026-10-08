@@ -37,26 +37,39 @@ interface StatCardProps {
 export function StatCard({ name, value, icon, className, index = 0, change }: StatCardProps) {
     const reduce = useReducedMotion();
     return (
+        // The reference's dark `.fs-stat`: night-green card, cream type, a big
+        // light-weight tabular figure. Dark in both themes on purpose: it is
+        // the one emphasis surface on a paper page.
         <motion.div
-            initial={reduce ? false : { opacity: 0, y: 12 }}
+            initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: index * 0.06, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.9, delay: index * 0.07, ease: [0.2, 0.8, 0.2, 1] }}
+            whileHover={reduce ? undefined : { y: -4, transition: { duration: 0.35, ease: [0.2, 0.8, 0.2, 1] } }}
             className={cn(
-                'rounded-2xl border border-ink-700/70 bg-ink-900 p-4 sm:p-5 transition-colors duration-200 hover:border-ink-600',
+                'rounded-xl bg-[#1C2C22] p-3.5 sm:p-4 text-[#ECEBE1]',
+                'shadow-[0_30px_50px_-28px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)]',
+                'dark:bg-[#1A2A20] dark:shadow-[0_0_0_1px_rgba(236,235,225,0.06),0_30px_50px_-28px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.05)]',
                 className,
             )}
         >
             <div className="flex items-start justify-between gap-2">
-                <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-accent-500/10 text-accent-400 [&_svg]:!text-accent-400">
+                <p className="min-w-0 truncate pt-0.5 text-[12px] font-medium tracking-[-0.01em] text-[#ECEBE1]/80">{name}</p>
+                <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded bg-white/[0.08] text-[#ECEBE1] [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:!text-[#ECEBE1]">
                     {icon}
                 </div>
-                {change && change.direction !== 'neutral' && <ChangePill change={change} />}
             </div>
 
-            <p className="mt-4 sm:mt-5 font-display text-2xl sm:text-3xl font-semibold tracking-tight text-ink-50 tabular-nums leading-none">
+            <p className="mt-5 sm:mt-7 font-display text-[1.75rem] sm:text-[2.25rem] font-light tracking-[-0.04em] text-[#ECEBE1] tabular-nums leading-none">
                 {typeof value === 'number' ? <NumberTicker value={value} /> : value}
             </p>
-            <p className="mt-1.5 text-[13px] text-ink-300">{name}</p>
+            {change && change.direction !== 'neutral' ? (
+                <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-[#ECEBE1]/60">
+                    <ChangePill change={change} />
+                    {change.label && <span className="truncate">{change.label}</span>}
+                </div>
+            ) : (
+                <div className="mt-2.5 h-px w-8 bg-[#ECEBE1]/15" aria-hidden />
+            )}
         </motion.div>
     );
 }
@@ -67,10 +80,10 @@ function ChangePill({ change }: { change: NonNullable<StatCardProps['change']> }
     return (
         <span
             className={cn(
-                'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[12px] font-medium tabular-nums',
+                'inline-flex items-center gap-0.5 rounded px-1.5 py-[3px] text-[11px] font-medium leading-none tabular-nums',
                 up
-                    ? 'bg-accent-500/10 text-accent-300'
-                    : 'bg-rose-500/10 text-rose-300',
+                    ? 'bg-[#2F5640] text-[#FBFAF7] shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]'
+                    : 'bg-[#B03A2E] text-[#FBFAF7] shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]',
             )}
         >
             <Icon className="h-3 w-3" />

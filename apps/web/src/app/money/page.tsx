@@ -123,7 +123,7 @@ export default function MoneyPage() {
     if (loading) {
         return (
             <div className="flex items-center gap-3 py-12 text-slate-500">
-                <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
+                <Loader2 className="w-5 h-5 animate-spin text-emerald-600 dark:text-emerald-400" />
                 Checking your money…
             </div>
         );
@@ -221,20 +221,20 @@ function BalanceCard({ state, onWithdrawn, onError }: {
     return (
         <Card>
             <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:items-center">
+                    <div className="rounded-xl bg-forest-card p-4 text-forest-cream shadow-[0_30px_50px_-28px_rgba(0,0,0,.6),inset_0_1px_0_rgba(255,255,255,.06)]">
+                        <div className="flex items-center gap-2 text-xs font-medium text-forest-cream/70">
                             <Wallet className="w-3.5 h-3.5" /> Ready to withdraw
                         </div>
-                        <p className="text-3xl font-semibold text-slate-900 dark:text-white mt-1 tabular-nums">
+                        <p className="mt-3 text-[34px] font-light leading-none tracking-[-0.04em] tabular-nums text-forest-cream">
                             {money(ready, state.currency)}
                         </p>
                     </div>
                     <div>
-                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                             <Clock className="w-3.5 h-3.5" /> Still clearing
                         </div>
-                        <p className="text-2xl font-medium text-slate-700 dark:text-slate-200 mt-1 tabular-nums">
+                        <p className="text-2xl font-light tracking-[-0.04em] text-slate-700 dark:text-slate-200 mt-1 tabular-nums">
                             {money(state.stillClearingMinor, state.currency)}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -243,10 +243,10 @@ function BalanceCard({ state, onWithdrawn, onError }: {
                     </div>
                     {state.onTheWayMinor > 0 && (
                         <div>
-                            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
                                 <Send className="w-3.5 h-3.5" /> On the way
                             </div>
-                            <p className="text-2xl font-medium text-slate-700 dark:text-slate-200 mt-1 tabular-nums">
+                            <p className="text-2xl font-light tracking-[-0.04em] text-slate-700 dark:text-slate-200 mt-1 tabular-nums">
                                 {money(state.onTheWayMinor, state.currency)}
                             </p>
                         </div>
@@ -337,7 +337,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
     return (
         <div className="flex items-center justify-between gap-4">
             <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
-            <span className={`text-sm ${strong ? 'font-semibold text-lg text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-100'} tabular-nums`}>
+            <span className={`text-sm ${strong ? 'font-medium text-lg text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-100'} tabular-nums`}>
                 {value}
             </span>
         </div>
@@ -477,7 +477,7 @@ function DestinationCard({ state, onSaved, onError }: {
                         <select
                             value={provider}
                             onChange={(e) => { setProvider(e.target.value); setResolvedName(null); }}
-                            className="w-full min-h-[44px] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm text-slate-900 dark:text-white"
+                            className="w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm text-slate-900 dark:text-white"
                         >
                             {providers.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
                         </select>
@@ -494,7 +494,7 @@ function DestinationCard({ state, onSaved, onError }: {
                     {resolvedName && (
                         <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/50">
                             <p className="text-xs text-emerald-700 dark:text-emerald-300">This number belongs to</p>
-                            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">{resolvedName}</p>
+                            <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">{resolvedName}</p>
                             <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1">
                                 Is that you? If not, check the number.
                             </p>

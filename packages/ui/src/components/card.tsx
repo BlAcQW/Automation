@@ -20,11 +20,13 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
             <Comp
                 ref={ref}
                 className={cn(
-                    'rounded-2xl border transition-all duration-300',
+                    // Cream card on paper (card-green on night): 6px corners, a
+                    // 1px hairline ring and the long soft drop shadow, no border.
+                    'rounded-xl border border-transparent transition-[box-shadow,transform] duration-300 ease-[cubic-bezier(.2,.8,.2,1)]',
                     glass
-                        ? 'bg-ink-900/50 backdrop-blur-xl border-ink-700/60 shadow-card-lg'
-                        : 'bg-ink-900 border-ink-700/70 shadow-card',
-                    hover && 'hover:shadow-card-hover hover:border-accent-500/40',
+                        ? 'bg-ink-900/85 backdrop-blur-md shadow-card-lg'
+                        : 'bg-ink-900 shadow-card',
+                    hover && 'hover:shadow-card-hover',
                     className
                 )}
                 {...motionProps}
@@ -42,7 +44,7 @@ const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     ({ className, ...props }, ref) => (
         <div
             ref={ref}
-            className={cn('px-6 py-4 border-b border-ink-700/70', className)}
+            className={cn('px-6 py-4 border-b border-ink-50/[0.08]', className)}
             {...props}
         />
     )
@@ -53,7 +55,7 @@ const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingEleme
     ({ className, ...props }, ref) => (
         <h3
             ref={ref}
-            className={cn('font-display font-semibold text-ink-50 flex items-center gap-2', className)}
+            className={cn('font-display text-[15px] font-medium tracking-[-0.02em] text-ink-50 flex items-center gap-2', className)}
             {...props}
         />
     )

@@ -34,7 +34,7 @@ export function BlurFade({ children, delay = 0, duration = 0.5, inView = false, 
             {...(inView
                 ? { whileInView: target, viewport: { once: true, amount: 0.4 } }
                 : { animate: target })}
-            transition={{ duration, delay, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration, delay, ease: [0.2, 0.8, 0.2, 1] }}
         >
             {children}
         </Tag>

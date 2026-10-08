@@ -7,8 +7,16 @@ import { useAuth } from '@/lib/auth';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, User, Building, ArrowRight, ArrowLeft, Package, Scissors } from 'lucide-react';
 import { Input } from '@bookingflow/ui';
-import { GlowButton } from '@/components/primitives/glow-button';
-import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
+import {
+    AuthFrame,
+    authErrorBox,
+    authFormClass,
+    authHeading,
+    authInputClass,
+    authLink,
+    authPrimaryBtn,
+    authSub,
+} from '@/components/auth/auth-frame';
 import { PRODUCT_MODE_ENABLED } from '@/lib/feature-flags';
 
 type BusinessType = 'PRODUCT' | 'SERVICE';
@@ -67,26 +75,15 @@ export default function RegisterPage() {
     };
 
     return (
-        <div className="min-h-screen bg-ink-950 text-ink-50 flex items-center justify-center px-4 py-12 relative overflow-hidden">
-            {/* Atmospheric background */}
-            <div aria-hidden className="absolute inset-0 bookly-glow opacity-60 pointer-events-none" />
-            <div aria-hidden className="absolute inset-0 bg-grid opacity-40 pointer-events-none" />
-
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="w-full max-w-md relative z-10"
-            >
-                {/* Logo */}
-                <div className="text-center mb-8">
-                    <Link href="/" className="inline-block">
-                        <BooklyWordmark size="lg" />
-                    </Link>
-                </div>
-
-                {/* Card */}
-                <div className="rounded-2xl border border-ink-700 bg-ink-900/80 backdrop-blur-xl p-8 shadow-card-lg">
+        <AuthFrame
+            statement={
+                <>
+                    Set up this afternoon.{' '}
+                    <span className="text-forest-cream/50">Taking bookings on WhatsApp by tonight.</span>
+                </>
+            }
+        >
+            <div>
                     <AnimatePresence mode="wait">
                         {step === 1 ? (
                             <motion.div
@@ -96,27 +93,27 @@ export default function RegisterPage() {
                                 exit={{ opacity: 0, x: -20 }}
                                 transition={{ duration: 0.3 }}
                             >
-                                <div className="text-center mb-8">
-                                    <h1 className="font-display text-h1 text-ink-50 mb-2 tracking-tight">What type of business?</h1>
-                                    <p className="text-body-sm text-ink-300">Choose how you want to sell via WhatsApp</p>
+                                <div className="mb-8">
+                                    <h1 className={`${authHeading} mb-3`}>What type of business?</h1>
+                                    <p className={authSub}>Choose how you want to sell via WhatsApp</p>
                                 </div>
 
-                                <div className="space-y-4">
+                                <div className="space-y-3">
                                     <motion.button
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
+                                        whileHover={{ y: -2 }}
+                                        whileTap={{ scale: 0.99 }}
                                         onClick={() => handleBusinessType('PRODUCT')}
-                                        className="w-full bg-ink-800/40 hover:bg-ink-800 border border-ink-700 hover:border-bookly-emerald-500/40 rounded-2xl p-6 text-left transition-all group"
+                                        className="w-full bg-[#FBFAF7] border border-forest-ink/[.12] hover:border-forest-brand/50 rounded-[6px] p-5 text-left shadow-[0_14px_30px_-22px_rgba(20,26,22,0.45)] transition-colors group focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-forest-brand/30"
                                     >
                                         <div className="flex items-start gap-4">
-                                            <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-orange-500/30 transition-colors">
-                                                <Package className="w-6 h-6 text-orange-400" />
+                                            <div className="w-10 h-10 bg-forest-night text-forest-cream rounded-[4px] flex items-center justify-center flex-shrink-0">
+                                                <Package className="w-5 h-5" />
                                             </div>
                                             <div>
-                                                <h3 className="font-display text-h3 text-ink-50 mb-1 group-hover:text-bookly-emerald-400 transition-colors">
+                                                <h3 className="text-[17px] font-medium tracking-[-0.02em] text-forest-ink mb-1">
                                                     Product Business
                                                 </h3>
-                                                <p className="text-body-sm text-ink-300 leading-relaxed">
+                                                <p className="text-[13px] text-[#5F675E] leading-relaxed">
                                                     Sell physical or digital products. Manage inventory, orders, and deliveries.
                                                 </p>
                                             </div>
@@ -124,20 +121,20 @@ export default function RegisterPage() {
                                     </motion.button>
 
                                     <motion.button
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
+                                        whileHover={{ y: -2 }}
+                                        whileTap={{ scale: 0.99 }}
                                         onClick={() => handleBusinessType('SERVICE')}
-                                        className="w-full bg-ink-800/40 hover:bg-ink-800 border border-ink-700 hover:border-bookly-emerald-500/40 rounded-2xl p-6 text-left transition-all group"
+                                        className="w-full bg-[#FBFAF7] border border-forest-ink/[.12] hover:border-forest-brand/50 rounded-[6px] p-5 text-left shadow-[0_14px_30px_-22px_rgba(20,26,22,0.45)] transition-colors group focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-forest-brand/30"
                                     >
                                         <div className="flex items-start gap-4">
-                                            <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-purple-500/30 transition-colors">
-                                                <Scissors className="w-6 h-6 text-purple-400" />
+                                            <div className="w-10 h-10 bg-forest-night text-forest-cream rounded-[4px] flex items-center justify-center flex-shrink-0">
+                                                <Scissors className="w-5 h-5" />
                                             </div>
                                             <div>
-                                                <h3 className="font-display text-h3 text-ink-50 mb-1 group-hover:text-bookly-emerald-400 transition-colors">
+                                                <h3 className="text-[17px] font-medium tracking-[-0.02em] text-forest-ink mb-1">
                                                     Service Business
                                                 </h3>
-                                                <p className="text-body-sm text-ink-300 leading-relaxed">
+                                                <p className="text-[13px] text-[#5F675E] leading-relaxed">
                                                     Book appointments and services. Manage availability and bookings.
                                                 </p>
                                             </div>
@@ -146,9 +143,9 @@ export default function RegisterPage() {
                                 </div>
 
                                 <div className="mt-6 text-center">
-                                    <p className="text-body-sm text-ink-300">
+                                    <p className="text-[13px] text-[#5F675E]">
                                         Already have an account?{' '}
-                                        <Link href="/login" className="text-bookly-emerald-400 hover:text-bookly-emerald-300 font-medium transition-colors">
+                                        <Link href="/login" className={authLink}>
                                             Sign in
                                         </Link>
                                     </p>
@@ -165,66 +162,69 @@ export default function RegisterPage() {
                                 {PRODUCT_MODE_ENABLED && (
                                     <button
                                         onClick={() => setStep(1)}
-                                        className="flex items-center text-ink-300 hover:text-ink-50 mb-4 transition-colors text-body-sm"
+                                        className="flex items-center min-h-[44px] text-[#5F675E] hover:text-forest-ink mb-2 transition-colors text-[13px]"
                                     >
                                         <ArrowLeft className="w-4 h-4 mr-1.5" />
                                         Back
                                     </button>
                                 )}
 
-                                <div className="text-center mb-8">
-                                    <div className="inline-flex items-center bg-bookly-emerald-500/15 text-bookly-emerald-300 px-3 py-1 rounded-full text-caption uppercase tracking-wider mb-3">
+                                <div className="mb-8">
+                                    <div className="fs-badge mb-4">
                                         {formData.businessType === 'PRODUCT' ? (
-                                            <><Package className="w-3.5 h-3.5 mr-1.5" /> Product Business</>
+                                            <><Package className="w-3 h-3" /> Product business</>
                                         ) : (
-                                            <><Scissors className="w-3.5 h-3.5 mr-1.5" /> Service Business</>
+                                            <><Scissors className="w-3 h-3" /> Service business</>
                                         )}
                                     </div>
-                                    <h1 className="font-display text-h1 text-ink-50 mb-2 tracking-tight">Create your account</h1>
-                                    <p className="text-body-sm text-ink-300">Start your 14-day free Pro trial</p>
+                                    <h1 className={`${authHeading} mb-3`}>Create your account.</h1>
+                                    <p className={authSub}>Start your 14-day free Pro trial</p>
                                 </div>
 
                                 {error && (
                                     <motion.div
                                         initial={{ opacity: 0, y: -10 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-3 rounded-xl mb-6 text-body-sm"
+                                        className={`${authErrorBox} mb-5`}
                                     >
                                         {error}
                                     </motion.div>
                                 )}
 
-                                <form onSubmit={handleSubmit} className="space-y-5">
+                                <form onSubmit={handleSubmit} className={authFormClass}>
                                     <Input
                                         type="text"
                                         label="Your Name"
-                                        icon={<User className="w-5 h-5" />}
+                                        icon={<User className="w-[18px] h-[18px]" />}
                                         name="name"
                                         value={formData.name}
                                         onChange={handleChange}
                                         placeholder="Ama Mensah"
+                                        className={authInputClass}
                                         required
                                     />
 
                                     <Input
                                         type="text"
                                         label="Business Name"
-                                        icon={<Building className="w-5 h-5" />}
+                                        icon={<Building className="w-[18px] h-[18px]" />}
                                         name="businessName"
                                         value={formData.businessName}
                                         onChange={handleChange}
                                         placeholder={formData.businessType === 'PRODUCT' ? "Ama's Fabrics" : "Ama's Hair Studio"}
+                                        className={authInputClass}
                                         required
                                     />
 
                                     <Input
                                         type="email"
                                         label="Email"
-                                        icon={<Mail className="w-5 h-5" />}
+                                        icon={<Mail className="w-[18px] h-[18px]" />}
                                         name="email"
                                         value={formData.email}
                                         onChange={handleChange}
                                         placeholder="you@example.com"
+                                        className={authInputClass}
                                         required
                                     />
 
@@ -232,47 +232,42 @@ export default function RegisterPage() {
                                         <Input
                                             type="password"
                                             label="Password"
-                                            icon={<Lock className="w-5 h-5" />}
+                                            icon={<Lock className="w-[18px] h-[18px]" />}
                                             name="password"
                                             value={formData.password}
                                             onChange={handleChange}
                                             placeholder="••••••••"
                                             minLength={8}
+                                            className={authInputClass}
                                             required
                                         />
-                                        <p className="text-ink-300 text-[13px] mt-1.5">At least 8 characters.</p>
+                                        <p className="text-[#5F675E] text-[12px] mt-1.5">At least 8 characters.</p>
                                     </div>
 
-                                <label className="flex items-start gap-3 text-body-sm text-ink-300 cursor-pointer">
+                                <label className="flex items-start gap-3 text-[13px] text-[#5F675E] cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={agreed}
                                         onChange={(e) => setAgreed(e.target.checked)}
                                         required
-                                        className="mt-0.5 h-5 w-5 shrink-0 rounded border-ink-600 bg-ink-900 text-bookly-emerald-500 focus:ring-bookly-emerald-500 focus:ring-offset-ink-950"
+                                        className="mt-0.5 h-5 w-5 shrink-0 rounded-[3px] border-forest-ink/30 bg-[#FBFAF7] text-forest-brand accent-[#2F5640] focus:ring-forest-brand/30 focus:ring-offset-0"
                                     />
                                     <span>
                                         I agree to the{' '}
-                                        <Link href="/terms" className="text-ink-50 underline underline-offset-2" target="_blank">Terms</Link>
+                                        <Link href="/terms" className="text-forest-ink underline underline-offset-2" target="_blank">Terms</Link>
                                         {' '}and{' '}
-                                        <Link href="/privacy" className="text-ink-50 underline underline-offset-2" target="_blank">Privacy Policy</Link>.
+                                        <Link href="/privacy" className="text-forest-ink underline underline-offset-2" target="_blank">Privacy Policy</Link>.
                                     </span>
                                 </label>
 
-                                    <GlowButton
-                                        type="submit"
-                                        disabled={isLoading}
-                                        className="w-full"
-                                        size="lg"
-                                    >
+                                    <button type="submit" disabled={isLoading} className={authPrimaryBtn}>
                                         {isLoading ? 'Creating…' : (<>Create account <ArrowRight className="w-4 h-4" /></>)}
-                                    </GlowButton>
+                                    </button>
                                 </form>
                             </motion.div>
                         )}
                     </AnimatePresence>
-                </div>
-            </motion.div>
-        </div>
+            </div>
+        </AuthFrame>
     );
 }

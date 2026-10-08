@@ -5,17 +5,18 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../cn';
 
 const badgeVariants = cva(
-    'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+    'inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] leading-[18px] font-medium tracking-normal normal-case transition-colors',
     {
         variants: {
             variant: {
-                default: 'bg-accent-100 text-accent-700 dark:bg-accent-900/30 dark:text-accent-400',
-                blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-                yellow: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-                red: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                purple: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-                orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-                slate: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
+                // Muted, ink-toned fills: status reads from the hue, not from loudness.
+                default: 'bg-accent-100 text-accent-700 dark:bg-accent-500/20 dark:text-accent-200',
+                blue: 'bg-[#DDE4EA] text-[#2C4A63] dark:bg-[#2C4A63]/40 dark:text-[#B9CCDD]',
+                yellow: 'bg-[#F1E3C2] text-[#7A5512] dark:bg-[#FFD98A]/15 dark:text-[#FFD98A]',
+                red: 'bg-[#F0D9D5] text-[#962F25] dark:bg-[#B03A2E]/25 dark:text-[#F0B8B0]',
+                purple: 'bg-[#E4DEEA] text-[#53426B] dark:bg-[#53426B]/40 dark:text-[#CFC3DE]',
+                orange: 'bg-[#F0DDCB] text-[#87471C] dark:bg-[#87471C]/35 dark:text-[#EBC29F]',
+                slate: 'bg-ink-800 text-ink-200 dark:bg-ink-800 dark:text-ink-200',
             },
             pulse: {
                 true: '',

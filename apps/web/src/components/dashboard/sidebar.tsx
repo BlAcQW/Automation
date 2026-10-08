@@ -21,7 +21,7 @@ import {
     Boxes,
     Smartphone,
     FileText,
-    ChevronRight, Share2, Wallet
+    ChevronRight, Share2, Wallet, CalendarCheck
 } from 'lucide-react';
 
 const serviceNavigation = [
@@ -49,9 +49,23 @@ const productNavigation = [
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
+/** OWNER → Owner, STAFF → Staff: sentence case, no tracked caps. */
+function formatRole(role?: string | null) {
+    if (!role) return '';
+    const words = role.replace(/_/g, ' ').toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// Cream-on-forest focus: the theme ring (forest brand) would vanish on the frame.
+const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-glow';
+
 /**
  * Desktop-only left sidebar (`lg+`). On mobile/tablet the navigation is the
  * fixed BottomTabBar instead — there is no hamburger drawer anymore.
+ *
+ * Forest ledger: the sidebar IS the forest frame (deeper night in dark mode),
+ * cream type, a paper logo pill, dark forest-card panels and a gold marker on
+ * the active item.
  */
 export function Sidebar() {
     const pathname = usePathname();
@@ -62,29 +76,39 @@ export function Sidebar() {
     return (
         <aside className={cn(
             'hidden lg:flex fixed top-0 bottom-0 left-0 w-60 z-50',
-            'bg-ink-1000 border-r border-ink-700',
+            'bg-forest-frame dark:bg-ink-1000 text-forest-cream',
             'flex-col',
         )}>
-            {/* Logo */}
-            <div className="h-14 flex items-center px-5 border-b border-ink-700">
-                <Link href="/dashboard" className="flex items-center gap-1">
-                    <span className="font-display font-bold text-h2 tracking-tight text-ink-50">Bookly</span>
-                    <span className="h-1.5 w-1.5 rounded-full bg-bookly-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] mb-1" aria-hidden />
+            {/* Logo — the marketing site's paper pill with the calendar mark */}
+            <div className="h-16 flex items-center px-3 pt-2">
+                <Link
+                    href="/dashboard"
+                    aria-label="Bookly overview"
+                    className={cn('fs-logo-pill pr-3 shadow-[0_10px_24px_-14px_rgba(0,0,0,0.5)]', FOCUS)}
+                >
+                    <span className="fs-logo">
+                        <span className="fs-logo-mark" aria-hidden>
+                            <CalendarCheck className="h-3 w-3" strokeWidth={2.4} />
+                        </span>
+                        <span>
+                            Bookly<span className="fs-logo-dot">.</span>
+                        </span>
+                    </span>
                 </Link>
             </div>
 
             {/* Tenant Info */}
-            <div className="px-3 py-4">
-                <div className="bg-ink-900 rounded-xl px-3.5 py-2.5 border border-ink-700">
-                    <p className="text-[11px] font-medium uppercase tracking-wider text-ink-300">
-                        {tenant?.businessType === 'PRODUCT' ? 'Product Store' : 'Service Business'}
+            <div className="px-3 pt-3 pb-4">
+                <div className="rounded-xl bg-forest-card px-3.5 py-3 shadow-[0_20px_36px_-24px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] dark:shadow-[0_0_0_1px_rgba(236,235,225,0.06)]">
+                    <p className="font-mono text-[11px] text-forest-cream/50">
+                        /{tenant?.businessType === 'PRODUCT' ? 'product store' : 'service business'}/
                     </p>
-                    <p className="font-display font-semibold text-ink-50 truncate text-sm mt-0.5">{tenant?.name}</p>
+                    <p className="mt-1 truncate text-[15px] font-medium tracking-[-0.02em] text-forest-cream">{tenant?.name}</p>
                 </div>
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
+            <nav className="flex-1 px-3 py-1 space-y-0.5 overflow-y-auto">
                 {navigation.map((item) => {
                     const isActive = pathname === item.href ||
                         (item.href !== '/dashboard' && pathname.startsWith(item.href));
@@ -93,30 +117,35 @@ export function Sidebar() {
                         <Link
                             key={item.name}
                             href={item.href}
+                            aria-current={isActive ? 'page' : undefined}
                             className={cn(
-                                'relative flex items-center pl-4 pr-3 py-2.5 rounded-xl text-body-sm font-medium transition-all duration-150 group',
+                                'relative flex items-center pl-4 pr-3 py-2.5 rounded-lg text-[14px] font-medium tracking-[-0.01em] transition-colors duration-150 group',
                                 isActive
-                                    ? 'text-ink-50 bg-ink-800'
-                                    : 'text-ink-300 hover:text-ink-100 hover:bg-ink-900',
+                                    ? 'text-forest-cream bg-white/[0.08]'
+                                    : 'text-forest-cream/60 hover:text-forest-cream hover:bg-white/[0.04]',
+                                FOCUS,
                             )}
                         >
-                            {/* Active indicator bar — ui.md §8.1 */}
+                            {/* Active marker — a small gold tick, shared layoutId so it slides */}
                             {isActive && (
                                 <motion.div
                                     layoutId="sidebar-active"
-                                    className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-bookly-emerald-500 rounded-full"
+                                    className="absolute left-1.5 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-forest-glow rounded-full"
                                     transition={{ type: 'spring', stiffness: 350, damping: 30 }}
                                 />
                             )}
 
-                            <item.icon className={cn(
-                                'w-4.5 h-4.5 mr-3 transition-colors',
-                                isActive ? 'text-bookly-emerald-400' : 'text-ink-400 group-hover:text-ink-200',
-                            )} />
+                            <item.icon
+                                strokeWidth={isActive ? 2 : 1.75}
+                                className={cn(
+                                    'w-[18px] h-[18px] mr-3 transition-colors',
+                                    isActive ? 'text-forest-cream' : 'text-forest-cream/55 group-hover:text-forest-cream/85',
+                                )}
+                            />
                             {item.name}
 
                             {isActive && (
-                                <ChevronRight className="w-4 h-4 ml-auto text-bookly-emerald-400/70" />
+                                <ChevronRight className="w-4 h-4 ml-auto text-forest-cream/40" />
                             )}
                         </Link>
                     );
@@ -124,25 +153,28 @@ export function Sidebar() {
             </nav>
 
             {/* Plan details — taken from /billing/status */}
-            <div className="px-4">
+            <div className="px-3">
                 <PlanCard />
             </div>
 
             {/* User & Logout */}
-            <div className="p-4 border-t border-ink-700 mt-3">
-                <div className="flex items-center gap-3 px-2 mb-3">
+            <div className="p-3 pt-4 border-t border-white/[0.08] mt-3">
+                <div className="flex items-center gap-3 px-2 mb-2">
                     <Avatar name={user?.name} size="sm" />
                     <div className="flex-1 min-w-0">
-                        <p className="text-body-sm font-medium text-ink-100 truncate">{user?.name}</p>
-                        <p className="text-caption uppercase tracking-wider text-ink-400 truncate">{user?.role}</p>
+                        <p className="text-[14px] font-medium tracking-[-0.01em] text-forest-cream truncate">{user?.name}</p>
+                        <p className="text-[12px] text-forest-cream/50 truncate">{formatRole(user?.role)}</p>
                     </div>
                 </div>
                 <button
                     onClick={() => logout()}
-                    className="flex items-center w-full px-3 py-2.5 rounded-xl text-body-sm font-medium text-ink-400 hover:bg-rose-500/10 hover:text-rose-300 transition-all duration-150"
+                    className={cn(
+                        'flex items-center w-full min-h-[44px] px-3 rounded-lg text-[14px] font-medium text-forest-cream/60 hover:bg-[#B03A2E]/25 hover:text-[#F3C9C2] transition-colors duration-150',
+                        FOCUS,
+                    )}
                 >
-                    <LogOut className="w-4.5 h-4.5 mr-3" />
-                    Sign Out
+                    <LogOut className="w-[18px] h-[18px] mr-3" />
+                    Sign out
                 </button>
             </div>
         </aside>

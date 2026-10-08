@@ -120,7 +120,7 @@ export function ChatComposer({ onSend, onSendMedia, disabled }: ChatComposerProp
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={pending ? 'Add a caption…' : 'Type a message…'}
                 disabled={disabled}
-                className="flex-1 h-11 px-4 rounded-full bg-slate-100 dark:bg-slate-800 border-0 text-sm
+                className="flex-1 h-11 px-4 rounded-lg bg-slate-100 dark:bg-slate-800 border-0 text-sm
                            text-slate-900 dark:text-white placeholder:text-slate-400
                            focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50"
             />
@@ -128,9 +128,9 @@ export function ChatComposer({ onSend, onSendMedia, disabled }: ChatComposerProp
                 type="submit"
                 disabled={(!value.trim() && !pending) || sending || disabled}
                 aria-label="Send message"
-                className="h-11 w-11 shrink-0 flex items-center justify-center rounded-full
-                           bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/30
-                           transition-transform hover:brightness-110 active:scale-95
+                className="h-11 w-11 shrink-0 flex items-center justify-center rounded-[3px]
+                           bg-bookly-emerald-600 hover:bg-bookly-emerald-700 text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,.14)]
+                           transition-[transform,background-color] active:scale-95
                            disabled:opacity-40 disabled:pointer-events-none"
             >
                 {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}

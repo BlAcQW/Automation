@@ -97,7 +97,7 @@ function ScopePicker({ query, selected, onToggle }: {
         );
     }
     return (
-        <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+        <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-1 dark:border-slate-700">
             {query.data.map((s) => {
                 const on = selected.includes(s.scope);
                 return (
@@ -178,7 +178,7 @@ export function RotateKeyDialog({ apiKey, onClose, onChanged }: KeyDialogProps) 
                                 <label
                                     key={o.hours}
                                     className={cn(
-                                        'cursor-pointer rounded-xl border px-3 py-2.5 text-center text-sm font-medium transition-colors',
+                                        'cursor-pointer rounded-[3px] border px-3 py-2.5 text-center text-sm font-medium transition-colors',
                                         graceHours === o.hours
                                             ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
                                             : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600',

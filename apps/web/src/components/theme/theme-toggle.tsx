@@ -24,15 +24,14 @@ export function ThemeToggle({ className }: { className?: string }) {
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
             className={cn(
-                'inline-flex h-9 w-9 items-center justify-center rounded-xl',
-                'text-slate-500 dark:text-slate-400',
-                'hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200',
+                'inline-flex h-10 w-10 items-center justify-center rounded-lg',
+                'text-ink-300 hover:text-ink-50 hover:bg-ink-50/[0.06]',
                 'transition-colors',
                 className,
             )}
         >
             {mounted ? (
-                isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />
+                isDark ? <Sun className="h-[18px] w-[18px]" strokeWidth={1.75} /> : <Moon className="h-[18px] w-[18px]" strokeWidth={1.75} />
             ) : (
                 <div className="h-5 w-5" />
             )}

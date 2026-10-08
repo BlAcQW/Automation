@@ -6,7 +6,7 @@ import { cn } from '@bookingflow/ui';
 interface BooklyDotsProps {
     /** Visual scale. xs ~ 4px dots (inline), lg ~ 10px dots (full-page). */
     size?: 'xs' | 'sm' | 'md' | 'lg';
-    /** 'emerald' (default) on dark surfaces · 'ink' for use against emerald CTAs. */
+    /** 'emerald' (default): forest on paper, sage on night · 'ink' for use against brand CTAs. */
     tone?: 'emerald' | 'ink';
     /** When true, wraps the dots in a flex container that fills its parent and centers. */
     centered?: boolean;
@@ -23,7 +23,7 @@ const SIZE_TOKENS: Record<NonNullable<BooklyDotsProps['size']>, { dot: string; g
 };
 
 /**
- * Signature Bookly loader — three emerald dots, staggered pulse. The same
+ * Signature Bookly loader — three forest dots, staggered pulse. The same
  * gesture as the hero's TypingIndicator: "someone is on the other end."
  * Reduced-motion safe (freezes at 0.7 opacity).
  */
@@ -36,7 +36,7 @@ export function BooklyDots({
 }: BooklyDotsProps) {
     const reduce = useReducedMotion();
     const { dot, gap } = SIZE_TOKENS[size];
-    const color = tone === 'ink' ? 'bg-ink-50' : 'bg-bookly-emerald-400';
+    const color = tone === 'ink' ? 'bg-ink-50' : 'bg-forest-brand dark:bg-bookly-emerald-300';
 
     const dots = (
         <span

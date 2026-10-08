@@ -13,7 +13,7 @@ export default function AdminAccountPage() {
     return (
         <div className="space-y-6 max-w-2xl">
             <div>
-                <h1 className="text-2xl font-bold text-white">My account</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">My account</h1>
                 <p className="text-slate-400">
                     Signed in as {admin?.email} <Badge variant="slate">{ROLE_LABEL[admin?.role ?? ''] ?? admin?.role}</Badge>
                 </p>

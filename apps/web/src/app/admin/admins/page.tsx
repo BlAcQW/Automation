@@ -73,7 +73,7 @@ export default function AdminAdminsPage() {
     if (!allowed) {
         return (
             <div className="space-y-6">
-                <h1 className="text-2xl font-bold text-white">Manage Admins</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Manage Admins</h1>
                 <Card className="glass-card border-white/5 p-12 text-center">
                     <ShieldOff className="w-12 h-12 text-slate-600 mx-auto mb-3" />
                     <p className="text-slate-300 font-medium">Owner access required</p>
@@ -87,7 +87,7 @@ export default function AdminAdminsPage() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Manage Admins</h1>
+                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Manage Admins</h1>
                     <p className="text-slate-400">Add administrators and choose what each role may do.</p>
                 </div>
                 <Button onClick={() => setShowCreate(true)}>+ New Admin</Button>
@@ -192,7 +192,7 @@ export default function AdminAdminsPage() {
                             value={form.role}
                             onChange={(e) => setForm({ ...form, role: e.target.value as typeof form.role })}
                             required
-                            className="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white"
                         >
                             <option value="" disabled>Choose a role…</option>
                             {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}

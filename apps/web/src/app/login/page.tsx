@@ -6,13 +6,23 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
-import { BooklyWordmark } from '@/components/marketing/bookly-wordmark';
-import { GlowButton } from '@/components/primitives/glow-button';
 import { Input } from '@bookingflow/ui';
+import {
+    AuthFrame,
+    authErrorBox,
+    authFormClass,
+    authHeading,
+    authInputClass,
+    authLink,
+    authMutedLink,
+    authNoticeBox,
+    authPrimaryBtn,
+    authSub,
+} from '@/components/auth/auth-frame';
 
 /**
- * Login — ui.md split layout. Form left, atmospheric Bookly glow right.
- * Single column below `lg`.
+ * Login — forest-frame split: paper form panel left, night satin right.
+ * Paper panel only below `lg`.
  */
 export default function LoginPage() {
     const router = useRouter();
@@ -51,120 +61,73 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen grid lg:grid-cols-2 bg-ink-950 text-ink-50 relative overflow-hidden">
-            {/* Form column */}
-            <div className="flex items-center justify-center px-4 sm:px-8 py-12 relative">
-                {/* Mobile-only background atmosphere */}
-                <div className="lg:hidden absolute inset-0 pointer-events-none">
-                    <div className="bg-orb bg-orb-1" />
-                    <div className="bg-orb bg-orb-2" />
+        <AuthFrame
+            statement={
+                <>
+                    While you were away,{' '}
+                    <span className="text-forest-cream/50">your customers still got an answer.</span>
+                </>
+            }
+        >
+            <h1 className={`${authHeading} mb-3`}>Welcome back.</h1>
+            <p className={`${authSub} mb-8`}>Sign in to your Bookly account.</p>
+
+            {notice && !error && (
+                <div role="status" className={`${authNoticeBox} mb-5`}>
+                    {notice}
                 </div>
+            )}
 
+            {error && (
                 <motion.div
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={{ opacity: 0, y: -6 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                    className="w-full max-w-md relative z-10"
+                    className={`${authErrorBox} mb-5`}
                 >
-                    <div className="mb-10">
-                        <Link href="/" className="inline-block">
-                            <BooklyWordmark size="lg" />
-                        </Link>
-                    </div>
-
-                    <h1 className="font-display text-display-md text-ink-50 mb-2 tracking-tight">
-                        Welcome back
-                    </h1>
-                    <p className="text-body text-ink-300 mb-8">Sign in to your Bookly account.</p>
-
-                    {notice && !error && (
-                        <div role="status" className="bg-ink-900 border border-ink-700 text-ink-100 px-4 py-3 rounded-xl mb-6 text-body-sm">
-                            {notice}
-                        </div>
-                    )}
-
-                    {error && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="bg-rose-500/10 border border-rose-500/30 text-rose-300 px-4 py-3 rounded-xl mb-6 text-body-sm"
-                        >
-                            {error}
-                        </motion.div>
-                    )}
-
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        <Input
-                            type="email"
-                            label="Email"
-                            icon={<Mail className="w-5 h-5" />}
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="you@example.com"
-                            required
-                        />
-                        <Input
-                            type="password"
-                            label="Password"
-                            icon={<Lock className="w-5 h-5" />}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                            autoComplete="current-password"
-                            required
-                        />
-                        <div className="flex justify-end -mt-1">
-                            <Link
-                                href="/forgot-password"
-                                className="text-body-sm text-ink-300 hover:text-ink-50 transition-colors py-1"
-                            >
-                                Forgot your password?
-                            </Link>
-                        </div>
-                        <GlowButton
-                            type="submit"
-                            disabled={isLoading}
-                            className="w-full"
-                            size="lg"
-                        >
-                            {isLoading ? 'Signing in…' : (
-                                <>Sign in <ArrowRight className="w-4 h-4" /></>
-                            )}
-                        </GlowButton>
-                    </form>
-
-                    <p className="mt-8 text-center text-body-sm text-ink-300">
-                        Don&apos;t have an account?{' '}
-                        <Link href="/register" className="text-bookly-emerald-400 hover:text-bookly-emerald-300 font-medium transition-colors">
-                            Start free
-                        </Link>
-                    </p>
+                    {error}
                 </motion.div>
-            </div>
+            )}
 
-            {/* Atmospheric right rail — desktop only */}
-            <aside className="hidden lg:flex relative items-center justify-center bg-ink-1000 overflow-hidden border-l border-ink-700">
-                <div aria-hidden className="absolute inset-0 bookly-glow opacity-90" />
-                <div aria-hidden className="absolute inset-0 bg-grid opacity-40" />
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
-                    className="relative z-10 text-center max-w-md px-8"
-                >
-                    <p className="text-caption uppercase tracking-[0.18em] text-bookly-emerald-400 mb-5">
-                        WhatsApp × Automation
-                    </p>
-                    <p className="font-display text-display-md text-ink-50 leading-tight">
-                        Your business,{' '}
-                        <span className="text-gradient">running itself</span>{' '}
-                        on WhatsApp.
-                    </p>
-                    <p className="mt-6 text-body-lg text-ink-200">
-                        Bookings. Payments. Reminders. All handled while you sleep.
-                    </p>
-                </motion.div>
-            </aside>
-        </div>
+            <form onSubmit={handleSubmit} className={authFormClass}>
+                <Input
+                    type="email"
+                    label="Email"
+                    icon={<Mail className="w-[18px] h-[18px]" />}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className={authInputClass}
+                    required
+                />
+                <Input
+                    type="password"
+                    label="Password"
+                    icon={<Lock className="w-[18px] h-[18px]" />}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className={authInputClass}
+                    required
+                />
+                <div className="flex justify-end -mt-1">
+                    <Link href="/forgot-password" className={`${authMutedLink} py-1`}>
+                        Forgot your password?
+                    </Link>
+                </div>
+                <button type="submit" disabled={isLoading} className={authPrimaryBtn}>
+                    {isLoading ? 'Signing in…' : (
+                        <>Sign in <ArrowRight className="w-4 h-4" /></>
+                    )}
+                </button>
+            </form>
+
+            <p className="mt-8 text-center text-[13px] text-[#5F675E]">
+                Don&apos;t have an account?{' '}
+                <Link href="/register" className={authLink}>
+                    Start free
+                </Link>
+            </p>
+        </AuthFrame>
     );
 }

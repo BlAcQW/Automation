@@ -20,10 +20,10 @@ interface Notification {
 }
 
 const typeConfig: Record<string, { icon: typeof Bell; color: string; bg: string }> = {
-    NEW_BOOKING: { icon: Calendar, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
-    BOOKING_CANCELLED: { icon: XCircle, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/30' },
-    NEW_CONVERSATION: { icon: MessageCircle, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/30' },
-    SYSTEM: { icon: Info, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/30' },
+    NEW_BOOKING: { icon: Calendar, color: 'text-forest-brand dark:text-bookly-emerald-300', bg: 'bg-bookly-emerald-100 dark:bg-bookly-emerald-500/20' },
+    BOOKING_CANCELLED: { icon: XCircle, color: 'text-[#962F25] dark:text-[#F0B8B0]', bg: 'bg-[#F0D9D5] dark:bg-[#B03A2E]/25' },
+    NEW_CONVERSATION: { icon: MessageCircle, color: 'text-[#2C4A63] dark:text-[#B9CCDD]', bg: 'bg-[#DDE4EA] dark:bg-[#2C4A63]/40' },
+    SYSTEM: { icon: Info, color: 'text-[#7A5512] dark:text-forest-glow', bg: 'bg-[#F1E3C2] dark:bg-forest-glow/15' },
 };
 
 function timeAgo(date: string): string {
@@ -140,7 +140,9 @@ export function NotificationDropdown() {
             {/* Bell Button */}
             <button
                 onClick={toggleOpen}
-                className="relative p-2.5 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+                aria-expanded={isOpen}
+                className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink-300 hover:bg-ink-50/[0.06] hover:text-ink-50 transition-colors"
             >
                 <Bell className="w-5 h-5" />
                 <AnimatePresence>
@@ -149,7 +151,7 @@ export function NotificationDropdown() {
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
                             exit={{ scale: 0 }}
-                            className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900"
+                            className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] px-1 bg-[#B03A2E] text-[#FBFAF7] text-[11px] font-medium tabular-nums rounded-full flex items-center justify-center ring-2 ring-ink-950"
                         >
                             {unreadCount > 99 ? '99+' : unreadCount}
                         </motion.span>
@@ -161,22 +163,22 @@ export function NotificationDropdown() {
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
-                        initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute right-0 top-full mt-2 w-[360px] max-h-[480px] bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden z-50"
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
+                        className="absolute right-0 top-full mt-2 w-[min(360px,calc(100vw-2rem))] max-h-[480px] bg-white dark:bg-ink-900 rounded-2xl shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.08),0_30px_60px_-30px_rgba(20,26,22,0.55)] overflow-hidden z-50 origin-top-right"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-                            <h3 className="font-semibold text-slate-900 dark:text-white text-sm">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-ink-50/[0.08]">
+                            <h3 className="text-[15px] font-medium tracking-[-0.02em] text-ink-50">
                                 Notifications
                             </h3>
                             {unreadCount > 0 && (
                                 <button
                                     onClick={markAllAsRead}
                                     disabled={markingAll}
-                                    className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 font-medium disabled:opacity-50 transition-colors"
+                                    className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-forest-brand dark:text-bookly-emerald-300 hover:bg-ink-50/[0.05] font-medium disabled:opacity-50 transition-colors"
                                 >
                                     {markingAll ? (
                                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -192,15 +194,15 @@ export function NotificationDropdown() {
                         <div className="overflow-y-auto max-h-[400px]">
                             {loading ? (
                                 <div className="flex items-center justify-center py-12">
-                                    <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                                    <Loader2 className="w-5 h-5 animate-spin text-ink-400" />
                                 </div>
                             ) : notifications.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                                    <Bell className="w-8 h-8 mb-2 text-slate-300 dark:text-slate-600" />
+                                <div className="flex flex-col items-center justify-center py-12 text-ink-400">
+                                    <Bell className="w-8 h-8 mb-2 text-ink-600" strokeWidth={1.5} />
                                     <p className="text-sm">No notifications yet</p>
                                 </div>
                             ) : (
-                                <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                                <div className="divide-y divide-ink-50/[0.06]">
                                     {notifications.map((notification, index) => {
                                         const config = typeConfig[notification.type] || typeConfig.SYSTEM;
                                         const Icon = config.icon;
@@ -208,36 +210,36 @@ export function NotificationDropdown() {
                                         return (
                                             <motion.button
                                                 key={notification.id}
-                                                initial={{ opacity: 0, x: -10 }}
-                                                animate={{ opacity: 1, x: 0 }}
+                                                initial={{ opacity: 0, y: 6 }}
+                                                animate={{ opacity: 1, y: 0 }}
                                                 transition={{ delay: index * 0.03 }}
                                                 onClick={() => {
                                                     if (!notification.isRead) markAsRead(notification.id);
                                                 }}
-                                                className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${!notification.isRead
-                                                    ? 'bg-emerald-50/50 dark:bg-emerald-900/10'
+                                                className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-ink-50/[0.04] transition-colors ${!notification.isRead
+                                                    ? 'bg-bookly-emerald-50/70 dark:bg-white/[0.03]'
                                                     : ''
                                                     }`}
                                             >
-                                                <div className={`w-8 h-8 rounded-lg ${config.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                                                <div className={`w-8 h-8 rounded ${config.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
                                                     <Icon className={`w-4 h-4 ${config.color}`} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2">
                                                         <p className={`text-sm font-medium truncate ${!notification.isRead
-                                                            ? 'text-slate-900 dark:text-white'
-                                                            : 'text-slate-600 dark:text-slate-400'
+                                                            ? 'text-ink-50'
+                                                            : 'text-ink-300'
                                                             }`}>
                                                             {notification.title}
                                                         </p>
                                                         {!notification.isRead && (
-                                                            <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-forest-brand dark:bg-forest-glow flex-shrink-0" />
                                                         )}
                                                     </div>
-                                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2">
+                                                    <p className="text-xs text-ink-300 mt-0.5 line-clamp-2">
                                                         {notification.message}
                                                     </p>
-                                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                                                    <p className="text-[11px] text-ink-400 mt-1 tabular-nums">
                                                         {timeAgo(notification.createdAt)}
                                                     </p>
                                                 </div>

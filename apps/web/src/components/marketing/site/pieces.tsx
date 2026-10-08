@@ -18,36 +18,39 @@ export function Section({
 }: {
     id?: string; children: React.ReactNode; tint?: boolean; className?: string;
 }) {
+    // Night by default. `tint` lifts the block onto a paper inset panel, the
+    // reference's rhythm of night band / paper sheet / night band.
+    if (tint) {
+        return (
+            <section id={id} className={`fs-night ${className}`}>
+                <div className="fs-inset fs-paper">
+                    <div className="fs-wrap">{children}</div>
+                </div>
+            </section>
+        );
+    }
     return (
-        <section
-            id={id}
-            className={`relative px-5 py-16 sm:px-8 sm:py-24 ${className}`}
-            style={tint ? { background: 'var(--card)' } : undefined}
-        >
-            <div className="mx-auto max-w-6xl">{children}</div>
+        <section id={id} className={`fs-night fs-section ${className}`}>
+            <div className="fs-wrap">{children}</div>
         </section>
     );
 }
 
 export function Eyebrow({ children }: { children: React.ReactNode }) {
-    return (
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--primary)' }}>
-            {children}
-        </p>
-    );
+    return <p className="fs-badge mb-5">{children}</p>;
 }
 
 export function Heading({ children, sub }: { children: React.ReactNode; sub?: string }) {
     return (
-        <div className="max-w-2xl">
+        <div className="max-w-3xl">
             <h2
-                className="font-display text-[2rem] leading-[1.1] sm:text-[2.7rem]"
-                style={{ color: 'var(--foreground)', textWrap: 'balance' }}
+                className="text-[2.1rem] leading-[1.02] sm:text-[3.2rem]"
+                style={{ color: 'var(--foreground)', textWrap: 'balance', fontWeight: 400, letterSpacing: '-0.05em' }}
             >
                 {children}
             </h2>
             {sub && (
-                <p className="mt-4 text-[16px] leading-relaxed sm:text-[17px]" style={{ color: 'var(--muted-foreground)' }}>
+                <p className="mt-4 max-w-xl text-[15px] leading-relaxed sm:text-[16px]" style={{ color: 'var(--muted-foreground)' }}>
                     {sub}
                 </p>
             )}
@@ -55,35 +58,27 @@ export function Heading({ children, sub }: { children: React.ReactNode; sub?: st
     );
 }
 
+/** Inner-page hero: the paper panel with a left-aligned head. */
 export function PageHero({ eyebrow, title, sub }: { eyebrow: string; title: string; sub: string }) {
     return (
-        <section className="glow relative px-5 pb-12 pt-14 sm:px-8 sm:pb-16 sm:pt-20">
-            <div className="mx-auto max-w-6xl">
-                <Eyebrow>{eyebrow}</Eyebrow>
-                <h1
-                    className="font-display text-[2.4rem] leading-[1.05] sm:text-[3.4rem]"
-                    style={{ color: 'var(--foreground)', textWrap: 'balance' }}
-                >
-                    {title}
-                </h1>
-                <p className="mt-5 max-w-xl text-[16px] leading-relaxed sm:text-[18px]" style={{ color: 'var(--muted-foreground)' }}>
-                    {sub}
-                </p>
+        <header className="fs-hero fs-paper">
+            <div className="fs-hero-grid" aria-hidden />
+            <div className="fs-hero-head fs-hero-head--left" style={{ paddingBottom: 72 }}>
+                <p className="fs-key fs-in">/{eyebrow.toLowerCase()}/</p>
+                <h1 className="fs-h1 fs-h1--page fs-in">{title}</h1>
+                <p className="fs-sub fs-in">{sub}</p>
             </div>
-        </section>
+        </header>
     );
 }
 
 export function CTA({ href, children, variant = 'solid' }: {
     href: string; children: React.ReactNode; variant?: 'solid' | 'ghost';
 }) {
-    const solid = { background: 'var(--primary)', color: 'var(--primary-foreground)' };
-    const ghost = { border: '1px solid var(--border)', color: 'var(--foreground)' };
     return (
         <Link
             href={href}
-            className="inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[15px] font-semibold sm:w-auto"
-            style={variant === 'solid' ? solid : ghost}
+            className={`fs-btn fs-btn--lg w-full sm:w-auto ${variant === 'solid' ? 'fs-btn--brand' : 'fs-btn--ghost'}`}
         >
             {children}
         </Link>
@@ -108,13 +103,13 @@ export function JobsGrid() {
             {JOBS.map(({ icon: Icon, t, d }) => (
                 <div key={t} className="flex gap-4">
                     <div
-                        className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                        style={{ background: 'var(--secondary)' }}
+                        className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[5px]"
+                        style={{ background: 'var(--card)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px var(--border)' }}
                     >
                         <Icon className="h-[18px] w-[18px]" style={{ color: 'var(--primary)' }} />
                     </div>
                     <div>
-                        <h3 className="text-[15px] font-semibold" style={{ color: 'var(--foreground)' }}>{t}</h3>
+                        <h3 className="text-[16px] font-medium tracking-[-0.02em]" style={{ color: 'var(--foreground)' }}>{t}</h3>
                         <p className="mt-1.5 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{d}</p>
                     </div>
                 </div>
@@ -134,11 +129,11 @@ export function ChannelCards() {
             {items.map(({ icon: Icon, n, d }) => (
                 <LiftCard
                     key={n}
-                    className="rounded-2xl p-6"
-                    style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+                    className="rounded-[6px] p-6"
+                    style={{ background: 'var(--card)', boxShadow: '0 30px 50px -28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)' }}
                 >
-                    <Icon className="h-6 w-6" style={{ color: 'var(--primary)' }} />
-                    <h3 className="mt-4 font-semibold" style={{ color: 'var(--foreground)' }}>{n}</h3>
+                    <span className="fs-ico" style={{ width: 32, height: 32 }}><Icon className="h-4 w-4" style={{ color: 'var(--primary)' }} /></span>
+                    <h3 className="mt-6 text-[20px] font-normal tracking-[-0.03em]" style={{ color: 'var(--foreground)' }}>{n}</h3>
                     <p className="mt-1.5 text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{d}</p>
                 </LiftCard>
             ))}
@@ -170,11 +165,14 @@ export function NoSetupBlock() {
                 </ul>
             </div>
 
-            <div className="rounded-2xl p-6 sm:p-7" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--muted-foreground)' }}>
+            <div
+                className="rounded-[6px] p-6 sm:p-7"
+                style={{ background: 'var(--forest-card)', color: 'var(--forest-cream)', boxShadow: '0 40px 70px -40px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.06)', ['--foreground' as string]: 'var(--forest-cream)', ['--muted-foreground' as string]: 'rgba(236,235,225,0.6)', ['--border' as string]: 'rgba(236,235,225,0.12)' }}
+            >
+                <p className="text-[12px]" style={{ color: 'var(--muted-foreground)' }}>
                     Ready to withdraw
                 </p>
-                <p className="mt-1 font-display text-[2.75rem] leading-none" style={{ color: 'var(--primary)' }}>GHS 1,240</p>
+                <p className="mt-2 text-[2.9rem] font-light leading-none tracking-[-0.045em] tabular-nums">GHS 1,240</p>
                 <div className="mt-5 space-y-2.5 border-t pt-5 text-sm" style={{ borderColor: 'var(--border)' }}>
                     <div className="flex justify-between">
                         <span style={{ color: 'var(--muted-foreground)' }}>Still clearing</span>
@@ -185,10 +183,7 @@ export function NoSetupBlock() {
                         <span className="tabular-nums" style={{ color: 'var(--foreground)' }}>MTN · 024 ••• 4567</span>
                     </div>
                 </div>
-                <div
-                    className="mt-6 flex min-h-[48px] items-center justify-center gap-2 rounded-xl text-sm font-semibold"
-                    style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
-                >
+                <div className="fs-btn fs-btn--cream fs-btn--wide mt-6" aria-hidden>
                     Send to my MoMo <ArrowRight className="h-4 w-4" />
                 </div>
             </div>
@@ -198,25 +193,30 @@ export function NoSetupBlock() {
 
 export function ClosingCTA({ title, sub }: { title: string; sub: string }) {
     return (
-        <Section>
-            <div
-                className="relative overflow-hidden rounded-3xl px-6 py-12 text-center sm:px-14 sm:py-16"
-                style={{ background: 'var(--secondary)', border: '1px solid var(--primary)' }}
-            >
-                <h2
-                    className="font-display text-[1.9rem] leading-tight sm:text-[2.5rem]"
-                    style={{ color: 'var(--secondary-foreground)', textWrap: 'balance' }}
-                >
-                    {title}
-                </h2>
-                <p className="mx-auto mt-4 max-w-xl text-[15px] sm:text-[16px]" style={{ color: 'var(--bookly-emerald-200)' }}>
-                    {sub}
-                </p>
-                <div className="mx-auto mt-8 max-w-xs">
-                    <CTA href="/register">Get started free <ArrowRight className="h-4 w-4" /></CTA>
+        <section className="fs-night">
+            <div className="fs-cta">
+                <span className="fs-cta-mark" aria-hidden><Sparkle /></span>
+                <h2 className="fs-h2" style={{ maxWidth: '16ch', color: 'var(--forest-cream)' }}>{title}</h2>
+                <p className="fs-feat-sub">{sub}</p>
+                <div className="fs-actions" style={{ marginTop: 30 }}>
+                    <Link href="/register" className="fs-btn fs-btn--lg fs-btn--cream">
+                        Get started free <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link href="/pricing" className="fs-btn fs-btn--lg fs-btn--ghost">See pricing</Link>
                 </div>
             </div>
-        </Section>
+        </section>
+    );
+}
+
+/** Six-petal mark from the reference's CTA, drawn as plain strokes. */
+function Sparkle() {
+    return (
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+            {[0, 60, 120].map((r) => (
+                <line key={r} x1="12" y1="3" x2="12" y2="21" transform={`rotate(${r} 12 12)`} />
+            ))}
+        </svg>
     );
 }
 
@@ -238,18 +238,19 @@ export function TrustStrip() {
         'Mobile Money and card',
     ];
     return (
-        <div className="border-y px-5 py-4 sm:px-8" style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-2">
+        <div className="fs-night px-5 pb-2 pt-10 sm:px-8">
+            <ul className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3">
                 {items.map((i) => (
-                    <span
+                    <li
                         key={i}
-                        className="text-[11px] font-medium uppercase tracking-[0.12em]"
+                        className="flex items-center gap-2 text-[13px]"
                         style={{ color: 'var(--muted-foreground)' }}
                     >
+                        <Check className="h-3.5 w-3.5" style={{ color: 'var(--forest-glow)' }} />
                         {i}
-                    </span>
+                    </li>
                 ))}
-            </div>
+            </ul>
         </div>
     );
 }
@@ -271,19 +272,19 @@ export function Comparison() {
         ['Wire up a webhook', 'Nothing to wire'],
     ];
     return (
-        <div className="overflow-hidden rounded-2xl" style={{ border: '1px solid var(--border)' }}>
-            <div className="grid grid-cols-2 text-[11px] font-semibold uppercase tracking-[0.12em]">
-                <div className="px-4 py-3 sm:px-6" style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}>
+        <div className="overflow-hidden rounded-[6px]" style={{ background: '#FBFAF7', boxShadow: '0 24px 50px -28px rgba(20,26,22,0.45), 0 0 0 1px var(--border)' }}>
+            <div className="grid grid-cols-2 text-[12px] font-medium">
+                <div className="px-4 py-3 sm:px-6" style={{ color: 'var(--muted-foreground)' }}>
                     Other tools ask you to
                 </div>
-                <div className="px-4 py-3 sm:px-6" style={{ background: 'var(--secondary)', color: 'var(--primary)' }}>
+                <div className="px-4 py-3 sm:px-6" style={{ background: 'var(--forest-brand)', color: '#FBFAF7' }}>
                     With Bookly
                 </div>
             </div>
             {rows.map(([a, b], i) => (
                 <div key={a} className="grid grid-cols-2 border-t text-[14px]" style={{ borderColor: 'var(--border)' }}>
                     <div className="px-4 py-3.5 sm:px-6" style={{ color: 'var(--muted-foreground)' }}>{a}</div>
-                    <div className="px-4 py-3.5 font-medium sm:px-6" style={{ color: 'var(--foreground)', background: i % 2 ? 'transparent' : 'rgba(16,185,129,0.06)' }}>
+                    <div className="px-4 py-3.5 font-medium sm:px-6" style={{ color: 'var(--foreground)', background: i % 2 ? 'transparent' : 'rgba(47,86,64,0.06)' }}>
                         {b}
                     </div>
                 </div>
@@ -300,8 +301,8 @@ export function WorksWith() {
             {items.map((i) => (
                 <span
                     key={i}
-                    className="rounded-lg px-3 py-2 text-[13px]"
-                    style={{ background: 'var(--card)', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+                    className="rounded-[3px] px-3 py-2 text-[13px]"
+                    style={{ background: '#FBFAF7', boxShadow: '0 0 0 1px var(--border)', color: 'var(--foreground)' }}
                 >
                     {i}
                 </span>

@@ -38,7 +38,7 @@ export default function AdminMoneyPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Money</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Money</h1>
                 <p className="text-slate-400">Read-only oversight of balances, payouts, refunds and fees. Nothing here moves money.</p>
             </div>
 
@@ -82,9 +82,9 @@ export default function AdminMoneyPage() {
 
                     <Panel title="Refunds">
                         <div className="grid grid-cols-3 gap-4 px-6 py-5 text-center">
-                            <div><p className="text-2xl font-semibold tabular-nums text-amber-300">{overview.data.refunds.pending}</p><p className="text-xs text-slate-500">Waiting to retry</p></div>
-                            <div><p className="text-2xl font-semibold tabular-nums text-white">{overview.data.refunds.refunding}</p><p className="text-xs text-slate-500">In flight</p></div>
-                            <div><p className="text-2xl font-semibold tabular-nums text-emerald-300">{overview.data.refunds.refunded}</p><p className="text-xs text-slate-500">Refunded</p></div>
+                            <div><p className="text-2xl font-light tracking-[-0.04em] tabular-nums text-amber-300">{overview.data.refunds.pending}</p><p className="text-xs text-slate-500">Waiting to retry</p></div>
+                            <div><p className="text-2xl font-light tracking-[-0.04em] tabular-nums text-white">{overview.data.refunds.refunding}</p><p className="text-xs text-slate-500">In flight</p></div>
+                            <div><p className="text-2xl font-light tracking-[-0.04em] tabular-nums text-emerald-300">{overview.data.refunds.refunded}</p><p className="text-xs text-slate-500">Refunded</p></div>
                         </div>
                     </Panel>
 

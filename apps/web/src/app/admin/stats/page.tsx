@@ -15,14 +15,14 @@ interface StatBlockProps {
 
 function StatBlock({ label, value, sub, icon: Icon }: StatBlockProps) {
     return (
-        <Card className="glass-card border-white/5 p-6">
+        <Card className="rounded-xl border-white/5 bg-forest-card p-6 text-forest-cream shadow-[0_30px_50px_-28px_rgba(0,0,0,.6),inset_0_1px_0_rgba(255,255,255,.06)]">
             <div className="flex items-start justify-between">
                 <div>
                     <p className="text-sm text-slate-400">{label}</p>
-                    <p className="text-3xl font-bold text-white mt-2">{value}</p>
+                    <p className="mt-3 text-[34px] font-light leading-none tracking-[-0.04em] tabular-nums text-forest-cream">{value}</p>
                     {sub && <p className="text-sm text-slate-500 mt-1">{sub}</p>}
                 </div>
-                <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-[5px] bg-forest-brand/40 flex items-center justify-center">
                     <Icon className="w-5 h-5 text-emerald-400" />
                 </div>
             </div>
@@ -51,9 +51,9 @@ export default function AdminStatsPage() {
         return (
             <div className="space-y-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Platform Statistics</h1>
+                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Platform Statistics</h1>
                 </div>
-                <Card className="glass-card border-white/5 p-6">
+                <Card className="rounded-xl border-white/5 bg-forest-card p-6 text-forest-cream shadow-[0_30px_50px_-28px_rgba(0,0,0,.6),inset_0_1px_0_rgba(255,255,255,.06)]">
                     <p className="text-red-400">Failed to load statistics.</p>
                 </Card>
             </div>
@@ -63,7 +63,7 @@ export default function AdminStatsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Platform Statistics</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Platform Statistics</h1>
                 <p className="text-slate-400">A live snapshot of the platform.</p>
             </div>
 

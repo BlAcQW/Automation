@@ -81,7 +81,7 @@ export default function CustomersPage() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
                 <div className="relative flex-1 w-full sm:max-w-md group">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                     <DashboardInput
@@ -93,7 +93,7 @@ export default function CustomersPage() {
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
@@ -131,16 +131,16 @@ export default function CustomersPage() {
                                         <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
                                             {customer.name}
                                         </td>
-                                        <td className="px-6 py-4 text-slate-500 font-mono">
+                                        <td className="px-6 py-4 text-slate-500 font-mono tabular-nums">
                                             <MaskedContact value={customer.phone} masked={customer.contactMasked} scope="conversation" recordId={customer.conversationId} />
                                         </td>
-                                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                                        <td className="px-6 py-4 tabular-nums text-slate-600 dark:text-slate-300">
                                             {customer.totalOrders}
                                         </td>
-                                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
+                                        <td className="px-6 py-4 font-medium tabular-nums text-slate-900 dark:text-white">
                                             ${customer.totalSpent.toFixed(2)}
                                         </td>
-                                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                                        <td className="px-6 py-4 tabular-nums text-slate-600 dark:text-slate-300">
                                             {customer.totalBookings}
                                         </td>
                                         <td className="px-6 py-4 text-slate-500">
@@ -175,12 +175,12 @@ export default function CustomersPage() {
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <p className="font-medium text-slate-900 dark:text-white truncate">{customer.name}</p>
-                                        <p className="flex items-center gap-1 text-xs text-slate-500 font-mono mt-0.5">
+                                        <p className="flex items-center gap-1 text-xs text-slate-500 font-mono tabular-nums mt-0.5">
                                             <Phone className="w-3 h-3" />
                                             <MaskedContact value={customer.phone} masked={customer.contactMasked} scope="conversation" recordId={customer.conversationId} />
                                         </p>
                                     </div>
-                                    <span className="font-medium text-sm text-slate-900 dark:text-white shrink-0">
+                                    <span className="font-medium tabular-nums text-sm text-slate-900 dark:text-white shrink-0">
                                         ${customer.totalSpent.toFixed(2)}
                                     </span>
                                 </div>

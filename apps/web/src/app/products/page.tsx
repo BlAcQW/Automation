@@ -90,7 +90,7 @@ export default function ProductsPage() {
                 title="Products"
                 subtitle="Manage your product catalog and inventory"
                 actions={
-                    <Button onClick={() => setIsModalOpen(true)} className="shadow-lg shadow-emerald-500/20">
+                    <Button onClick={() => setIsModalOpen(true)} className="shadow-[inset_0_1px_0_rgba(255,255,255,.14)]">
                         <Plus className="w-4 h-4 mr-2" />
                         Add Product
                     </Button>
@@ -128,7 +128,7 @@ export default function ProductsPage() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
                 <div className="relative flex-1 w-full sm:max-w-md group">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                     <DashboardInput
@@ -140,7 +140,7 @@ export default function ProductsPage() {
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
@@ -203,23 +203,23 @@ export default function ProductsPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-slate-500">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
                                                 {product.category || 'Uncategorized'}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 font-mono text-slate-600 dark:text-slate-300">
+                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-600 dark:text-slate-300">
                                             ${Number(product.price).toFixed(2)}
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${product.stock > 0
-                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400'
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium border ${product.stock > 0
+                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300'
                                                     : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400'
                                                 }`}>
                                                 {product.stock} in stock
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className={`flex items-center gap-2 text-xs font-medium ${product.isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                                            <div className={`flex items-center gap-2 text-xs font-medium ${product.isActive ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400'}`}>
                                                 <div className={`w-1.5 h-1.5 rounded-full ${product.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                                                 {product.isActive ? 'Active' : 'Inactive'}
                                             </div>
@@ -275,11 +275,11 @@ export default function ProductsPage() {
                                 <div className="flex-1 min-w-0">
                                     <p className="font-medium text-slate-900 dark:text-white truncate">{product.name}</p>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <span className="font-mono text-sm text-slate-600 dark:text-slate-300">
+                                        <span className="font-mono tabular-nums text-sm text-slate-600 dark:text-slate-300">
                                             ${Number(product.price).toFixed(2)}
                                         </span>
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${product.stock > 0
-                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400'
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-medium border ${product.stock > 0
+                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300'
                                             : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400'
                                             }`}>
                                             {product.stock} in stock

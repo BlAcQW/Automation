@@ -329,7 +329,7 @@ export default function SettingsPage() {
         <div className="space-y-6 max-w-3xl">
             {/* Page Header */}
             <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Settings</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">Settings</h1>
                 <p className="text-slate-500 dark:text-slate-400 mt-1">
                     Manage your business and account preferences
                 </p>
@@ -351,7 +351,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <LayoutGrid className="w-5 h-5 text-emerald-500" />
+                        <LayoutGrid className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         More
                     </CardTitle>
                 </CardHeader>
@@ -393,7 +393,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <Building className="w-5 h-5 text-emerald-500" />
+                        <Building className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Business Information
                     </CardTitle>
                 </CardHeader>
@@ -408,7 +408,7 @@ export default function SettingsPage() {
                         <select
                             value={timezone}
                             onChange={(e) => setTimezone(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
+                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 transition-all"
                         >
                             {timezones.map(tz => <option key={tz} value={tz}>{tz}</option>)}
                         </select>
@@ -429,7 +429,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <Banknote className="w-5 h-5 text-emerald-500" />
+                        <Banknote className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Deposits
                     </CardTitle>
                 </CardHeader>
@@ -500,7 +500,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <BellRing className="w-5 h-5 text-emerald-500" />
+                        <BellRing className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Automated Reminders &amp; Updates
                     </CardTitle>
                 </CardHeader>
@@ -563,7 +563,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <UserIcon className="w-5 h-5 text-blue-500" />
+                        <UserIcon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Profile
                     </CardTitle>
                 </CardHeader>
@@ -591,7 +591,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <Lock className="w-5 h-5 text-amber-500" />
+                        <Lock className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Change Password
                     </CardTitle>
                 </CardHeader>
@@ -628,7 +628,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <Calendar className="w-5 h-5 text-purple-500" />
+                        <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Calendar Integration
                     </CardTitle>
                 </CardHeader>
@@ -674,7 +674,7 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <CreditCard className="w-5 h-5 text-emerald-500" />
+                        <CreditCard className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Payments (Paystack)
                     </CardTitle>
                 </CardHeader>
@@ -766,7 +766,7 @@ export default function SettingsPage() {
                                 <select
                                     value={paymentsCurrency}
                                     onChange={(e) => setPaymentsCurrency(e.target.value as SupportedCurrency)}
-                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                 >
                                     {SUPPORTED_CURRENCIES.map((c) => (
                                         <option key={c} value={c}>{c}</option>
@@ -797,7 +797,7 @@ export default function SettingsPage() {
 function usageBarColor(used: number, limit: number): string {
     if (limit <= 0) return 'bg-slate-300 dark:bg-slate-700';
     const pct = used / limit;
-    if (pct >= 1) return 'bg-red-500';
+    if (pct >= 1) return 'bg-bookly-rose';
     if (pct >= 0.8) return 'bg-amber-500';
     return 'bg-emerald-500';
 }
@@ -875,7 +875,7 @@ function PlanAndUsageCard() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <BarChart3 className="w-5 h-5 text-emerald-500" />
+                        <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Plan & Usage
                     </CardTitle>
                 </CardHeader>
@@ -893,7 +893,7 @@ function PlanAndUsageCard() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <BarChart3 className="w-5 h-5 text-emerald-500" />
+                        <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Plan & Usage
                     </CardTitle>
                 </CardHeader>
@@ -918,7 +918,7 @@ function PlanAndUsageCard() {
         <Card>
             <CardHeader>
                 <CardTitle>
-                    <BarChart3 className="w-5 h-5 text-emerald-500" />
+                    <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                     Plan & Usage
                 </CardTitle>
             </CardHeader>
@@ -926,7 +926,7 @@ function PlanAndUsageCard() {
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-sm text-slate-500 dark:text-slate-400">Current plan</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                        <p className="text-[28px] font-light leading-none tracking-[-0.04em] tabular-nums text-slate-900 dark:text-white">
                             {plan.name}
                             <span className="ml-2 text-sm font-normal text-slate-500">
                                 {plan.monthlyPrice === 0
@@ -945,7 +945,7 @@ function PlanAndUsageCard() {
                         <span className="text-slate-600 dark:text-slate-300">
                             Outbound WhatsApp messages this month
                         </span>
-                        <span className="font-mono text-slate-900 dark:text-white">
+                        <span className="font-mono tabular-nums text-slate-900 dark:text-white">
                             {used.toLocaleString()} / {limit.toLocaleString()}
                         </span>
                     </div>
@@ -968,7 +968,7 @@ function PlanAndUsageCard() {
                 )}
 
                 <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Limits</p>
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Limits</p>
                     <ul className="grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
                         <li>Services: {String(plan.features.maxServices)}</li>
                         <li>Staff: {String(plan.features.maxStaff)}</li>
@@ -1131,7 +1131,7 @@ function SmsFallbackCard() {
         <Card>
             <CardHeader>
                 <CardTitle>
-                    <MessageSquareMore className="w-5 h-5 text-emerald-500" />
+                    <MessageSquareMore className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                     SMS Fallback (Arkesel)
                 </CardTitle>
             </CardHeader>
@@ -1261,7 +1261,7 @@ function EmailFallbackCard() {
         <Card>
             <CardHeader>
                 <CardTitle>
-                    <Mail className="w-5 h-5 text-emerald-500" />
+                    <Mail className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                     Email Fallback (Gmail SMTP)
                 </CardTitle>
             </CardHeader>

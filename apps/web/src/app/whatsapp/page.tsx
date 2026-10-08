@@ -372,24 +372,24 @@ export default function WhatsAppSetupPage() {
             title: 'Customer messages you',
             desc: 'They text your business number on WhatsApp',
             icon: MessageCircle,
-            color: 'text-blue-600 dark:text-blue-400',
-            bg: 'bg-blue-50 dark:bg-blue-900/30',
+            color: 'text-emerald-600 dark:text-emerald-400',
+            bg: 'bg-emerald-50 dark:bg-emerald-900/30',
         },
         {
             step: 3,
             title: 'AI handles booking',
             desc: 'The bot guides them through scheduling automatically',
             icon: Bot,
-            color: 'text-purple-600 dark:text-purple-400',
-            bg: 'bg-purple-50 dark:bg-purple-900/30',
+            color: 'text-emerald-600 dark:text-emerald-400',
+            bg: 'bg-emerald-50 dark:bg-emerald-900/30',
         },
         {
             step: 4,
             title: 'Booking confirmed',
             desc: 'Both parties receive a confirmation instantly',
             icon: CalendarCheck,
-            color: 'text-amber-600 dark:text-amber-400',
-            bg: 'bg-amber-50 dark:bg-amber-900/30',
+            color: 'text-emerald-600 dark:text-emerald-400',
+            bg: 'bg-emerald-50 dark:bg-emerald-900/30',
         },
     ];
 
@@ -397,7 +397,7 @@ export default function WhatsAppSetupPage() {
         <div className="space-y-6 max-w-3xl animate-in fade-in duration-500">
             {/* Page Header */}
             <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">
                     WhatsApp Integration
                 </h1>
                 <p className="text-slate-500 dark:text-slate-400 mt-1">
@@ -428,7 +428,7 @@ export default function WhatsAppSetupPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <Smartphone className="w-5 h-5 text-emerald-500" />
+                        <Smartphone className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         Connection Status
                     </CardTitle>
                 </CardHeader>
@@ -499,14 +499,14 @@ export default function WhatsAppSetupPage() {
                     ) : status?.connected ? (
                         <div className="space-y-6">
                             {/* Connected Banner */}
-                            <div className="flex items-center justify-between p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700/50">
+                            <div className="flex items-center justify-between p-4 bg-wa-green/10 dark:bg-wa-green/[0.08] rounded-xl border border-wa-green/30 dark:border-wa-green/25">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                                        <Wifi className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                                    <div className="w-10 h-10 rounded-lg bg-wa-green/15 flex items-center justify-center">
+                                        <Wifi className="w-5 h-5 text-wa-dark dark:text-wa-green" />
                                     </div>
                                     <div>
-                                        <p className="font-medium text-emerald-900 dark:text-emerald-200 text-sm">WhatsApp Connected</p>
-                                        <p className="text-emerald-700 dark:text-emerald-300 text-xs">
+                                        <p className="font-medium text-slate-900 dark:text-white text-sm">WhatsApp Connected</p>
+                                        <p className="text-slate-600 dark:text-slate-300 text-xs">
                                             {status.displayNumber || 'WhatsApp Business'}
                                         </p>
                                     </div>
@@ -517,9 +517,9 @@ export default function WhatsAppSetupPage() {
                             {/* Quick Stats */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 {[
-                                    { label: 'Status', value: 'Active', icon: ShieldCheck, color: 'text-emerald-500' },
-                                    { label: 'Bot', value: 'Running', icon: Bot, color: 'text-blue-500' },
-                                    { label: 'Auto-Reply', value: 'On', icon: Zap, color: 'text-amber-500' },
+                                    { label: 'Status', value: 'Active', icon: ShieldCheck, color: 'text-emerald-600 dark:text-emerald-400' },
+                                    { label: 'Bot', value: 'Running', icon: Bot, color: 'text-emerald-600 dark:text-emerald-400' },
+                                    { label: 'Auto-Reply', value: 'On', icon: Zap, color: 'text-emerald-600 dark:text-emerald-400' },
                                 ].map(({ label, value, icon: Icon, color }, i) => (
                                     <motion.div
                                         key={label}
@@ -530,7 +530,7 @@ export default function WhatsAppSetupPage() {
                                     >
                                         <Icon className={`w-5 h-5 mx-auto mb-1.5 ${color}`} />
                                         <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
-                                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{value}</p>
+                                        <p className="text-sm font-medium text-slate-900 dark:text-white">{value}</p>
                                     </motion.div>
                                 ))}
                             </div>
@@ -556,7 +556,7 @@ export default function WhatsAppSetupPage() {
                                 <div className="p-5 rounded-xl border-2 border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/60 dark:bg-emerald-900/10 space-y-4">
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <p className="font-semibold text-slate-900 dark:text-white text-sm">
+                                            <p className="font-medium text-slate-900 dark:text-white text-sm">
                                                 Use a Bookly number
                                             </p>
                                             <Badge variant="default">Recommended</Badge>
@@ -605,7 +605,7 @@ export default function WhatsAppSetupPage() {
                             {status?.hostedAvailable && (
                                 <div className="flex items-center gap-3">
                                     <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
-                                    <span className="text-xs uppercase tracking-wider text-slate-400">or</span>
+                                    <span className="text-xs font-medium text-slate-400 dark:text-slate-500">or</span>
                                     <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
                                 </div>
                             )}
@@ -664,7 +664,7 @@ export default function WhatsAppSetupPage() {
                             <Button
                                 onClick={launchWhatsAppSignup}
                                 disabled={connecting || !sdkReady}
-                                className="w-full sm:w-auto bg-[#25D366] hover:bg-[#20bd5a] text-white border-none shadow-lg shadow-[#25D366]/25 hover:shadow-[#25D366]/40 disabled:shadow-none"
+                                className="w-full sm:w-auto rounded-[3px] bg-wa-green hover:bg-[#20bd5a] text-white border-none shadow-[inset_0_1px_0_rgba(255,255,255,.14)] disabled:shadow-none"
                             >
                                 {connecting ? (
                                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -738,7 +738,7 @@ export default function WhatsAppSetupPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>
-                        <Zap className="w-5 h-5 text-amber-500" />
+                        <Zap className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         How it works
                     </CardTitle>
                 </CardHeader>
@@ -752,7 +752,7 @@ export default function WhatsAppSetupPage() {
                                 transition={{ delay: index * 0.1 }}
                                 className="flex items-center gap-4 group p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
                             >
-                                <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110`}>
+                                <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 transition-transform group-hover:-translate-y-0.5`}>
                                     <Icon className={`w-5 h-5 ${color}`} />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -761,7 +761,7 @@ export default function WhatsAppSetupPage() {
                                     </p>
                                     <p className="text-xs text-slate-500 dark:text-slate-400">{desc}</p>
                                 </div>
-                                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-400 dark:text-slate-500">
+                                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-medium tabular-nums text-slate-400 dark:text-slate-500">
                                     {step}
                                 </span>
                             </motion.div>
@@ -780,7 +780,7 @@ export default function WhatsAppSetupPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>
-                                <Send className="w-5 h-5 text-blue-500" />
+                                <Send className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                                 Send Test Message
                             </CardTitle>
                         </CardHeader>
@@ -801,7 +801,7 @@ export default function WhatsAppSetupPage() {
                                         value={testMessage}
                                         onChange={(e) => setTestMessage(e.target.value)}
                                         rows={3}
-                                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 hover:border-slate-300 dark:hover:border-slate-500 transition-all"
+                                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 hover:border-slate-300 dark:hover:border-slate-500 transition-all"
                                     />
                                 </div>
                                 <Button

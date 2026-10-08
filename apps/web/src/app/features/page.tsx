@@ -24,7 +24,7 @@ export default function FeaturesPage() {
     ];
 
     return (
-        <main id="main" className="theme-site min-h-screen">
+        <main id="main" className="theme-site">
             <Nav />
             <PageHero
                 eyebrow="What it does"
@@ -49,9 +49,14 @@ export default function FeaturesPage() {
                 <Heading sub="Most people are taking bookings the same afternoon.">Three steps, once.</Heading>
                 <Reveal className="mt-10 grid gap-8 sm:grid-cols-3">
                     {steps.map((s) => (
-                        <div key={s.n}>
-                            <span className="font-display text-4xl" style={{ color: 'var(--primary)' }}>{s.n}</span>
-                            <h3 className="mt-3 font-semibold" style={{ color: 'var(--foreground)' }}>{s.t}</h3>
+                        <div key={s.n} className="border-t pt-5" style={{ borderColor: 'var(--border)' }}>
+                            <span
+                                className="block text-[3.2rem] font-light leading-none tracking-[-0.05em] tabular-nums"
+                                style={{ color: 'var(--primary)' }}
+                            >
+                                0{s.n}
+                            </span>
+                            <h3 className="mt-5 text-[17px] font-medium tracking-[-0.02em]" style={{ color: 'var(--foreground)' }}>{s.t}</h3>
                             <p className="mt-1.5 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{s.d}</p>
                         </div>
                     ))}
@@ -63,12 +68,12 @@ export default function FeaturesPage() {
                 <Heading sub="Anything booked by appointment, run by one to eight people — big enough to lose bookings while you're busy, too small to pay someone to answer the phone.">
                     Built for a business run from a phone.
                 </Heading>
-                <div className="mt-8 flex flex-wrap gap-2.5">
+                <div className="mt-8 flex flex-wrap gap-2">
                     {fits.map((f) => (
                         <span
                             key={f}
-                            className="rounded-full px-4 py-2 text-sm"
-                            style={{ background: 'var(--card)', color: 'var(--foreground)', border: '1px solid var(--border)' }}
+                            className="rounded-[3px] px-3 py-2 text-[13px]"
+                            style={{ background: 'var(--card)', color: 'var(--foreground)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px var(--border)' }}
                         >
                             {f}
                         </span>

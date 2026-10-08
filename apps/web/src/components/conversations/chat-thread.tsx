@@ -49,24 +49,24 @@ export function ChatThread({
                 <button
                     onClick={onBack}
                     aria-label="Back to conversations"
-                    className="md:hidden -ml-1 p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    className="md:hidden -ml-1 p-2 rounded-[3px] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                     <ArrowLeft className="w-5 h-5" />
                 </button>
                 <Avatar name={conversation.customerName} size="md" status={isHuman ? 'busy' : 'online'} />
                 <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-sm text-slate-900 dark:text-white truncate">{title}</h2>
+                    <h2 className="font-medium tracking-[-0.02em] text-sm text-slate-900 dark:text-white truncate">{title}</h2>
                     <p className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                         {channel
-                            ? <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">{channel}</span>
+                            ? <span className="shrink-0 rounded-[3px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">{channel}</span>
                             : <Phone className="w-3 h-3 shrink-0" />}
                         <span className="truncate">{contactLine(conversation)}</span>
                         <span
                             className={cn(
-                                'ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[11px] font-medium',
+                                'ml-1 inline-flex items-center rounded-[3px] px-1.5 py-0.5 text-[11px] font-medium',
                                 isHuman
                                     ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
                             )}
                         >
                             {isHuman ? 'Human' : 'Bot'}
@@ -77,9 +77,9 @@ export function ChatThread({
                     <button
                         onClick={onResumeBot}
                         disabled={resuming}
-                        className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold
-                                   bg-slate-900 text-white dark:bg-white dark:text-slate-900
-                                   hover:opacity-90 disabled:opacity-50 transition-opacity"
+                        className="shrink-0 inline-flex items-center gap-1.5 rounded-[3px] px-3 py-1.5 text-xs font-medium
+                                   bg-bookly-emerald-600 hover:bg-bookly-emerald-700 text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,.14)]
+                                   disabled:opacity-50 transition-colors"
                     >
                         {resuming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
                         Resume Bot

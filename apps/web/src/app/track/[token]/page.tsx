@@ -1,6 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+    PaperCard,
+    PublicPage,
+    SummaryCard,
+    publicBody,
+    publicEyebrow,
+    publicFine,
+    publicTitle,
+} from '@/components/pay/public-shell';
 
 interface TrackItem {
     name: string;
@@ -47,107 +56,99 @@ export default function TrackOrderPage({ params }: { params: { token: string } }
     }, [params.token]);
 
     return (
-        <main className="min-h-screen bg-slate-50 flex items-start justify-center px-4 py-10">
-            <div className="w-full max-w-md">
-                {loading && (
-                    <div className="text-center text-slate-500 py-20">Loading your order…</div>
-                )}
+        <PublicPage>
+            {loading && (
+                <div className={`text-center py-20 ${publicBody}`}>Loading your order…</div>
+            )}
 
-                {error === 'not_found' && (
-                    <Card>
-                        <h1 className="text-lg font-semibold text-slate-900">Order not found</h1>
-                        <p className="text-sm text-slate-500 mt-2">
-                            This tracking link is invalid or has expired. Check the link in your message and try again.
-                        </p>
-                    </Card>
-                )}
-                {error === 'error' && (
-                    <Card>
-                        <h1 className="text-lg font-semibold text-slate-900">Something went wrong</h1>
-                        <p className="text-sm text-slate-500 mt-2">Please try again in a moment.</p>
-                    </Card>
-                )}
+            {error === 'not_found' && (
+                <PaperCard>
+                    <h1 className={publicTitle}>Order not found</h1>
+                    <p className={`mt-3 ${publicBody}`}>
+                        This tracking link is invalid or has expired. Check the link in your message and try again.
+                    </p>
+                </PaperCard>
+            )}
+            {error === 'error' && (
+                <PaperCard>
+                    <h1 className={publicTitle}>Something went wrong</h1>
+                    <p className={`mt-3 ${publicBody}`}>Please try again in a moment.</p>
+                </PaperCard>
+            )}
 
-                {data && (
-                    <Card>
-                        <p className="text-xs uppercase tracking-wide text-slate-400">{data.businessName}</p>
-                        <h1 className="text-xl font-semibold text-slate-900 mt-1">
-                            Order {data.orderRef}
-                        </h1>
+            {data && (
+                <PaperCard>
+                    <p className={publicEyebrow}>{data.businessName}</p>
+                    <h1 className={`${publicTitle} mt-2`}>
+                        Order {data.orderRef}
+                    </h1>
 
-                        {data.status === 'CANCELLED' ? (
-                            <div className="mt-5 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-                                This order has been cancelled.
-                            </div>
-                        ) : (
-                            <ol className="mt-6 space-y-0">
-                                {STEPS.map((label, i) => {
-                                    const reached = i <= currentStep(data);
-                                    const isLast = i === STEPS.length - 1;
-                                    return (
-                                        <li key={label} className="flex gap-3">
-                                            <div className="flex flex-col items-center">
-                                                <span
-                                                    className={
-                                                        'w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold ' +
-                                                        (reached
-                                                            ? 'bg-emerald-500 text-white'
-                                                            : 'bg-slate-200 text-slate-400')
-                                                    }
-                                                >
-                                                    {reached ? '✓' : i + 1}
-                                                </span>
-                                                {!isLast && (
-                                                    <span
-                                                        className={
-                                                            'w-0.5 flex-1 min-h-[28px] ' +
-                                                            (i < currentStep(data) ? 'bg-emerald-500' : 'bg-slate-200')
-                                                        }
-                                                    />
-                                                )}
-                                            </div>
+                    {data.status === 'CANCELLED' ? (
+                        <div className="mt-5 rounded-[5px] border border-[#B03A2E]/25 bg-[#B03A2E]/[.06] px-4 py-3 text-[14px] text-[#B03A2E]">
+                            This order has been cancelled.
+                        </div>
+                    ) : (
+                        <ol className="mt-6 space-y-0">
+                            {STEPS.map((label, i) => {
+                                const reached = i <= currentStep(data);
+                                const isLast = i === STEPS.length - 1;
+                                return (
+                                    <li key={label} className="flex gap-3">
+                                        <div className="flex flex-col items-center">
                                             <span
                                                 className={
-                                                    'pb-6 text-sm ' +
-                                                    (reached ? 'text-slate-900 font-medium' : 'text-slate-400')
+                                                    'w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold tabular-nums ' +
+                                                    (reached
+                                                        ? 'bg-forest-brand text-[#FBFAF7]'
+                                                        : 'bg-forest-ink/[.08] text-[#7F857B]')
                                                 }
                                             >
-                                                {label}
+                                                {reached ? '✓' : i + 1}
                                             </span>
-                                        </li>
-                                    );
-                                })}
-                            </ol>
-                        )}
-
-                        <div className="mt-4 border-t border-slate-100 pt-4">
-                            <p className="text-sm font-medium text-slate-700 mb-2">Items</p>
-                            <ul className="space-y-1.5">
-                                {data.items.map((it, idx) => (
-                                    <li key={idx} className="flex justify-between text-sm text-slate-600">
-                                        <span>{it.quantity}× {it.name}</span>
-                                        <span>{(it.quantity * it.unitPrice).toFixed(2)}</span>
+                                            {!isLast && (
+                                                <span
+                                                    className={
+                                                        'w-px flex-1 min-h-[28px] ' +
+                                                        (i < currentStep(data) ? 'bg-forest-brand' : 'bg-forest-ink/[.12]')
+                                                    }
+                                                />
+                                            )}
+                                        </div>
+                                        <span
+                                            className={
+                                                'pb-6 text-[14px] ' +
+                                                (reached ? 'text-forest-ink font-medium' : 'text-[#7F857B]')
+                                            }
+                                        >
+                                            {label}
+                                        </span>
                                     </li>
-                                ))}
-                            </ul>
-                            <div className="flex justify-between mt-3 pt-3 border-t border-slate-100 font-semibold text-slate-900">
-                                <span>Total</span>
-                                <span>{data.totalAmount.toFixed(2)}</span>
-                            </div>
+                                );
+                            })}
+                        </ol>
+                    )}
+
+                    <SummaryCard className="mt-2">
+                        <p className="text-[12px] font-medium text-forest-cream/60 mb-3">Items</p>
+                        <ul className="space-y-1.5">
+                            {data.items.map((it, idx) => (
+                                <li key={idx} className="flex justify-between gap-4 text-[14px] text-forest-cream/80">
+                                    <span>{it.quantity}× {it.name}</span>
+                                    <span className="tabular-nums">{(it.quantity * it.unitPrice).toFixed(2)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="flex items-baseline justify-between mt-4 pt-3 border-t border-forest-cream/10">
+                            <span className="text-[13px] text-forest-cream/70">Total</span>
+                            <span className="text-[24px] font-light tracking-[-0.03em] tabular-nums">{data.totalAmount.toFixed(2)}</span>
                         </div>
+                    </SummaryCard>
 
-                        <p className="text-xs text-slate-400 mt-5">
-                            Last updated {new Date(data.updatedAt).toLocaleString()}
-                        </p>
-                    </Card>
-                )}
-            </div>
-        </main>
-    );
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-    return (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">{children}</div>
+                    <p className={`mt-5 ${publicFine}`}>
+                        Last updated {new Date(data.updatedAt).toLocaleString()}
+                    </p>
+                </PaperCard>
+            )}
+        </PublicPage>
     );
 }

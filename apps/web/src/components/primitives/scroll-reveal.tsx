@@ -17,7 +17,7 @@ interface ScrollRevealProps {
 
 /**
  * Section-level reveal wrapper — ui.md §10.2. Fades + translates children
- * up 24px when 30% of the section is in view; staggers children by 80ms
+ * up 18px when 30% of the section is in view; staggers children by 80ms
  * when `stagger` is set. Respects `prefers-reduced-motion` automatically.
  */
 export function ScrollReveal({

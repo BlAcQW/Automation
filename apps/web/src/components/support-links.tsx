@@ -23,15 +23,15 @@ export function SupportLinks({ topic, className, inline }: Props) {
 
     if (!hasSupportContact) {
         return (
-            <Link href="/support" className={cn('text-bookly-emerald-400 hover:text-bookly-emerald-300 underline underline-offset-2', className)}>
+            <Link href="/support" className={cn('text-forest-brand hover:text-bookly-emerald-800 dark:text-bookly-emerald-300 dark:hover:text-bookly-emerald-200 underline underline-offset-2', className)}>
                 Get help
             </Link>
         );
     }
 
     const base = inline
-        ? 'inline-flex items-center gap-1.5 text-bookly-emerald-400 hover:text-bookly-emerald-300 underline underline-offset-2'
-        : 'inline-flex items-center gap-2 rounded-xl border border-ink-700 bg-ink-900 px-4 py-2.5 text-body-sm font-medium text-ink-50 hover:border-ink-600 hover:bg-ink-800 transition-colors';
+        ? 'inline-flex items-center gap-1.5 text-forest-brand hover:text-bookly-emerald-800 dark:text-bookly-emerald-300 dark:hover:text-bookly-emerald-200 underline underline-offset-2'
+        : 'inline-flex min-h-[44px] items-center gap-2 rounded bg-white dark:bg-ink-800 px-4 text-sm font-medium tracking-[-0.01em] text-ink-50 shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.1),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.18),0_8px_22px_-12px_rgba(0,0,0,0.35)] dark:hover:bg-ink-700 transition-[box-shadow,background-color]';
 
     return (
         <div className={cn(inline ? 'inline-flex flex-wrap gap-x-4 gap-y-1' : 'flex flex-wrap gap-3', className)}>

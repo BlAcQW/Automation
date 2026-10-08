@@ -42,35 +42,34 @@ export function PlanCard() {
     const trialing = data.subscription.status === 'TRIALING';
 
     return (
+        // Dark forest-card panel on the forest frame.
         <Link
             href="/settings"
-            className="block rounded-xl bg-ink-900 border border-ink-700 p-3 hover:border-bookly-emerald-500/40 transition-colors"
+            className="group block rounded-xl bg-forest-card p-3 text-forest-cream shadow-[0_20px_36px_-24px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] hover:shadow-[0_20px_36px_-24px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(236,235,225,0.14)] dark:shadow-[0_0_0_1px_rgba(236,235,225,0.06)] transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-glow"
         >
             <div className="flex items-center justify-between">
-                <p className="text-[11px] font-medium uppercase tracking-wider text-ink-300">
-                    Plan details
+                <p className="font-mono text-[11px] text-forest-cream/50">
+                    /plan details/
                 </p>
                 {trialing && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
+                    <span className="inline-flex items-center gap-1 rounded bg-forest-cream px-1.5 py-0.5 text-[11px] font-medium text-forest-night">
                         <Sparkles className="h-2.5 w-2.5" />
                         Trial
                     </span>
                 )}
             </div>
-            <p className="mt-1.5 text-sm font-semibold text-ink-50">{data.plan.name}</p>
+            <p className="mt-1.5 text-[15px] font-medium tracking-[-0.02em] text-forest-cream">{data.plan.name}</p>
 
-            <div className="mt-2.5 h-1.5 w-full rounded-full bg-ink-800 overflow-hidden">
+            <div className="mt-2.5 h-1 w-full rounded-sm bg-white/10 overflow-hidden">
                 <div
                     className={cn(
-                        'h-full rounded-full transition-all',
-                        pct >= 90
-                            ? 'bg-gradient-to-r from-rose-500 to-amber-500'
-                            : 'bg-gradient-to-r from-emerald-400 to-teal-500',
+                        'h-full rounded-sm transition-all',
+                        pct >= 90 ? 'bg-[#E08A7E]' : 'bg-forest-glow',
                     )}
                     style={{ width: `${pct}%` }}
                 />
             </div>
-            <p className="mt-1.5 text-[11px] text-ink-300">
+            <p className="mt-1.5 text-[11px] tabular-nums text-forest-cream/60">
                 {used.toLocaleString()}/{limit.toLocaleString()} messages used
             </p>
         </Link>

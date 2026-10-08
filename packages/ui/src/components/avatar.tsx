@@ -5,7 +5,7 @@ import { cn } from '../cn';
 
 interface AvatarProps {
     name?: string | null;
-    /** Optional image URL; falls back to gradient initials if absent or it fails to load. */
+    /** Optional image URL; falls back to brand initials if absent or it fails to load. */
     src?: string | null;
     size?: 'sm' | 'md' | 'lg' | 'xl';
     className?: string;
@@ -20,9 +20,9 @@ const sizeClasses = {
 };
 
 const statusClasses = {
-    online: 'bg-accent-500',
-    offline: 'bg-slate-400',
-    busy: 'bg-amber-500',
+    online: 'bg-[#7BD389]',
+    offline: 'bg-ink-400',
+    busy: 'bg-[#E0A43A]',
 };
 
 const statusSizeClasses = {
@@ -47,12 +47,12 @@ export function Avatar({ name, src, size = 'md', className, status }: AvatarProp
                     src={src}
                     alt={name ?? 'Avatar'}
                     onError={() => setImgFailed(true)}
-                    className={cn('rounded-full object-cover shadow-md', sizeClasses[size])}
+                    className={cn('rounded-full object-cover ring-1 ring-ink-50/10', sizeClasses[size])}
                 />
             ) : (
                 <div
                     className={cn(
-                        'bg-gradient-to-br from-accent-400 to-accent-alt rounded-full flex items-center justify-center font-semibold text-white shadow-md',
+                        'bg-accent-600 rounded-full flex items-center justify-center font-medium tracking-[-0.02em] text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]',
                         sizeClasses[size],
                     )}
                 >
@@ -62,7 +62,7 @@ export function Avatar({ name, src, size = 'md', className, status }: AvatarProp
             {status && (
                 <span
                     className={cn(
-                        'absolute -bottom-0.5 -right-0.5 rounded-full border-white dark:border-slate-800',
+                        'absolute -bottom-0.5 -right-0.5 rounded-full border-ink-950',
                         statusClasses[status],
                         statusSizeClasses[size],
                     )}

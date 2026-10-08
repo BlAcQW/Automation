@@ -36,7 +36,7 @@ export function SecretReveal({ label, secret, note, onDone }: SecretRevealProps)
             <div className="flex gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
                 <p>
-                    <strong className="font-semibold">Copy it now. You won&apos;t see this {label.toLowerCase()} again.</strong>{' '}
+                    <strong className="font-medium">Copy it now. You won&apos;t see this {label.toLowerCase()} again.</strong>{' '}
                     Bookly stores only a fingerprint of it. If you lose it, rotate to get a new one.
                 </p>
             </div>
@@ -52,7 +52,7 @@ export function SecretReveal({ label, secret, note, onDone }: SecretRevealProps)
                         value={secret}
                         onFocus={(e) => e.currentTarget.select()}
                         spellCheck={false}
-                        className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-xs text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                        className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-xs text-slate-900 focus:border-emerald-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     />
                     <Button type="button" variant="outline" onClick={copy} className="flex-shrink-0">
                         {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}

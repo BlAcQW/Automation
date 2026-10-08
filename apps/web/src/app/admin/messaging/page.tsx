@@ -20,7 +20,7 @@ export default function AdminMessagingHealthPage() {
         <div className="space-y-6">
             <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Messaging health</h1>
+                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Messaging health</h1>
                     <p className="text-slate-400">How outbound messages are landing, what Meta billed, and platform SMS spend.</p>
                 </div>
                 <select aria-label="Window" value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-1 text-sm text-white">
@@ -100,9 +100,9 @@ export default function AdminMessagingHealthPage() {
 
 function Stat({ label, value, hint, warn }: { label: string; value: string; hint?: string; warn?: boolean }) {
     return (
-        <div className="rounded-2xl border border-white/5 p-4 glass-card">
+        <div className="rounded-xl border border-white/5 p-4 glass-card">
             <p className="text-xs text-slate-500">{label}</p>
-            <p className={`mt-1 text-2xl font-semibold tabular-nums ${warn ? 'text-amber-300' : 'text-white'}`}>{value}</p>
+            <p className={`mt-1 text-2xl font-light tracking-[-0.04em] tabular-nums ${warn ? 'text-amber-300' : 'text-white'}`}>{value}</p>
             {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
         </div>
     );

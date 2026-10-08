@@ -125,17 +125,17 @@ export default function BookingsPage() {
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'PENDING_PAYMENT':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">Pending Payment</span>;
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">Pending Payment</span>;
             case 'CONFIRMED':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400">Confirmed</span>;
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">Confirmed</span>;
             case 'COMPLETED':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">Completed</span>;
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">Completed</span>;
             case 'CANCELLED':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Cancelled</span>;
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Cancelled</span>;
             case 'NO_SHOW':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">No Show</span>;
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">No Show</span>;
             default:
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400">{status}</span>;
+                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400">{status}</span>;
         }
     };
 
@@ -177,14 +177,14 @@ export default function BookingsPage() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between bg-white dark:bg-slate-800/50 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between bg-white dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
                 {/* Scrolls sideways on phones instead of spilling past the card edge. */}
-                <div className="flex w-full sm:w-auto p-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex w-full sm:w-auto p-1 bg-slate-100 dark:bg-slate-700/50 rounded-md overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {['ALL', 'PENDING_PAYMENT', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((status) => (
                         <button
                             key={status}
                             onClick={() => setSelectedStatus(status)}
-                            className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-lg text-sm font-medium transition-all ${selectedStatus === status
+                            className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-[3px] text-sm font-medium transition-all ${selectedStatus === status
                                     ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
                                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                                 }`}
@@ -205,7 +205,7 @@ export default function BookingsPage() {
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
@@ -241,7 +241,7 @@ export default function BookingsPage() {
                             ) : (
                                 filteredBookings.map((booking: Booking) => (
                                     <tr key={booking.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => handleViewBooking(booking)}>
-                                        <td className="px-6 py-4 font-mono text-slate-500">
+                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-500">
                                             {booking.bookingReference}
                                         </td>
                                         <td className="px-6 py-4">
@@ -272,7 +272,7 @@ export default function BookingsPage() {
                                         <td className="px-6 py-4">
                                             {booking.depositAmount ? (
                                                 <>
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium ${paymentBadgeClass(booking.paymentStatus)}`}>
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium ${paymentBadgeClass(booking.paymentStatus)}`}>
                                                         {booking.paymentStatus}
                                                     </span>
                                                     {booking.paymentStatus === 'UNPAID' && booking.status === 'PENDING_PAYMENT' && (
@@ -280,7 +280,7 @@ export default function BookingsPage() {
                                                             {booking.paymentAuthorizationUrl && (
                                                                 <button
                                                                     onClick={(e) => copyPaymentLink(booking, e)}
-                                                                    className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
+                                                                    className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300 hover:underline"
                                                                     aria-label="Copy payment link"
                                                                 >
                                                                     <Link2 className="w-3 h-3" /> Copy link
@@ -289,7 +289,7 @@ export default function BookingsPage() {
                                                             <button
                                                                 onClick={(e) => resendPaymentLink(booking, e)}
                                                                 disabled={resendingId === booking.id}
-                                                                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-400 hover:underline disabled:opacity-50"
+                                                                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline disabled:opacity-50"
                                                                 aria-label="Generate new payment link"
                                                             >
                                                                 <RefreshCw className={`w-3 h-3 ${resendingId === booking.id ? 'animate-spin' : ''}`} />
@@ -353,7 +353,7 @@ export default function BookingsPage() {
                                         {booking.paymentAuthorizationUrl && (
                                             <span
                                                 onClick={(e) => copyPaymentLink(booking, e)}
-                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400"
+                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"
                                             >
                                                 <Link2 className="w-3 h-3" /> Copy link
                                             </span>

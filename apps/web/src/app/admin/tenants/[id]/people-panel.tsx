@@ -197,7 +197,7 @@ function ResetLinkModal({
                                 id="reset-page"
                                 value={resetUrl}
                                 onChange={(e) => setResetUrl(e.target.value)}
-                                className="w-full rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
                             >
                                 {list.map((o) => (
                                     <option key={o.origin} value={o.resetUrl}>{o.isDefault ? 'Bookly dashboard' : o.label}</option>

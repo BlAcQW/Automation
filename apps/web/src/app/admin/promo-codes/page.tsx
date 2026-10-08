@@ -103,7 +103,7 @@ export default function AdminPromoCodesPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Promo codes</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Promo codes</h1>
                 <p className="text-slate-400">
                     A business owner types the code under Settings → Plan &amp; Usage. Extend a trial, or put them on a plan for a while, no card needed.
                 </p>
@@ -126,7 +126,7 @@ export default function AdminPromoCodesPage() {
                             <select
                                 value={kind}
                                 onChange={(e) => setKind(e.target.value as PromoCode['kind'])}
-                                className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                className="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                             >
                                 <option value="TRIAL_EXTENSION">Extend the trial by N days</option>
                                 <option value="PLAN_GRANT">Grant a plan for N days</option>
@@ -138,7 +138,7 @@ export default function AdminPromoCodesPage() {
                                 <select
                                     value={planId}
                                     onChange={(e) => setPlanId(e.target.value as 'starter' | 'pro')}
-                                    className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
                                 >
                                     <option value="pro">Pro</option>
                                     <option value="starter">Starter</option>

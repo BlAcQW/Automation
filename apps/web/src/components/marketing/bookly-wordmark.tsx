@@ -7,8 +7,8 @@ interface BooklyWordmarkProps {
 }
 
 /**
- * Bookly wordmark — Cabinet Grotesk 700 with a small emerald dot after
- * the "y" (ui.md §7.1). Text-only; no SVG asset required.
+ * Bookly wordmark — Inter Tight 600, tight tracking, with a small flat
+ * forest dot after the "y". Text-only; no SVG asset required.
  */
 export function BooklyWordmark({ className, size = 'nav' }: BooklyWordmarkProps) {
     const text = size === 'xl'
@@ -18,11 +18,11 @@ export function BooklyWordmark({ className, size = 'nav' }: BooklyWordmarkProps)
             : 'text-h2';
     const dotSize = size === 'xl' ? 'h-3 w-3' : size === 'lg' ? 'h-2 w-2' : 'h-1.5 w-1.5';
     return (
-        <span className={cn('relative inline-flex items-end gap-0.5 font-display font-bold tracking-tight text-ink-50', text, className)}>
+        <span className={cn('relative inline-flex items-end gap-0.5 font-sans font-semibold tracking-[-0.04em] text-ink-50', text, className)}>
             Bookly
             <span
                 className={cn(
-                    'rounded-full bg-bookly-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.7)] mb-1.5 animate-pulse-soft',
+                    'rounded-full bg-bookly-emerald-500 mb-1.5',
                     dotSize,
                 )}
                 aria-hidden

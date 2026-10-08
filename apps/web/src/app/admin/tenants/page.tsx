@@ -35,7 +35,7 @@ export default function AdminTenantsPage() {
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Tenants</h1>
+                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Tenants</h1>
                     <p className="text-slate-400">Manage all business tenants on the platform.</p>
                 </div>
                 <NewOrganisation />

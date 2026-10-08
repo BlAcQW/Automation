@@ -115,7 +115,7 @@ export default function OrganisationPage() {
 
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">{tenant.name}</h1>
+                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">{tenant.name}</h1>
                     <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
                         <Badge variant={tenant.isActive ? 'default' : 'red'}>{tenant.isActive ? 'Active' : 'Inactive'}</Badge>
                         <Badge variant="slate">{tenant.vertical}</Badge>
@@ -233,8 +233,8 @@ export default function OrganisationPage() {
                     <Panel title="Money">
                         {!money.wallet ? <Empty>No wallet yet.</Empty> : (
                             <div className="grid grid-cols-2 gap-4 px-6 py-5">
-                                <div><p className="text-xs text-slate-500">Available</p><p className="text-lg font-semibold tabular-nums text-white">{formatMinor(money.wallet.availableMinor, money.wallet.currency)}</p></div>
-                                <div><p className="text-xs text-slate-500">Pending</p><p className="text-lg font-semibold tabular-nums text-white">{formatMinor(money.wallet.pendingMinor, money.wallet.currency)}</p></div>
+                                <div><p className="text-xs text-slate-500">Available</p><p className="text-lg font-normal tracking-[-0.02em] tabular-nums text-white">{formatMinor(money.wallet.availableMinor, money.wallet.currency)}</p></div>
+                                <div><p className="text-xs text-slate-500">Pending</p><p className="text-lg font-normal tracking-[-0.02em] tabular-nums text-white">{formatMinor(money.wallet.pendingMinor, money.wallet.currency)}</p></div>
                             </div>
                         )}
                         <p className="px-6 pb-2 text-xs text-slate-500">Refunds waiting to retry: {money.refundsPending}</p>

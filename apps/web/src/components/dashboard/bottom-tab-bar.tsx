@@ -49,10 +49,12 @@ export function BottomTabBar() {
             className="lg:hidden fixed bottom-0 inset-x-0 z-40 px-3 pointer-events-none
                        pb-[max(0.6rem,env(safe-area-inset-bottom))]"
         >
+            {/* Dark night bar in both themes: the forest frame, floating. */}
             <div
                 className="pointer-events-auto mx-auto max-w-md grid grid-cols-5
-                           rounded-2xl border border-ink-700
-                           bg-ink-900/90 backdrop-blur-xl shadow-card-lg"
+                           rounded-3xl bg-forest-night/95 dark:bg-ink-1000/95 backdrop-blur-md
+                           shadow-[0_24px_40px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.06)]
+                           dark:shadow-[0_0_0_1px_rgba(236,235,225,0.08),0_24px_40px_-20px_rgba(0,0,0,0.8)]"
             >
                 {tabs.map((tab) => {
                     const active =
@@ -64,28 +66,34 @@ export function BottomTabBar() {
                             key={tab.href}
                             href={tab.href}
                             aria-current={active ? 'page' : undefined}
-                            className="flex min-h-[56px] flex-col items-center justify-center gap-1 py-1.5 active:scale-[0.97] transition-transform"
+                            className="relative flex min-h-[56px] flex-col items-center justify-center gap-1 py-1.5 rounded-3xl active:scale-[0.97] transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-forest-glow"
                         >
                             <span
                                 className={cn(
-                                    'flex h-8 w-12 items-center justify-center rounded-full transition-colors duration-200',
+                                    'flex h-8 w-12 items-center justify-center rounded-lg transition-colors duration-200',
                                     active
-                                        ? 'bg-bookly-emerald-500/15 text-bookly-emerald-400'
-                                        : 'text-ink-300',
+                                        ? 'bg-white/[0.08] text-forest-cream'
+                                        : 'text-forest-cream/55',
                                 )}
                             >
-                                <Icon className="w-5 h-5" strokeWidth={active ? 2.25 : 1.75} />
+                                <Icon className="w-5 h-5" strokeWidth={active ? 2.1 : 1.75} />
                             </span>
                             <span
                                 className={cn(
-                                    'text-[11px] leading-none transition-colors',
+                                    'text-[11px] leading-none tracking-[-0.01em] transition-colors',
                                     active
-                                        ? 'font-semibold text-bookly-emerald-400'
-                                        : 'font-medium text-ink-300',
+                                        ? 'font-medium text-forest-cream'
+                                        : 'font-normal text-forest-cream/55',
                                 )}
                             >
                                 {tab.name}
                             </span>
+                            {active && (
+                                <span
+                                    aria-hidden
+                                    className="absolute bottom-1 h-1 w-1 rounded-full bg-forest-glow"
+                                />
+                            )}
                         </Link>
                     );
                 })}

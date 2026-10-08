@@ -90,7 +90,7 @@ export function BookingDetailsModal({ isOpen, onClose, booking }: BookingDetails
                             <Calendar className="w-4 h-4 text-emerald-500" />
                             {format(new Date(booking.startTime), 'EEEE, MMMM d')}
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <div className="flex items-center gap-2 text-sm tabular-nums text-slate-500">
                             <Clock className="w-4 h-4" />
                             {format(new Date(booking.startTime), 'h:mm a')} - {format(new Date(booking.endTime), 'h:mm a')}
                         </div>
@@ -113,9 +113,9 @@ export function BookingDetailsModal({ isOpen, onClose, booking }: BookingDetails
                 <div className="space-y-4">
                     {/* Customer */}
                     <div>
-                        <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Customer</h3>
+                        <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Customer</h3>
                         <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                            <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold">
+                            <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-300 font-medium">
                                 {booking.customerName.charAt(0)}
                             </div>
                             <div>
@@ -130,7 +130,7 @@ export function BookingDetailsModal({ isOpen, onClose, booking }: BookingDetails
 
                     {/* Service */}
                     <div>
-                        <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Service Details</h3>
+                        <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Service Details</h3>
                         <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
                             <div className="flex justify-between items-center">
                                 <span className="text-slate-600 dark:text-slate-300">Service</span>
@@ -138,11 +138,11 @@ export function BookingDetailsModal({ isOpen, onClose, booking }: BookingDetails
                             </div>
                             <div className="flex justify-between items-center">
                                 <span className="text-slate-600 dark:text-slate-300">Duration</span>
-                                <span className="text-slate-900 dark:text-white">{booking.service.durationMinutes} min</span>
+                                <span className="tabular-nums text-slate-900 dark:text-white">{booking.service.durationMinutes} min</span>
                             </div>
                             <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-700">
                                 <span className="font-medium text-slate-900 dark:text-white">Price</span>
-                                <span className="font-medium text-emerald-600 dark:text-emerald-400">${Number(booking.service.price).toFixed(2)}</span>
+                                <span className="font-medium tabular-nums text-emerald-600 dark:text-emerald-300">${Number(booking.service.price).toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -150,7 +150,7 @@ export function BookingDetailsModal({ isOpen, onClose, booking }: BookingDetails
                     {/* Notes */}
                     {booking.notes && (
                         <div>
-                            <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Notes</h3>
+                            <h3 className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">Notes</h3>
                             <div className="p-3 bg-yellow-50 dark:bg-yellow-500/10 rounded-xl border border-yellow-200 dark:border-yellow-500/20 text-sm text-yellow-800 dark:text-yellow-200 flex gap-2">
                                 <FileText className="w-4 h-4 shrink-0 mt-0.5" />
                                 <p>{booking.notes}</p>

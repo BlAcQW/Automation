@@ -117,7 +117,7 @@ export default function TemplatesPage() {
                                             <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-300">
                                                 {t.language}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                            <td className="px-6 py-4 text-sm tabular-nums text-slate-500 dark:text-slate-400">
                                                 {t.variableCount}
                                                 {order.length > 0 && (
                                                     <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">

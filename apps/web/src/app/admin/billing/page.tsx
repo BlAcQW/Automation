@@ -39,7 +39,7 @@ export default function AdminBillingPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Billing</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Billing</h1>
                 <p className="text-slate-400">
                     Custom terms and usage statements per organisation. Open an organisation to set its fees or see a month&apos;s statement.
                 </p>

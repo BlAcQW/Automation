@@ -26,7 +26,8 @@ export function SpotlightCard({ children, className, as = 'article' }: Props) {
         y.set(clientY - r.top);
     }
 
-    const glow = useMotionTemplate`radial-gradient(260px circle at ${x}px ${y}px, rgba(16,185,129,0.14), transparent 70%)`;
+    // A faint ink sheen under the pointer — light in the room, never a halo.
+    const glow = useMotionTemplate`radial-gradient(260px circle at ${x}px ${y}px, rgb(var(--ink-50-rgb) / 0.045), transparent 70%)`;
     const Tag = motion[as] as typeof motion.article;
 
     return (
@@ -34,7 +35,7 @@ export function SpotlightCard({ children, className, as = 'article' }: Props) {
             onMouseMove={onMove}
             onMouseLeave={() => { x.set(-400); y.set(-400); }}
             className={cn(
-                'group/spot relative overflow-hidden rounded-2xl border border-ink-700 bg-ink-900 transition-colors duration-200 hover:border-ink-600',
+                'group/spot relative overflow-hidden rounded-xl bg-ink-900 shadow-card transition-[box-shadow,transform] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] hover:shadow-card-hover hover:-translate-y-0.5',
                 className,
             )}
         >

@@ -75,7 +75,7 @@ export default function AdminDashboardPage() {
         <div className="space-y-8">
             {/* Header */}
             <div>
-                <h1 className="text-2xl font-bold text-white">Platform Overview</h1>
+                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Platform Overview</h1>
                 <p className="text-slate-400">Monitor and manage all tenants from here.</p>
             </div>
 
@@ -92,6 +92,7 @@ export default function AdminDashboardPage() {
                         icon={<stat.icon className="w-6 h-6 text-white" />}
                         color={stat.color}
                         index={index}
+                        className="rounded-xl border-white/5 bg-forest-card shadow-[0_30px_50px_-28px_rgba(0,0,0,.6),inset_0_1px_0_rgba(255,255,255,.06)] [&>p:first-of-type]:font-light [&>p:first-of-type]:tracking-[-0.04em]"
                     />
                 ))}
             </div>
@@ -99,7 +100,7 @@ export default function AdminDashboardPage() {
             {/* Recent Tenants */}
             <Card className="glass-card border-white/5">
                 <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 pb-4">
-                    <CardTitle className="text-lg font-semibold text-white">Recent Tenants</CardTitle>
+                    <CardTitle className="text-lg font-medium tracking-[-0.02em] text-white">Recent Tenants</CardTitle>
                     <Link href="/admin/tenants">
                         <Button variant="ghost" className="text-sm h-8">
                             View All →

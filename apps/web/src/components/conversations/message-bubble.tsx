@@ -58,7 +58,7 @@ export function MessageBubble({
                         <SmilePlus className="w-4 h-4" />
                     </button>
                     {picking ? (
-                        <div className="absolute bottom-full z-10 mb-1 flex gap-1 rounded-full border
+                        <div className="absolute bottom-full z-10 mb-1 flex gap-1 rounded-2xl border
                                         border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800
                                         px-2 py-1 shadow-lg">
                             {QUICK_REACTIONS.map((emoji) => (
@@ -82,8 +82,8 @@ export function MessageBubble({
                     className={cn(
                         'px-3.5 py-2.5 text-sm leading-relaxed break-words whitespace-pre-wrap',
                         outbound
-                            ? 'bg-gradient-to-br from-bookly-emerald-500 to-bookly-emerald-600 text-on-accent rounded-2xl rounded-br-md shadow-sm'
-                            : 'bg-ink-900 text-ink-50 rounded-2xl rounded-bl-md border border-ink-700/70 shadow-sm',
+                            ? 'bg-bookly-emerald-600 text-on-accent rounded-2xl rounded-br-sm shadow-[inset_0_1px_0_rgba(255,255,255,.14)]'
+                            : 'bg-white text-slate-900 dark:bg-ink-800 dark:text-ink-50 rounded-2xl rounded-bl-sm border border-slate-200 dark:border-ink-700/70 shadow-sm',
                     )}
                 >
                     {hasMedia ? <ChatMedia message={message} conversationId={conversationId} /> : null}
@@ -99,7 +99,7 @@ export function MessageBubble({
                 </div>
                 <div
                     className={cn(
-                        'mt-1 px-1 text-[11px] text-slate-400',
+                        'mt-1 px-1 text-[11px] tabular-nums text-slate-400',
                         outbound ? 'text-right' : 'text-left',
                     )}
                 >

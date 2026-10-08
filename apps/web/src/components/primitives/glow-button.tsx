@@ -9,33 +9,35 @@ import { cn } from '@bookingflow/ui';
  * The primary Bookly CTA. (The file keeps its historical name; the "glow"
  * is gone.)
  *
- * Primary is a flat emerald with dark text: emerald-500 on ink text is
- * ~9:1, white text on it would be ~2.4:1. The shadow is a short, tinted
- * elevation, not a halo. Press scales 0.98 so the button feels physical.
+ * Forest ledger: primary is the flat forest brand (#2F5640) with cream
+ * text and a 1px top highlight, 3px corners. The shadow is a short dropped
+ * elevation, never a halo. Press nudges 1px down so it feels physical.
  */
 const glowButtonStyles = cva(
     [
         'relative inline-flex items-center justify-center gap-2',
-        'rounded-xl font-display font-medium tracking-tight',
-        'transition-[background-color,box-shadow,transform,border-color] duration-200 ease-out',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bookly-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950',
+        'rounded font-display font-medium tracking-[-0.01em] whitespace-nowrap',
+        'transition-[background-color,box-shadow,transform,color] duration-200 ease-[cubic-bezier(.2,.8,.2,1)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950',
         'disabled:pointer-events-none disabled:opacity-50',
-        'active:scale-[0.98]',
+        'active:translate-y-px',
     ].join(' '),
     {
         variants: {
             variant: {
                 primary: [
-                    'bg-bookly-emerald-500 text-on-accent',
-                    'shadow-[0_6px_20px_-8px_rgba(16,185,129,0.55)]',
-                    'hover:bg-bookly-emerald-400',
+                    'bg-forest-brand text-on-accent',
+                    'shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)]',
+                    'hover:bg-bookly-emerald-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_22px_-8px_rgba(47,86,64,0.7)]',
+                    'dark:bg-bookly-emerald-500 dark:hover:bg-bookly-emerald-600',
                 ],
                 ghost: [
-                    'bg-transparent text-ink-50 border border-ink-700',
-                    'hover:border-ink-600 hover:bg-ink-900/60',
+                    'bg-transparent text-ink-50 shadow-[inset_0_0_0_1px_rgb(var(--ink-50-rgb)/0.25)]',
+                    'hover:shadow-[inset_0_0_0_1px_rgb(var(--ink-50-rgb)/0.6)]',
                 ],
                 wa: [
-                    'bg-[var(--wa-green)] text-on-accent',
+                    'bg-[var(--wa-green)] text-[#0B130E]',
+                    'shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(0,0,0,0.18)]',
                     'hover:brightness-110',
                 ],
             },

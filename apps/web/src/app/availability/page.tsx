@@ -142,8 +142,8 @@ export default function AvailabilityPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Availability</h1>
-                    <p className="text-slate-500 dark:text-slate-400">
+                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">Availability</h1>
+                    <p className="mt-2 text-slate-500 dark:text-slate-400">
                         Set working hours for {tenant?.name}
                     </p>
                 </div>
@@ -167,19 +167,19 @@ export default function AvailabilityPage() {
                                 type="button"
                                 aria-label="Fewer at a time"
                                 onClick={() => setCapacity(Math.max(1, capacity - 1))}
-                                className="w-10 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700/40 disabled:opacity-40"
+                                className="w-10 h-10 rounded-[3px] border border-slate-200 dark:border-slate-700 text-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700/40 disabled:opacity-40"
                                 disabled={capacity <= 1}
                             >
                                 −
                             </button>
-                            <span className="w-12 text-center text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
+                            <span className="w-12 text-center text-[28px] font-light tracking-[-0.04em] tabular-nums text-slate-900 dark:text-white">
                                 {capacity}
                             </span>
                             <button
                                 type="button"
                                 aria-label="More at a time"
                                 onClick={() => setCapacity(Math.min(100, capacity + 1))}
-                                className="w-10 h-10 rounded-xl border border-slate-200 dark:border-slate-700 text-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700/40 disabled:opacity-40"
+                                className="w-10 h-10 rounded-[3px] border border-slate-200 dark:border-slate-700 text-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700/40 disabled:opacity-40"
                                 disabled={capacity >= 100}
                             >
                                 +
@@ -219,7 +219,7 @@ export default function AvailabilityPage() {
                                         onClick={() => toggleDay(idx)}
                                         className={cn(
                                             'w-10 h-6 rounded-full transition-colors relative',
-                                            hours[idx]?.enabled ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'
+                                            hours[idx]?.enabled ? 'bg-emerald-600' : 'bg-slate-200 dark:bg-slate-700'
                                         )}
                                     >
                                         <div className={cn(
@@ -240,7 +240,7 @@ export default function AvailabilityPage() {
                                         value={hours[idx]?.start || '09:00'}
                                         onChange={(e) => updateTime(idx, 'start', e.target.value)}
                                         disabled={!hours[idx]?.enabled}
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-900 dark:text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg text-sm tabular-nums text-slate-900 dark:text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
                                     />
                                     <span className="text-slate-400 text-sm">to</span>
                                     <input
@@ -248,7 +248,7 @@ export default function AvailabilityPage() {
                                         value={hours[idx]?.end || '17:00'}
                                         onChange={(e) => updateTime(idx, 'end', e.target.value)}
                                         disabled={!hours[idx]?.enabled}
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl text-sm text-slate-900 dark:text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg text-sm tabular-nums text-slate-900 dark:text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all"
                                     />
                                 </div>
                             </motion.div>

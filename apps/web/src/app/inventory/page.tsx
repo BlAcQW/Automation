@@ -109,7 +109,7 @@ export default function InventoryPage() {
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
+            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
                 <div className="relative flex-1 w-full sm:max-w-md group">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                     <DashboardInput
@@ -121,7 +121,7 @@ export default function InventoryPage() {
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                 <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
@@ -169,24 +169,24 @@ export default function InventoryPage() {
                                             {product.name}
                                         </td>
                                         <td className="px-6 py-4 text-slate-500">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
                                                 {product.category || 'Uncategorized'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className="font-mono text-slate-900 dark:text-white font-medium">{product.stock}</span>
+                                            <span className="font-mono tabular-nums text-slate-900 dark:text-white font-medium">{product.stock}</span>
                                         </td>
                                         <td className="px-6 py-4">
                                             {product.stock === 0 ? (
-                                                <div className="flex items-center gap-2 text-red-500 text-xs font-medium bg-red-50 dark:bg-red-500/10 px-2 py-1 rounded-full w-fit">
+                                                <div className="flex items-center gap-2 text-red-500 text-xs font-medium bg-red-50 dark:bg-red-500/10 px-2 py-1 rounded-[3px] w-fit">
                                                     <AlertTriangle className="w-3 h-3" /> Out of Stock
                                                 </div>
                                             ) : product.stock < 10 ? (
-                                                <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400 text-xs font-medium bg-yellow-50 dark:bg-yellow-500/10 px-2 py-1 rounded-full w-fit">
+                                                <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400 text-xs font-medium bg-yellow-50 dark:bg-yellow-500/10 px-2 py-1 rounded-[3px] w-fit">
                                                     <AlertTriangle className="w-3 h-3" /> Low Stock
                                                 </div>
                                             ) : (
-                                                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded-full w-fit">
+                                                <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-300 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded-[3px] w-fit">
                                                     <PackageCheck className="w-3 h-3" /> In Stock
                                                 </div>
                                             )}
@@ -241,19 +241,19 @@ export default function InventoryPage() {
                                 <div className="flex-1 min-w-0">
                                     <p className="font-medium text-slate-900 dark:text-white truncate">{product.name}</p>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <span className="font-mono text-sm text-slate-600 dark:text-slate-300">
+                                        <span className="font-mono tabular-nums text-sm text-slate-600 dark:text-slate-300">
                                             {product.stock} in stock
                                         </span>
                                         {product.stock === 0 ? (
-                                            <span className="inline-flex items-center gap-1 text-red-500 text-[11px] font-medium bg-red-50 dark:bg-red-500/10 px-2 py-0.5 rounded-full">
+                                            <span className="inline-flex items-center gap-1 text-red-500 text-[11px] font-medium bg-red-50 dark:bg-red-500/10 px-2 py-0.5 rounded-[3px]">
                                                 <AlertTriangle className="w-3 h-3" /> Out
                                             </span>
                                         ) : product.stock < 10 ? (
-                                            <span className="inline-flex items-center gap-1 text-yellow-600 dark:text-yellow-400 text-[11px] font-medium bg-yellow-50 dark:bg-yellow-500/10 px-2 py-0.5 rounded-full">
+                                            <span className="inline-flex items-center gap-1 text-yellow-600 dark:text-yellow-400 text-[11px] font-medium bg-yellow-50 dark:bg-yellow-500/10 px-2 py-0.5 rounded-[3px]">
                                                 <AlertTriangle className="w-3 h-3" /> Low
                                             </span>
                                         ) : (
-                                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[11px] font-medium bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                            <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-300 text-[11px] font-medium bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-[3px]">
                                                 <PackageCheck className="w-3 h-3" /> In stock
                                             </span>
                                         )}

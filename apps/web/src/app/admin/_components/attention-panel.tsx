@@ -41,7 +41,7 @@ export function AttentionPanel() {
     return (
         <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-xl font-semibold text-white">Needs attention</h2>
+                <h2 className="text-xl font-normal tracking-[-0.03em] text-white">Needs attention</h2>
                 {alertBadges && (
                     <>
                         <Badge variant="red">{alertBadges.critical} critical</Badge>

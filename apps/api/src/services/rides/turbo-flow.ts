@@ -76,12 +76,46 @@ export const turboFoundingFlow = {
             produces: ['needs_phone', 'member', 'pass_name', 'rides_total', 'rides_used', 'rides_left', 'expiry_date', 'open_ride', 'open_ride_ref', 'open_ride_status'],
             next: 'entry_phone', onError: 'oops',
         },
-        // WhatsApp hides this customer's number (username): no account can be
-        // opened from the chat, so a person takes over instead of a dead end.
-        entry_phone: { type: 'branch', cases: [{ when: { var: 'needs_phone', op: 'eq', value: 'yes' }, next: 'phone_hidden' }], default: 'entry_pkg' },
+        // WhatsApp hides this customer's number (username). TURBO needs a real,
+        // proven number, so confirm it once with an SMS code; the account is
+        // only opened/linked after the code comes back (turbo.verify_phone_code).
+        entry_phone: { type: 'branch', cases: [{ when: { var: 'needs_phone', op: 'eq', value: 'yes' }, next: 'phone_ask' }], default: 'entry_pkg' },
+        phone_ask: {
+            type: 'ask',
+            prompt: "👋 Welcome to TURBO! Your WhatsApp hides your number from businesses, so we need to confirm it once.\n\nWhat's your phone number? (e.g. 024 123 4567)",
+            validate: 'phone', invalid: 'Please send a valid phone number, e.g. 024 123 4567.', var: 'verify_phone', next: 'phone_send',
+        },
+        phone_send: {
+            type: 'action', action: 'turbo.send_phone_code',
+            produces: ['code_sent', 'code_hash', 'code_expires', 'code_attempts', 'code_sends', 'phone_reason'],
+            next: 'phone_sent_check', onError: 'oops',
+        },
+        phone_sent_check: { type: 'branch', cases: [{ when: { var: 'code_sent', op: 'eq', value: 'yes' }, next: 'phone_code_ask' }], default: 'phone_hidden' },
+        phone_code_ask: {
+            type: 'ask',
+            prompt: 'We sent a 6-digit code by SMS to {verify_phone}. Please reply with the code.',
+            validate: 'free', var: 'verify_code', next: 'phone_verify',
+        },
+        phone_verify: {
+            type: 'action', action: 'turbo.verify_phone_code',
+            produces: ['phone_ok', 'code_attempts', 'phone_reason'],
+            next: 'phone_verify_check', onError: 'oops',
+        },
+        phone_verify_check: {
+            type: 'branch',
+            cases: [
+                { when: { var: 'phone_ok', op: 'eq', value: 'yes' }, next: 'phone_confirmed' },
+                { when: { var: 'phone_ok', op: 'eq', value: 'retry' }, next: 'phone_code_again' },
+            ],
+            default: 'phone_restart',
+        },
+        phone_code_again: { type: 'notify', text: '{phone_reason}', next: 'phone_code_ask' },
+        phone_restart: { type: 'notify', text: '{phone_reason}', next: 'phone_ask' },
+        phone_confirmed: { type: 'notify', text: '✅ Number confirmed. Thanks!', next: 'entry' },
+        // Only when the code could not be sent (SMS unavailable, too many codes).
         phone_hidden: {
             type: 'staff',
-            text: "👋 Welcome to TURBO! Your WhatsApp settings hide your phone number from businesses, and we need it to set up your rides account. Connecting you with the TURBO team, who will help you here shortly.",
+            text: '{phone_reason} Connecting you with the TURBO team, who will help you here shortly.',
             queue: 'support', handoff: true,
         },
         entry_pkg: {

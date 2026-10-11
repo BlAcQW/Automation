@@ -27,12 +27,17 @@ import { formatDate, rides } from './texts.js';
 import { pickupFromVars, tripFromVars } from './trip-vars.js';
 import { scoped } from '../../lib/logger.js';
 import { isWhatsAppPhoneId } from '../whatsapp-identity.js';
+import { upsertCustomerByPhone, linkConversationToCustomer } from '../customers.js';
+import { config } from '../../config/index.js';
+import { sendRideSms } from './notify.js';
+import { MAX_CODE_ATTEMPTS, MAX_CODE_SENDS, checkCode, codeSmsText, issueCode } from './phone-verify.js';
 
 const log = scoped('rides-flow');
 
 export const TURBO_ACTIONS = [
     'turbo.register', 'turbo.founding_available', 'turbo.balance', 'turbo.history', 'turbo.account',
     'turbo.destinations', 'turbo.quote_ride', 'turbo.request_ride', 'turbo.payg_open', 'turbo.payg_quote', 'turbo.cancel_ride',
+    'turbo.send_phone_code', 'turbo.verify_phone_code',
 ] as const;
 
 const yes = (b: boolean) => (b ? 'yes' : 'no');
@@ -114,6 +119,55 @@ export function createRideFlowActions(prisma: RidesClient) {
                 data: { name: full_name, email, attributes: { ...attrs, studentId: student_id, university } as Prisma.InputJsonObject },
             });
             return { ok: true, vars: { customer_name: full_name, welcome_name: full_name.toUpperCase() } };
+        },
+
+        /**
+         * Text a one-time code to the number a username-only customer gave
+         * (`verify_phone`). Only a BSUID chat may use this: a phone-keyed chat
+         * already has Meta's verified number.
+         */
+        async 'turbo.send_phone_code'(req) {
+            const phone = String(req.vars.verify_phone ?? '');
+            const sends = Number(req.vars.code_sends ?? 0) || 0;
+            const fail = (reason: string): ActionResult => ({ ok: true, vars: { code_sent: 'no', phone_reason: reason } });
+            if (!phone || !(await phoneHidden(prisma, req))) return fail("We couldn't send a code to that number. Please reply MENU to start again.");
+            if (sends >= MAX_CODE_SENDS) return fail("We've already sent several codes. The TURBO team will help you confirm your number.");
+            const issued = issueCode({ secret: config.jwtSecret, conversationId: req.conversationId, phone });
+            const sent = await sendRideSms(deps, { tenantId: req.tenantId, phone, text: codeSmsText(issued.code) });
+            if (!sent) return fail("We couldn't send the code by SMS right now. The TURBO team will help you confirm your number.");
+            return {
+                ok: true,
+                vars: { code_sent: 'yes', code_hash: issued.codeHash, code_expires: issued.expiresAt, code_attempts: 0, code_sends: sends + 1, phone_reason: '' },
+            };
+        },
+
+        /**
+         * Check the code. On success the number is proven to be the customer's:
+         * open (or find) their TURBO account by it and link this chat to it.
+         */
+        async 'turbo.verify_phone_code'(req): Promise<ActionResult> {
+            const phone = String(req.vars.verify_phone ?? '');
+            const attempts = (Number(req.vars.code_attempts ?? 0) || 0) + 1;
+            if (!phone || !(await phoneHidden(prisma, req))) return { ok: true, vars: { phone_ok: 'restart', phone_reason: 'Please send your phone number again.' } };
+            const result = checkCode({
+                secret: config.jwtSecret, conversationId: req.conversationId, phone, input: String(req.vars.verify_code ?? ''),
+                pending: { codeHash: req.vars.code_hash, expiresAt: req.vars.code_expires },
+            });
+            if (result === 'expired' || result === 'invalid') {
+                return { ok: true, vars: { phone_ok: 'restart', code_attempts: attempts, phone_reason: 'That code has expired. Please send your phone number again and we will text you a new one.' } };
+            }
+            if (result === 'wrong') {
+                if (attempts >= MAX_CODE_ATTEMPTS) {
+                    return { ok: true, vars: { phone_ok: 'restart', code_attempts: attempts, phone_reason: 'Too many wrong codes. Please send your phone number again and we will text you a new one.' } };
+                }
+                return { ok: true, vars: { phone_ok: 'retry', code_attempts: attempts, phone_reason: "That code isn't right. Please check the SMS and send the 6 digits again." } };
+            }
+            const customer = await upsertCustomerByPhone(prisma, { tenantId: req.tenantId, phone });
+            if (!customer) return { ok: false };
+            await linkConversationToCustomer(prisma, { tenantId: req.tenantId, conversationId: req.conversationId, customerId: customer.id });
+            // Now a proven number: payment links and receipts can use it.
+            await prisma.conversation.updateMany({ where: { id: req.conversationId, tenantId: req.tenantId }, data: { customerPhone: phone } });
+            return { ok: true, vars: { phone_ok: 'yes', code_attempts: attempts, phone_reason: '' } };
         },
 
         async 'turbo.founding_available'(req) {

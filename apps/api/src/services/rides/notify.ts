@@ -141,6 +141,11 @@ async function tryEmail(tenant: { gmailUser: string | null; gmailAppPassword: st
     return res.ok;
 }
 
+/** SMS to any number on this tenant's route (driver alerts, phone-check codes). Respects the pause; never throws. */
+export async function sendRideSms(deps: NotifyDeps, args: { tenantId: string; phone: string; text: string }): Promise<boolean> {
+    return smsDriver(deps, args);
+}
+
 /** SMS to a driver (optional setting). Respects the pause; never throws. */
 export async function smsDriver(deps: NotifyDeps, args: { tenantId: string; phone: string; text: string }): Promise<boolean> {
     try {

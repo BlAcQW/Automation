@@ -16,11 +16,11 @@ import { turboFoundingFlow } from './turbo-flow.js';
 import { TURBO_ACTIONS, withPlaceMisses } from './flow-actions.js';
 
 type Vars = Record<string, string | number>;
-let state: { member: boolean; payg: 'open' | 'closed' | 'full'; openRide: boolean; quoteOk: boolean | 'unknown'; calls: ActionRequest[] };
+let state: { member: boolean; payg: 'open' | 'closed' | 'full'; openRide: boolean; quoteOk: boolean | 'unknown'; calls: ActionRequest[]; phoneHidden: boolean; codeSent: boolean; codeResult: 'yes' | 'retry' | 'restart' };
 
 const fakes: Record<string, (req: ActionRequest) => Vars> = {
-    'turbo.balance': () => ({
-        member: state.member ? 'yes' : 'no', pass_name: 'Pioneer 50', rides_total: 60, rides_used: 12, rides_left: state.member ? 48 : 0,
+    'turbo.balance': () => (state.phoneHidden ? { needs_phone: 'yes', member: 'no', open_ride: 'no' } : {
+        needs_phone: 'no', member: state.member ? 'yes' : 'no', pass_name: 'Pioneer 50', rides_total: 60, rides_used: 12, rides_left: state.member ? 48 : 0,
         expiry_date: '5 Dec 2026', open_ride: state.openRide ? 'yes' : 'no', open_ride_ref: state.openRide ? 'TR-AAAAAA' : '', open_ride_status: state.openRide ? 'waiting for a driver' : '',
     }),
     'turbo.founding_available': () => ({ pkg_price: '960', pkg_rides: 60, pkg_days: 60, pkg_max_km: 6, pkg_per_ride: '16', founding_cap: 50, founding_left: 12, founding_open: 'yes', hold_minutes: 30 }),
@@ -37,6 +37,15 @@ const fakes: Record<string, (req: ActionRequest) => Vars> = {
     'turbo.history': () => ({ history_text: '1. 6 Oct 2026 · Gate → Library · Package · completed', history_count: 1 }),
     'turbo.account': () => ({ account_name: 'Ama Mensah', account_phone: '+233241234567', account_email: 'ama@example.com', account_student_id: '20211234', account_university: 'Central University', package_status: 'Pioneer 50 · 48 rides left · expires 5 Dec 2026' }),
     'turbo.cancel_ride': () => ({ cancel_ok: 'yes', cancel_reason: '❌ Ride TR-AAAAAA cancelled. No ride was deducted.' }),
+    'turbo.send_phone_code': () => (state.codeSent
+        ? { code_sent: 'yes', code_hash: 'h', code_expires: 1, code_attempts: 0, code_sends: 1, phone_reason: '' }
+        : { code_sent: 'no', phone_reason: "We couldn't send the code by SMS right now." }),
+    'turbo.verify_phone_code': () => {
+        if (state.codeResult === 'yes') { state.phoneHidden = false; return { phone_ok: 'yes', code_attempts: 1, phone_reason: '' }; }
+        return state.codeResult === 'retry'
+            ? { phone_ok: 'retry', code_attempts: 1, phone_reason: "That code isn't right. Please check the SMS and send the 6 digits again." }
+            : { phone_ok: 'restart', code_attempts: 5, phone_reason: 'That code has expired. Please send your phone number again and we will text you a new one.' };
+    },
 };
 
 const tenant = { id: 't1', vertical: 'RIDES', activeFlowKey: 'turbo-founding' };
@@ -57,7 +66,7 @@ function setup() {
 
 beforeEach(() => {
     n = 0;
-    state = { member: false, payg: 'closed', openRide: false, quoteOk: true, calls: [] };
+    state = { member: false, payg: 'closed', openRide: false, quoteOk: true, calls: [], phoneHidden: false, codeSent: true, codeResult: 'yes' };
     resetFlowActionsForTests();
     resetPaymentFulfillersForTests();
     for (const name of TURBO_ACTIONS) {
@@ -229,5 +238,53 @@ describe('member', () => {
         const r = await say('6');
         expect(r.wantsHuman).toBe(true);
         expect(f.calls.staff[0]).toMatchObject({ queue: 'support', handoff: true });
+    });
+});
+
+describe('customer whose WhatsApp hides their number (username)', () => {
+    it('confirms the number with an SMS code, then carries on into TURBO by itself', async () => {
+        state.phoneHidden = true;
+        const { say } = setup();
+
+        const ask = await say('Hi');
+        expect(ask.reply).toContain("What's your phone number?");
+
+        const bad = await say('not a number');
+        expect(bad.reply).toContain('Please send a valid phone number');
+
+        const sent = await say('024 123 4567');
+        expect(state.calls.at(-1)?.vars.verify_phone).toBe('+233241234567');
+        expect(sent.reply).toContain('We sent a 6-digit code by SMS to +233241234567');
+
+        state.codeResult = 'retry';
+        const wrong = await say('111111');
+        expect(wrong.reply).toContain("That code isn't right");
+        expect(wrong.reply).toContain('We sent a 6-digit code by SMS');
+
+        state.codeResult = 'yes';
+        const ok = await say('123456');
+        expect(ok.reply).toContain('✅ Number confirmed');
+        expect(ok.reply).toContain(WELCOME_HEAD);
+    });
+
+    it('an expired code asks for the number again', async () => {
+        state.phoneHidden = true;
+        state.codeResult = 'restart';
+        const { say } = setup();
+        await say('Hi');
+        await say('0241234567');
+        const r = await say('123456');
+        expect(r.reply).toContain('That code has expired');
+        expect(r.reply).toContain("What's your phone number?");
+    });
+
+    it('when the code cannot be sent, the TURBO team takes over', async () => {
+        state.phoneHidden = true;
+        state.codeSent = false;
+        const { say } = setup();
+        await say('Hi');
+        const r = await say('0241234567');
+        expect(r.reply).toContain("We couldn't send the code by SMS right now.");
+        expect(r.reply).toContain('Connecting you with the TURBO team');
     });
 });

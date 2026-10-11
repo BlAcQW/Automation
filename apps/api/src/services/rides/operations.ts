@@ -19,6 +19,7 @@ import {
 import { createNotification } from '../notifications.js';
 import { raiseAlert } from '../alerts.js';
 import { upsertCustomerByPhone, linkConversationToCustomer } from '../customers.js';
+import { isWhatsAppPhoneId } from '../whatsapp-identity.js';
 
 export type OpsDeps = NotifyDeps;
 
@@ -35,12 +36,16 @@ export async function resolveConversationCustomer(
     prisma: RidesClient,
     args: { tenantId: string; conversationId: string; customerPhone: string | null },
 ): Promise<{ id: string; name: string | null; email: string | null; phone: string; attributes: unknown } | null> {
-    const conv = await prisma.conversation.findFirst({ where: { id: args.conversationId, tenantId: args.tenantId }, select: { customerId: true, customerPhone: true } });
+    const conv = await prisma.conversation.findFirst({ where: { id: args.conversationId, tenantId: args.tenantId }, select: { customerId: true, customerPhone: true, channel: true, externalId: true } });
     if (!conv) return null;
     if (conv.customerId) {
         const linked = await prisma.customer.findFirst({ where: { id: conv.customerId, tenantId: args.tenantId } });
         if (linked) return linked;
     }
+    // Only a Meta-verified WhatsApp number may find or create the account: a
+    // customer hiding their number behind a username (BSUID identity) could
+    // otherwise type someone else's number and use their rides and balance.
+    if (conv.channel === 'WHATSAPP' && !isWhatsAppPhoneId(conv.externalId)) return null;
     const phone = conv.customerPhone ?? args.customerPhone;
     if (!phone) return null;
     const customer = await upsertCustomerByPhone(prisma, { tenantId: args.tenantId, phone });

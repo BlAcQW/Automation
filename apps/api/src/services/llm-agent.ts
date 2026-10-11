@@ -82,6 +82,13 @@ export interface AgentContext {
     customerPhone: string;
     /** Which inbox this is. Drives whether a phone has to be asked for. */
     channel?: 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
+    /**
+     * Whether `customerPhone` is the sender number the channel reported (Meta
+     * verified) rather than one the customer typed. Unset = the legacy rule
+     * (any WhatsApp phone). A WhatsApp customer who hides their number behind a
+     * username sets this false: a number they type is a claim, as on Instagram.
+     */
+    phoneVerified?: boolean;
     /** The tenant's own number in E.164 — used only to resolve a local "0…". */
     businessPhone?: string | null;
     /** Notification/reminder queues, when Redis is configured. */

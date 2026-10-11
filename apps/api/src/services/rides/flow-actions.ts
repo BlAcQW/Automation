@@ -26,6 +26,7 @@ import { formatMinor, isValidCoordinate } from './geo.js';
 import { formatDate, rides } from './texts.js';
 import { pickupFromVars, tripFromVars } from './trip-vars.js';
 import { scoped } from '../../lib/logger.js';
+import { isWhatsAppPhoneId } from '../whatsapp-identity.js';
 
 const log = scoped('rides-flow');
 
@@ -88,6 +89,12 @@ const registerSchema = z.object({
     email: z.string().trim().toLowerCase().email().max(254),
 });
 
+/** The conversation is a WhatsApp customer known only by a BSUID (number hidden). */
+async function phoneHidden(prisma: RidesClient, req: ActionRequest): Promise<boolean> {
+    const conv = await prisma.conversation.findFirst({ where: { id: req.conversationId, tenantId: req.tenantId }, select: { channel: true, externalId: true } });
+    return Boolean(conv && conv.channel === 'WHATSAPP' && !isWhatsAppPhoneId(conv.externalId));
+}
+
 export function createRideFlowActions(prisma: RidesClient) {
     const deps: OpsDeps = { prisma, log };
     const customerOf = (req: ActionRequest) => resolveConversationCustomer(prisma, req);
@@ -130,7 +137,15 @@ export function createRideFlowActions(prisma: RidesClient) {
 
         async 'turbo.balance'(req) {
             const customer = await customerOf(req);
-            if (!customer) return { ok: false };
+            if (!customer) {
+                // A WhatsApp customer who hides their number behind a username has
+                // no verified phone to open an account with: say so, don't "oops".
+                if (await phoneHidden(prisma, req)) {
+                    const hidden: ActionResult = { ok: true, vars: { needs_phone: 'yes', member: 'no', open_ride: 'no' } };
+                    return hidden;
+                }
+                return { ok: false };
+            }
             const s = await getRideSettings(prisma, req.tenantId);
             const [b, open] = await Promise.all([
                 customerBalance(prisma, req.tenantId, customer.id),
@@ -139,6 +154,7 @@ export function createRideFlowActions(prisma: RidesClient) {
             return {
                 ok: true,
                 vars: {
+                    needs_phone: 'no',
                     member: yes(b.active),
                     pass_name: PASS_DISPLAY_NAME,
                     rides_total: b.purchased,

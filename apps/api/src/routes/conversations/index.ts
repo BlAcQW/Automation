@@ -9,6 +9,7 @@ import { maskContact, maskContacts } from '../../services/contact-privacy.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 import { emitConversationHandoff, emitConversationResumed, emitMessageSent } from '../../services/events/emit.js';
 import { prepareFlowForHandBack } from '../../services/flows/hand-back.js';
+import { whatsappDestination } from '../../services/whatsapp-identity.js';
 import {
     MESSAGE_TYPE,
     MediaError,
@@ -64,6 +65,7 @@ function withoutMetadata<T extends { metadata?: unknown }>(messages: T[]): T[] {
     return messages.map((m) => ({ ...m, metadata: null }));
 }
 
+// externalId is the phone, or the BSUID of a customer who hides their number.
 const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
     // All routes require authentication
     fastify.addHook('preHandler', fastify.authenticate);
@@ -347,7 +349,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                         },
                         body: JSON.stringify({
                             messaging_product: 'whatsapp',
-                            to: conversation.customerPhone,
+                            ...whatsappDestination(conversation.externalId),
                             type: 'text',
                             text: { body: body.content },
                         }),
@@ -491,7 +493,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
 
         const payload: Record<string, unknown> = {
             messaging_product: 'whatsapp',
-            to: conversation.customerPhone,
+            ...whatsappDestination(conversation.externalId),
             type: stored.kind,
             [stored.kind]: {
                 id: mediaId,
@@ -723,7 +725,7 @@ const conversationsRoutes: FastifyPluginAsync = async (fastify) => {
                 },
                 body: JSON.stringify({
                     messaging_product: 'whatsapp',
-                    to: conversation.customerPhone,
+                    ...whatsappDestination(conversation.externalId),
                     ...payload,
                 }),
             },

@@ -11,11 +11,14 @@
  */
 import { resolveCustomerIdSafe, linkConversationToCustomer } from '../../services/customers.js';
 import { emitMessageReceived } from '../../services/events/emit.js';
+import { isWhatsAppPhoneId } from '../../services/whatsapp-identity.js';
 import type { ConversationHandlerKind } from '../../services/conversation-handlers.js';
 import type { ChannelKind } from './system-message.js';
 
 export interface InboundConversation {
     id: string;
+    /** Phone, or the BSUID of a WhatsApp customer who hides their number. */
+    externalId?: string;
     customerPhone?: string | null;
     customerName?: string | null;
     customerId?: string | null;
@@ -40,6 +43,9 @@ export async function linkCustomerOnInbound(
     if (conversation.customerId) return conversation.customerId;
     if (channel !== 'WHATSAPP') return null;
     if (!conversation.customerPhone) return null;
+    // A username-only sender (BSUID identity) has no Meta-verified number: one
+    // they typed is a claim and must never pull in another person's record.
+    if (conversation.externalId !== undefined && !isWhatsAppPhoneId(conversation.externalId)) return null;
     try {
         const customerId = await resolveCustomerIdSafe(
             fastify.prisma,

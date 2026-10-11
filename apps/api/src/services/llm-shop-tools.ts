@@ -41,8 +41,10 @@ export interface ShopToolContext {
  * customer and is a claim, not an identity: it must never scope a lookup of
  * orders, tracking links or payment links (see chat-ownership.ts).
  */
-export function isPhoneVerified(ctx: { channel?: string; customerPhone: string }): boolean {
-    return ctx.channel === 'WHATSAPP' && !!ctx.customerPhone;
+export function isPhoneVerified(ctx: { channel?: string; customerPhone: string; phoneVerified?: boolean }): boolean {
+    if (ctx.channel !== 'WHATSAPP' || !ctx.customerPhone) return false;
+    // A username-only WhatsApp sender's typed number is not verified (phoneVerified: false).
+    return ctx.phoneVerified !== false;
 }
 
 /** A customer may have at most this many chat-created orders waiting for payment. */

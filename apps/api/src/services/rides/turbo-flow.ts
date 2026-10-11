@@ -73,8 +73,16 @@ export const turboFoundingFlow = {
         // ---- every visit starts by reading where the customer stands
         entry: {
             type: 'action', action: 'turbo.balance',
-            produces: ['member', 'pass_name', 'rides_total', 'rides_used', 'rides_left', 'expiry_date', 'open_ride', 'open_ride_ref', 'open_ride_status'],
-            next: 'entry_pkg', onError: 'oops',
+            produces: ['needs_phone', 'member', 'pass_name', 'rides_total', 'rides_used', 'rides_left', 'expiry_date', 'open_ride', 'open_ride_ref', 'open_ride_status'],
+            next: 'entry_phone', onError: 'oops',
+        },
+        // WhatsApp hides this customer's number (username): no account can be
+        // opened from the chat, so a person takes over instead of a dead end.
+        entry_phone: { type: 'branch', cases: [{ when: { var: 'needs_phone', op: 'eq', value: 'yes' }, next: 'phone_hidden' }], default: 'entry_pkg' },
+        phone_hidden: {
+            type: 'staff',
+            text: "👋 Welcome to TURBO! Your WhatsApp settings hide your phone number from businesses, and we need it to set up your rides account. Connecting you with the TURBO team, who will help you here shortly.",
+            queue: 'support', handoff: true,
         },
         entry_pkg: {
             type: 'action', action: 'turbo.founding_available',

@@ -22,6 +22,8 @@ const prisma: any = {
     rideDestination: { findMany: vi.fn(async () => dests) },
     customer: { updateMany: vi.fn(async () => ({ count: 1 })) },
     ride: { findMany: vi.fn(async () => []) },
+    // A phone-keyed WhatsApp chat unless a test says otherwise.
+    conversation: { findFirst: vi.fn(async () => ({ channel: 'WHATSAPP', externalId: '233241234567' })) },
 };
 const req = (vars: Record<string, string> = {}) => ({ tenantId: 't1', conversationId: 'conv1', customerPhone: '233241234567', name: 'x', args: {}, vars, idempotencyKey: 'k' });
 const customer = { id: 'c1', name: 'Ama', email: null, phone: '+233241234567', attributes: { old: 'kept' } };
@@ -73,7 +75,7 @@ describe('turbo.founding_available / balance / payg_open', () => {
         m.customerBalance.mockResolvedValue({ active: true, purchased: 60, used: 12, remaining: 48, expiresAt: new Date('2026-12-05T12:00:00Z') });
         m.findOpenRide.mockResolvedValue({ ref: 'TR-1', status: 'ASSIGNED' });
         expect((await actions['turbo.balance'](req())).vars).toEqual({
-            member: 'yes', pass_name: 'Pioneer 50', rides_total: 60, rides_used: 12, rides_left: 48, expiry_date: '5 Dec 2026',
+            needs_phone: 'no', member: 'yes', pass_name: 'Pioneer 50', rides_total: 60, rides_used: 12, rides_left: 48, expiry_date: '5 Dec 2026',
             open_ride: 'yes', open_ride_ref: 'TR-1', open_ride_status: 'assigned to a driver',
         });
     });
@@ -84,6 +86,11 @@ describe('turbo.founding_available / balance / payg_open', () => {
     it('no customer resolvable: ok false (the flow goes to its error state)', async () => {
         m.resolveConversationCustomer.mockResolvedValue(null);
         expect(await actions['turbo.balance'](req())).toEqual({ ok: false });
+    });
+    it('no customer because WhatsApp hides the number (BSUID chat): needs_phone, not an error', async () => {
+        m.resolveConversationCustomer.mockResolvedValue(null);
+        prisma.conversation.findFirst.mockResolvedValueOnce({ channel: 'WHATSAPP', externalId: 'GH.1234567890123456' });
+        expect(await actions['turbo.balance'](req())).toEqual({ ok: true, vars: { needs_phone: 'yes', member: 'no', open_ride: 'no' } });
     });
 });
 

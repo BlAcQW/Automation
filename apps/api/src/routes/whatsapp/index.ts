@@ -9,6 +9,7 @@ import {
     selectCredentialSource,
 } from '../../services/whatsapp-credentials.js';
 import { resolveConversation } from '../../services/conversation-resolver.js';
+import { inboundSenderId, inboundSenderPhone } from '../../services/whatsapp-identity.js';
 import { publish } from '../../services/realtime.js';
 import { planAssistantFallback } from '../../services/assistant-fallback.js';
 import { canCustomerResumeBot } from '../../services/conversation-handlers.js';
@@ -63,7 +64,10 @@ function safeEqual(a: string, b: string): boolean {
 
 // WhatsApp webhook payload types
 interface WhatsAppMessage {
-    from: string;
+    /** Sender's phone. Absent when the sender hides it behind a WhatsApp username. */
+    from?: string;
+    /** Sender's business-scoped user id (BSUID); always present since the 2026 username rollout. */
+    from_user_id?: string;
     id: string;
     timestamp: string;
     type: string;
@@ -87,6 +91,21 @@ interface WhatsAppMessage {
     reaction?: { message_id: string; emoji?: string };
 }
 
+interface WhatsAppContact {
+    profile?: { name?: string; username?: string };
+    /** Phone; absent for a username-only sender. */
+    wa_id?: string;
+    /** BSUID. */
+    user_id?: string;
+}
+
+/** The contacts entry describing this message's sender (not blindly the first one). */
+function contactFor(message: WhatsAppMessage, contacts?: WhatsAppContact[]): WhatsAppContact | undefined {
+    if (!contacts?.length) return undefined;
+    return contacts.find((c) => (message.from && c.wa_id === message.from) || (message.from_user_id && c.user_id === message.from_user_id))
+        ?? (contacts.length === 1 ? contacts[0] : undefined);
+}
+
 interface WhatsAppWebhookPayload {
     object: string;
     entry: Array<{
@@ -98,13 +117,15 @@ interface WhatsAppWebhookPayload {
                     display_phone_number: string;
                     phone_number_id: string;
                 };
-                contacts?: Array<{ profile: { name: string }; wa_id: string }>;
+                contacts?: Array<WhatsAppContact>;
                 messages?: WhatsAppMessage[];
                 statuses?: Array<{
                     id: string;
                     status: 'sent' | 'delivered' | 'read' | 'failed';
                     timestamp?: string;
                     recipient_id?: string;
+                    /** Set instead of/alongside recipient_id when we sent to a BSUID. */
+                    recipient_user_id?: string;
                     errors?: Array<{ code: number; title: string; message?: string }>;
                     // What Meta actually billed this message as. Authoritative —
                     // it accounts for free allowances, free entry-point windows
@@ -628,13 +649,19 @@ export async function processWebhook(
             // Process messages
             if (value.messages && !inactive) {
                 for (const message of value.messages) {
+                    const senderId = inboundSenderId(message);
+                    if (!senderId) {
+                        // Neither a phone nor a BSUID: nothing to key or reply to.
+                        fastify.log.warn({ msgId: message.id, tenantId: tenant.id }, 'inbound WhatsApp message has no sender id - skipped');
+                        continue;
+                    }
                     // Same customer, same lock: two messages for one conversation
                     // never run (and reply) concurrently.
                     await settle(errors, fastify, { msgId: message.id }, () =>
                         withConversationLock(
                             lockRedis(fastify),
-                            `${tenant.id}:WHATSAPP:${message.from}`,
-                            () => processMessage(fastify, tenant, message, value.contacts?.[0]),
+                            `${tenant.id}:WHATSAPP:${senderId}`,
+                            () => processMessage(fastify, tenant, message, contactFor(message, value.contacts)),
                             lockOpts(fastify),
                         ),
                     );
@@ -718,19 +745,24 @@ async function processMessage(
     fastify: any,
     tenant: any,
     message: WhatsAppMessage,
-    contact?: { profile: { name: string }; wa_id: string }
+    contact?: WhatsAppContact,
 ) {
-    const customerPhone = message.from;
+    // The channel identity is the phone when Meta shares it, else the BSUID of
+    // a customer who hides their number behind a username. Either way it is
+    // the conversation key and the reply address; only a real `from` is a
+    // (Meta-verified) phone.
+    const senderId = inboundSenderId(message) as string; // checked by the caller
+    const customerPhone = inboundSenderPhone(message);
     const customerName = contact?.profile?.name;
+    const customerHandle = contact?.profile?.username ?? null;
 
-    // Find or create conversation. On WhatsApp the phone IS the channel
-    // identity, so it is both externalId and the stored phone.
     const conversation = await resolveConversation(fastify.prisma, {
         tenantId: tenant.id,
         channel: 'WHATSAPP',
-        externalId: customerPhone,
+        externalId: senderId,
         customerPhone,
         customerName,
+        customerHandle,
     });
 
     // Idempotency: Meta retries webhooks aggressively. If we've already stored
@@ -831,14 +863,14 @@ async function processMessage(
         inboundId: slot.id,
         channel: 'WHATSAPP',
         creds: channelCreds(tenant, 'WHATSAPP'),
-        recipientId: customerPhone,
+        recipientId: senderId,
         humanActive: conversation.state === 'HUMAN_ACTIVE',
     })) {
         await markInboundHandled(fastify.prisma, slot.id);
         return;
     }
 
-    await runWhatsAppTurn(fastify, tenant, conversation, customerPhone, content, slot.id, {
+    await runWhatsAppTurn(fastify, tenant, conversation, { recipientId: senderId, customerPhone }, content, slot.id, {
         messageType,
         reused: Boolean(existing),
         providerMessageId: message.id,
@@ -862,11 +894,13 @@ async function runWhatsAppTurn(
     fastify: any,
     tenant: any,
     conversation: any,
-    customerPhone: string,
+    /** recipientId: phone or BSUID to reply to. customerPhone: the verified `from`, or null. */
+    address: { recipientId: string; customerPhone: string | null },
     content: string,
     inboundId: string | undefined,
     extra: WhatsAppTurnExtra,
 ) {
+    const { recipientId } = address;
     // Update conversation timestamps. lastInboundAt powers the WhatsApp
     // 24-hour customer-service window check on staff replies.
     const now = new Date();
@@ -938,7 +972,7 @@ async function runWhatsAppTurn(
     // keyword takeover is the app's call, not ours.
     if (handler === 'external_app') {
         if (!externalAppLive) {
-            await handleExternalAppUnavailable(fastify, tenant, conversation, { channel: 'WHATSAPP', recipientId: customerPhone });
+            await handleExternalAppUnavailable(fastify, tenant, conversation, { channel: 'WHATSAPP', recipientId });
         }
         return;
     }
@@ -971,7 +1005,7 @@ async function runWhatsAppTurn(
     if (handler === 'flow') {
         await handleWithFlow(fastify, tenant, conversation, {
             channel: 'WHATSAPP',
-            recipientId: customerPhone,
+            recipientId,
             text: content,
             inboundRowId: inboundId,
             providerMessageId: extra.providerMessageId,
@@ -989,7 +1023,16 @@ async function runWhatsAppTurn(
     const progress: AgentProgress = { replySent: false };
     if (handler === 'llm_agent') {
         try {
-            await handleWithAgent(fastify, tenant, conversation, customerPhone, content, 'WHATSAPP', undefined, progress, inboundId);
+            // Only a verified `from` counts as the customer's phone; a username-only
+            // sender starts with none and the agent asks for it, as on Instagram.
+            // A username-only sender has no verified phone; one they typed earlier
+            // is remembered (as on Instagram) but stays a claim, never a lookup key.
+            await handleWithAgent(
+                fastify, tenant, conversation,
+                address.customerPhone ?? conversation.customerPhone ?? '',
+                content, 'WHATSAPP', recipientId, progress, inboundId,
+                Boolean(address.customerPhone),
+            );
             // The assistant coped, so any earlier failures no longer count
             // against this conversation.
             if ((conversation.botFailureCount || 0) > 0) {
@@ -1011,7 +1054,7 @@ async function runWhatsAppTurn(
         agentThrew,
         replySent: progress.replySent,
         channel: 'WHATSAPP',
-        recipientId: customerPhone,
+        recipientId,
     });
 }
 
@@ -1107,6 +1150,8 @@ async function handleWithAgent(
     progress: AgentProgress = { replySent: false },
     /** The inbound Message this turn answers; links the stored reply (outbox). */
     inboundId?: string,
+    /** False when `customerPhone` was typed, not reported by the channel (username-only WhatsApp). */
+    phoneVerified?: boolean,
 ): Promise<void> {
     const { runAgent } = await import('../../services/llm-agent.js');
     const { checkOutboundQuota } = await import('../../services/usage.js');
@@ -1137,6 +1182,7 @@ async function handleWithAgent(
             conversationId: conversation.id,
             customerPhone,
             channel,
+            ...(phoneVerified === undefined ? {} : { phoneVerified }),
             // Lets a customer who types "024…" have it completed to the
             // business's own country rather than refused.
             businessPhone: tenant.whatsappDisplayNumber ?? null,

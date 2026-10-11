@@ -34,6 +34,8 @@ export interface ResolveConversationArgs {
 
 export interface ResolvedConversation {
     id: string;
+    /** The channel identity this was resolved by: phone or BSUID (WhatsApp), IGSID/PSID otherwise. */
+    externalId: string;
     state: string;
     customerName: string | null;
     /**
@@ -112,7 +114,7 @@ export async function resolveConversation(
             }
             throw err;
         }
-        return { ...created, created: true };
+        return { ...created, externalId: args.externalId, created: true };
     }
 
     // Backfill only what is missing. A webhook without a profile name must not
@@ -131,6 +133,7 @@ export async function resolveConversation(
 
     return {
         id: existing.id,
+        externalId: args.externalId,
         state: existing.state,
         customerName: patch.customerName ?? existing.customerName,
         customerPhone: patch.customerPhone ?? existing.customerPhone,

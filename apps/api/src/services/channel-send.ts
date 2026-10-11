@@ -18,6 +18,7 @@
  */
 
 import type { ConversationChannel } from '@prisma/client';
+import { whatsappDestination } from './whatsapp-identity.js';
 
 const GRAPH_BASE = 'https://graph.facebook.com/v21.0';
 
@@ -64,7 +65,8 @@ export function buildTextRequest(args: SendTextArgs): { url: string; body: Recor
             url: `${GRAPH_BASE}/${credentials.senderId}/messages`,
             body: {
                 messaging_product: 'whatsapp',
-                to: recipientId,
+                // `to` for a phone, `recipient` for a username-only customer's BSUID.
+                ...whatsappDestination(recipientId),
                 type: 'text',
                 text: { body: text },
             },

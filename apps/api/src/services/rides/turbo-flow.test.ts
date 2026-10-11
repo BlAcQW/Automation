@@ -19,7 +19,7 @@ type Vars = Record<string, string | number>;
 let state: { member: boolean; payg: 'open' | 'closed' | 'full'; openRide: boolean; quoteOk: boolean | 'unknown'; calls: ActionRequest[]; phoneHidden: boolean; codeSent: boolean; codeResult: 'yes' | 'retry' | 'restart' };
 
 const fakes: Record<string, (req: ActionRequest) => Vars> = {
-    'turbo.balance': () => (state.phoneHidden ? { needs_phone: 'yes', member: 'no', open_ride: 'no' } : {
+    'turbo.balance': () => (state.phoneHidden ? ({ needs_phone: 'yes', member: 'no', open_ride: 'no' } as Vars) : {
         needs_phone: 'no', member: state.member ? 'yes' : 'no', pass_name: 'Pioneer 50', rides_total: 60, rides_used: 12, rides_left: state.member ? 48 : 0,
         expiry_date: '5 Dec 2026', open_ride: state.openRide ? 'yes' : 'no', open_ride_ref: state.openRide ? 'TR-AAAAAA' : '', open_ride_status: state.openRide ? 'waiting for a driver' : '',
     }),
@@ -39,7 +39,7 @@ const fakes: Record<string, (req: ActionRequest) => Vars> = {
     'turbo.cancel_ride': () => ({ cancel_ok: 'yes', cancel_reason: '❌ Ride TR-AAAAAA cancelled. No ride was deducted.' }),
     'turbo.send_phone_code': () => (state.codeSent
         ? { code_sent: 'yes', code_hash: 'h', code_expires: 1, code_attempts: 0, code_sends: 1, phone_reason: '' }
-        : { code_sent: 'no', phone_reason: "We couldn't send the code by SMS right now." }),
+        : ({ code_sent: 'no', phone_reason: "We couldn't send the code by SMS right now." } as Vars)),
     'turbo.verify_phone_code': () => {
         if (state.codeResult === 'yes') { state.phoneHidden = false; return { phone_ok: 'yes', code_attempts: 1, phone_reason: '' }; }
         return state.codeResult === 'retry'

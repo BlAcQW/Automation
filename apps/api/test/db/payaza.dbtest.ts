@@ -12,6 +12,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const sent: Array<{ to: string; text: string }> = [];
 const queried: Array<{ publicKey: string; mode: string; reference: string }> = [];
 let queryAmountMinor = 96000;
+/** What the mocked Payaza status query answers: 'success' (Completed), 'pending' (Initialized) or 'down' (throws). */
+let queryStatus: 'success' | 'pending' | 'down' = 'success';
 
 vi.mock('../../src/services/paystack.js', async (orig) => ({
     ...(await orig<object>()),
@@ -21,9 +23,11 @@ vi.mock('../../src/services/payaza.js', async (orig) => ({
     ...(await orig<object>()),
     queryTransaction: vi.fn(async (publicKey: string, mode: string, reference: string) => {
         queried.push({ publicKey, mode, reference });
+        if (queryStatus === 'down') throw new Error('Payaza unreachable (mocked)');
         return {
-            status: 'success', amountKobo: queryAmountMinor, currency: 'GHS', paidAt: new Date(), reference,
-            customerEmail: '', channel: 'GH_MOBILEMONEY', transactionId: 'PZ-TX-777', metadata: null,
+            status: queryStatus, amountKobo: queryAmountMinor, currency: 'GHS', paidAt: new Date(), reference,
+            customerEmail: '', channel: queryStatus === 'success' ? 'GH_MOBILEMONEY' : undefined,
+            transactionId: queryStatus === 'success' ? 'PZ-TX-777' : undefined, metadata: null,
         };
     }),
 }));
@@ -51,6 +55,9 @@ import { registerRidesPack, installTurboPack } from '../../src/services/rides/in
 import { paymentList } from '../../src/services/rides/console.js';
 import { tenantContext } from '../../src/lib/tenant-context.js';
 import { encrypt } from '../../src/services/crypto.js';
+import { createPayazaExpiryGuard, createPayazaThrottle, reconcilePayaza } from '../../src/services/payaza-reconcile.js';
+import { sweepRides } from '../../src/services/rides/sweeper.js';
+import { readFlowState } from '../../src/services/flows/index.js';
 
 const PHONE = '+233241234567';
 const PUB = 'PZ78-PKTEST-DB-SUITE-PUBLIC';
@@ -121,7 +128,7 @@ const PAYAZA_TENANT = () => ({ paymentProvider: 'PAYAZA', payazaPublicKey: encry
 
 describe('Payaza on a real database', () => {
     beforeEach(async () => {
-        sent.length = 0; queried.length = 0; n = 0; queryAmountMinor = 96000;
+        sent.length = 0; queried.length = 0; n = 0; queryAmountMinor = 96000; queryStatus = 'success';
         registerFlowPaymentFulfiller();
         registerRidesPack(await guardedPrisma());
         app ??= await buildApp();
@@ -187,5 +194,121 @@ describe('Payaza on a real database', () => {
         const payMsg = await buyUpToPay(conv.id);
         expect(payMsg).not.toMatch(/payaza\.africa|paystack/);
         expect(await rawPrisma().ridePass.count({ where: { tenantId, status: 'HELD' } })).toBe(0);
+    });
+});
+
+/**
+ * Missed webhooks (TURBO, 2026-10-15): Payaza took the money and never called.
+ * The reconciler and the sweeper guard ask Payaza themselves.
+ */
+describe('Payaza without a webhook: reconciler, sweeper guard, late payments', () => {
+    const PAID_LINE = '✅ Payment confirmed, thank you!';
+    const reconcileNow = async (at = new Date()) =>
+        reconcilePayaza({ prisma: await guardedPrisma(), log: silentLogger, throttle: createPayazaThrottle() }, at);
+    const sweepLater = async (opts: { guard: boolean }) => {
+        const prisma = await guardedPrisma();
+        const beforeExpire = opts.guard ? createPayazaExpiryGuard({ prisma, log: silentLogger, throttle: createPayazaThrottle() }) : undefined;
+        return sweepRides(prisma as any, silentLogger, new Date(Date.now() + 31 * 60_000), { beforeExpire });
+    };
+    const heldPass = async () => {
+        const conv = await seedTurbo(PAYAZA_TENANT());
+        const reference = linkIn(await buyUpToPay(conv.id)).searchParams.get('transaction_reference')!;
+        const pass = await rawPrisma().ridePass.findFirstOrThrow({ where: { tenantId } });
+        expect(pass).toMatchObject({ status: 'HELD', paymentReference: reference });
+        return { conv, reference, pass };
+    };
+
+    beforeEach(async () => {
+        sent.length = 0; queried.length = 0; n = 0; queryAmountMinor = 96000; queryStatus = 'success';
+        registerFlowPaymentFulfiller();
+        registerRidesPack(await guardedPrisma());
+        app ??= await buildApp();
+    });
+
+    it('HELD pass, Payaza says Completed, no webhook: the reconciler activates it and the waiting flow says "Payment confirmed"', async () => {
+        const { pass, reference } = await heldPass();
+
+        queryStatus = 'pending';
+        expect(await reconcileNow()).toMatchObject({ queried: 1, confirmed: 0 });
+        expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).status).toBe('HELD');
+
+        queryStatus = 'success';
+        const before = sent.length;
+        expect(await reconcileNow()).toMatchObject({ tenants: 1, queried: 1, confirmed: 1 });
+        expect(queried.at(-1)).toEqual({ publicKey: PUB, mode: 'TEST', reference });
+        const paid = await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } });
+        expect(paid).toMatchObject({ status: 'ACTIVE', paymentProvider: 'PAYAZA', providerTransactionId: 'PZ-TX-777', paidAmountMinor: 96000 });
+        const msgs = sent.slice(before).map((m) => m.text);
+        expect(msgs).toHaveLength(1);
+        expect(msgs[0].startsWith(`${PAID_LINE}\n\n🎉 WELCOME TO TURBO, AMA MENSAH!`)).toBe(true);
+
+        // Next tick: nothing left to ask about.
+        expect((await reconcileNow()).queried).toBe(0);
+    });
+
+    it('the sweeper asks Payaza before expiring a hold: paid -> ACTIVE (not cancelled); Payaza down -> cancelled as before', async () => {
+        const { pass } = await heldPass();
+        expect((await sweepLater({ guard: true })).cancelledHolds).toBe(0);
+        expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).status).toBe('ACTIVE');
+        expect(sent.at(-1)!.text.startsWith(PAID_LINE)).toBe(true);
+    });
+
+    it('Payaza down at expiry: the hold is cancelled, then the 2h late window activates it, messaging the customer directly and resetting the flow', async () => {
+        const { conv, pass } = await heldPass();
+        queryStatus = 'down';
+        expect((await sweepLater({ guard: true })).cancelledHolds).toBe(1);
+        expect(await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).toMatchObject({ status: 'CANCELLED', cancelReason: 'hold_expired', paidAt: null });
+
+        // The customer moved on in the chat (back to the menu): the flow no longer waits on this payment.
+        await say(conv.id, 'menu');
+        expect(readFlowState((await rawPrisma().conversation.findUniqueOrThrow({ where: { id: conv.id } })).botContext)?.status).toBe('active');
+
+        queryStatus = 'success';
+        const before = sent.length;
+        expect(await reconcileNow(new Date(Date.now() + 40 * 60_000))).toMatchObject({ confirmed: 1 });
+        expect(await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).toMatchObject({ status: 'ACTIVE', cancelReason: null, cancelledAt: null });
+        const msgs = sent.slice(before).map((m) => m.text);
+        expect(msgs).toHaveLength(1);
+        expect(msgs[0]).toMatch(/^✅ Payment confirmed, thank you!\n\n🎉 WELCOME TO TURBO, AMA MENSAH![\s\S]*Reply BOOK/);
+        // The stale newcomer menu is gone: the next message starts the flow again (member menu).
+        expect(readFlowState((await rawPrisma().conversation.findUniqueOrThrow({ where: { id: conv.id } })).botContext)?.status).toBe('ended');
+        expect(await say(conv.id, 'hi')).toMatch(/What would you like to do\?[\s\S]*1\. Book a Ride/);
+    });
+
+    it('a timeout cancellation older than 2 hours is not asked about', async () => {
+        const { pass } = await heldPass();
+        await rawPrisma().ridePass.update({ where: { id: pass.id }, data: { status: 'CANCELLED', cancelReason: 'hold_expired', cancelledAt: new Date(Date.now() - 3 * 3600_000) } });
+        expect((await reconcileNow()).queried).toBe(0);
+        expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).status).toBe('CANCELLED');
+    });
+
+    it('late payment when the Founding slots are gone: payment recorded, not activated, refund alert', async () => {
+        const { pass } = await heldPass();
+        await sweepLater({ guard: false });
+        await rawPrisma().rideSettings.update({ where: { tenantId }, data: { foundingCap: 1 } });
+        const other = await rawPrisma().customer.create({ data: { tenantId, phone: '+233200000111', name: 'Kofi' } });
+        await rawPrisma().ridePass.create({ data: { tenantId, customerId: other.id, status: 'ACTIVE', ridesTotal: 60, validityDays: 60, maxKm: 6, priceMinor: 96000, currency: 'GHS', activatedAt: new Date(), expiresAt: new Date(Date.now() + 86400_000) } });
+
+        expect(await reconcileNow()).toMatchObject({ queried: 1, confirmed: 0, refused: 1 });
+        expect(await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).toMatchObject({ status: 'CANCELLED', cancelReason: 'cap_full_after_hold', paymentProvider: 'PAYAZA' });
+        expect((await rawPrisma().platformAlert.findFirst({ where: { tenantId, kind: 'ride_package.not_applied' } }))?.message).toMatch(/Payaza dashboard/);
+        // Paid now: no longer awaiting, so not asked again.
+        expect((await reconcileNow()).queried).toBe(0);
+    });
+
+    it('webhook and reconciler racing on the same reference: one activation, one entry, one welcome', async () => {
+        const { pass, reference } = await heldPass();
+        const before = sent.length;
+        const [hook] = await Promise.all([
+            deliver({ transaction_reference: 'PZ-TX-777', merchant_reference: reference, status: 'Completed' }),
+            reconcileNow(),
+            reconcileNow(),
+        ]);
+        expect(hook.statusCode).toBe(200);
+        expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).status).toBe('ACTIVE');
+        expect(await rawPrisma().ridePassEntry.count({ where: { passId: pass.id } })).toBe(1);
+        expect(await rawPrisma().domainEvent.count({ where: { tenantId, type: 'ride_pass.activated' } })).toBe(1);
+        expect(await rawPrisma().domainEvent.count({ where: { tenantId, type: 'payment.succeeded' } })).toBe(1);
+        expect(sent.slice(before).filter((m) => m.text.includes('WELCOME TO TURBO'))).toHaveLength(1);
     });
 });

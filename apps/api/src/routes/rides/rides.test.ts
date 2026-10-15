@@ -161,10 +161,22 @@ describe('settings, drivers, destinations: reads for staff, writes for the owner
         const g = await app.inject({ url: '/rides/settings', headers: as('STAFF') });
         expect(g.json()).toMatchObject({ package: { price: '960.00', rides: 60, days: 60, maxKm: 6, cap: 50 }, payg: { open: true, dailyLimit: 10, fares: [{ upToKm: 6, amount: '25.00' }, { upToKm: 10, amount: '35.00' }] }, roadFactor: 1.3, driverSms: false });
         expect((await app.inject({ method: 'PATCH', url: '/rides/settings', headers: as('STAFF'), payload: { payg: { open: false } } })).statusCode).toBe(403);
-        m.updateRideSettings.mockResolvedValue({ ...resolveSettings(null), paygOpen: false });
+        m.updateRideSettings.mockResolvedValue({ ok: true, settings: { ...resolveSettings(null), paygOpen: false } });
         const p = await app.inject({ method: 'PATCH', url: '/rides/settings', headers: as('OWNER'), payload: { payg: { open: false } } });
         expect(p.statusCode).toBe(200);
         expect(p.json().payg.open).toBe(false);
+        expect(p.json()).toMatchObject({ fareRef: null, package: { fares: [{ upToKm: 6, amount: '16.00' }, { upToKm: 10, amount: '25.00' }], overFare: '40.00' }, payg: { overFare: '50.00' } });
+        // The console sends strings or null; the legacy rides/maxKm are accepted (and ignored).
+        const full = await app.inject({ method: 'PATCH', url: '/rides/settings', headers: as('OWNER'), payload: {
+            fareRef: { label: 'Student Plaza', lat: 5.62, lng: -0.17 },
+            package: { price: '960.00', rides: 60, maxKm: 6, fares: [{ upToKm: 6, amount: '16.00' }], overFare: '40.00' },
+            payg: { overFare: null },
+        } });
+        expect(full.statusCode).toBe(200);
+        // A fare rule broken by the merged result (overFare under the last tier) is a 400 and saves nothing.
+        m.updateRideSettings.mockResolvedValue({ ok: false, message: "package overFare must be at least the last tier's fare (25.00)" });
+        const bad = await app.inject({ method: 'PATCH', url: '/rides/settings', headers: as('OWNER'), payload: { package: { overFare: '10.00' } } });
+        expect(bad.statusCode).toBe(400);
         expect((await app.inject({ method: 'PATCH', url: '/rides/settings', headers: as('OWNER'), payload: { payg: { fares: [{ upToKm: 6, fare: '25' }] } } })).statusCode).toBe(400);
     });
 

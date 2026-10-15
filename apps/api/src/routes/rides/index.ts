@@ -219,8 +219,10 @@ const ridesRoutes: FastifyPluginAsync = async (fastify) => {
         requireOwner(request);
         const patch = settingsPatchSchema.parse(request.body);
         const updated = await updateRideSettings(fastify.prisma, request.user.tenantId, patch);
+        // e.g. an over fare below the last tier's fare: refused, nothing saved.
+        if (!updated.ok) throw fastify.httpErrors.badRequest(updated.message);
         await audit({ ...actor(request), action: 'rides.settings.update', targetType: 'RideSettings', targetId: request.user.tenantId, metadata: { patch } });
-        return toSettingsView(updated);
+        return toSettingsView(updated.settings);
     });
 };
 

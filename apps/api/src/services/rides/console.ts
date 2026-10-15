@@ -10,6 +10,7 @@ import { passBalances } from './passes.js';
 import { paygDayKey, paygUsed } from './capacity.js';
 import { BOOKED_RIDE, OPEN_STATUSES, rideInclude } from './rides.js';
 import { startOfDayInZone } from '../timezone.js';
+import { formatMinor } from './geo.js';
 import {
     balanceLogView, customerSummary, packagePaymentView, passView, paygPaymentView, personRef, rideView,
     type ConsolePassStatus, type ConsolePaymentStatus,
@@ -34,12 +35,13 @@ export async function overview(db: RidesDb, tenantId: string, now = new Date()) 
     const start = todayStart(now, s.timezone);
     const day = paygDayKey(now, s.timezone);
 
-    const [sold, activated, held, usedAgg, remainingAgg, live, used, ridesToday, passPayments, paygPayments] = await Promise.all([
+    const [sold, activated, held, usedAgg, remainingAgg, completedPackage, live, used, ridesToday, passPayments, paygPayments] = await Promise.all([
         db.ridePass.count({ where: { tenantId, activatedAt: { not: null } } }),
         db.ridePass.count({ where: { tenantId, status: 'ACTIVE' } }),
         db.ridePass.count({ where: { tenantId, status: 'HELD', holdExpiresAt: { gt: now } } }),
-        db.ridePassEntry.aggregate({ where: { tenantId, type: 'RIDE' }, _sum: { delta: true } }),
-        db.ridePassEntry.aggregate({ where: { tenantId, pass: { status: 'ACTIVE' } }, _sum: { delta: true } }),
+        db.ridePassEntry.aggregate({ where: { tenantId, type: 'RIDE' }, _sum: { amountMinor: true } }),
+        db.ridePassEntry.aggregate({ where: { tenantId, pass: { status: 'ACTIVE' } }, _sum: { amountMinor: true } }),
+        db.ride.count({ where: { tenantId, kind: 'PACKAGE', status: 'COMPLETED' } }),
         db.ride.groupBy({ by: ['status'], where: { tenantId, status: { in: OPEN_STATUSES } }, _count: { _all: true } }),
         paygUsed(db, tenantId, day),
         db.ride.groupBy({ by: ['kind'], where: { tenantId, requestedAt: { gte: start }, ...BOOKED_RIDE }, _count: { _all: true } }),
@@ -48,7 +50,7 @@ export async function overview(db: RidesDb, tenantId: string, now = new Date()) 
             select: { paidAt: true, status: true, holdExpiresAt: true, createdAt: true },
         }),
         db.ride.findMany({
-            where: { tenantId, kind: 'PAYG', OR: [{ paidAt: { gte: start } }, { createdAt: { gte: start } }, { status: 'PENDING_PAYMENT' }] },
+            where: { tenantId, ...RIDE_PAYMENT, AND: [{ OR: [{ paidAt: { gte: start } }, { createdAt: { gte: start } }, { status: 'PENDING_PAYMENT' }] }] },
             select: { paidAt: true, status: true, paymentExpiresAt: true, createdAt: true },
         }),
     ]);
@@ -72,7 +74,10 @@ export async function overview(db: RidesDb, tenantId: string, now = new Date()) 
 
     return {
         packages: { sold, activated, cap: s.foundingCap, slotsLeft: Math.max(0, s.foundingCap - sold - held), held },
-        rides: { used: -(usedAgg._sum.delta ?? 0), remaining: Math.max(0, remainingAgg._sum.delta ?? 0) },
+        /** GHS credit: deducted by completed package rides, and left on active packages. */
+        credit: { used: formatMinor(-(usedAgg._sum.amountMinor ?? 0)), remaining: formatMinor(Math.max(0, remainingAgg._sum.amountMinor ?? 0)) },
+        /** Completed package rides. */
+        rides: { completed: completedPackage },
         live: liveCounts,
         payg: { open: s.paygOpen, dailyLimit: s.paygDailyLimit, used, available: Math.max(0, s.paygDailyLimit - used) },
         payments,
@@ -175,7 +180,7 @@ export async function passList(db: RidesDb, tenantId: string, q: PageQuery & { s
         // Exhausted is ACTIVE with nothing left: split in memory (at most the founding cap of rows).
         const rows = await db.ridePass.findMany({ where: { tenantId, status: 'ACTIVE' }, orderBy: { createdAt: 'desc' }, include, take: 5000 });
         const balances = await passBalances(db, tenantId, rows.map((p) => p.id));
-        const wanted = rows.filter((p) => ((balances.get(p.id)?.remaining ?? 0) <= 0) === (q.status === 'EXHAUSTED'));
+        const wanted = rows.filter((p) => ((balances.get(p.id)?.remainingMinor ?? 0) <= 0) === (q.status === 'EXHAUSTED'));
         return { data: view(wanted.slice(skip(q), skip(q) + q.limit), balances), pagination: pagination(q, wanted.length) };
     }
     const status = q.status === 'PENDING_PAYMENT' ? 'HELD' : q.status;
@@ -200,13 +205,18 @@ function passPaymentWhere(tenantId: string, status: ConsolePaymentStatus | undef
     }
 }
 
-function paygPaymentWhere(tenantId: string, status: ConsolePaymentStatus | undefined, now: Date): Prisma.RideWhereInput | null {
-    const base = { tenantId, kind: 'PAYG' as const };
+/** Rides that carry a payment: every PAYG ride, and package rides with a top-up. */
+const RIDE_PAYMENT: Prisma.RideWhereInput = { OR: [{ kind: 'PAYG' }, { kind: 'PACKAGE', topupMinor: { gt: 0 } }] };
+
+function paygPaymentWhere(tenantId: string, status: ConsolePaymentStatus | undefined, now: Date, kind: RideKind | undefined): Prisma.RideWhereInput | null {
+    const base: Prisma.RideWhereInput = kind === 'PAYG'
+        ? { tenantId, kind: 'PAYG' }
+        : kind === 'PACKAGE' ? { tenantId, kind: 'PACKAGE', topupMinor: { gt: 0 } } : { tenantId, ...RIDE_PAYMENT };
     switch (status) {
         case undefined: return base;
         case 'SUCCEEDED': return { ...base, paidAt: { not: null } };
         case 'PENDING': return { ...base, paidAt: null, status: 'PENDING_PAYMENT', paymentExpiresAt: { gt: now } };
-        case 'FAILED': return { ...base, paidAt: null, OR: [{ status: 'CANCELLED' }, { status: 'PENDING_PAYMENT', paymentExpiresAt: { lte: now } }] };
+        case 'FAILED': return { ...base, paidAt: null, AND: [{ OR: [{ status: 'CANCELLED' }, { status: 'PENDING_PAYMENT', paymentExpiresAt: { lte: now } }] }] };
         case 'REFUNDED': return null;
     }
 }
@@ -220,7 +230,8 @@ export async function paymentList(
 ) {
     const customer = { select: { id: true, name: true, phone: true } } as const;
     const passWhere = q.kind === 'PAYG' ? null : passPaymentWhere(tenantId, q.status, now);
-    const rideWhere = q.kind === 'PACKAGE' ? null : paygPaymentWhere(tenantId, q.status, now);
+    // Top-ups are package payments: kind PACKAGE lists purchases and top-ups (purpose tells them apart).
+    const rideWhere = paygPaymentWhere(tenantId, q.status, now, q.kind);
     const upto = q.page * q.limit; // enough of each side to merge one page
     const [passes, passTotal, rides, rideTotal] = await Promise.all([
         passWhere ? db.ridePass.findMany({ where: passWhere, orderBy: { createdAt: 'desc' }, take: upto, include: { customer } }) : [],

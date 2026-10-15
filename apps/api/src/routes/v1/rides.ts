@@ -7,20 +7,23 @@
  *   GET  /v1/rides/customers/:id/rides     rides:read   ride history (cursor pages)
  *   POST /v1/rides                         rides:write  book a package ride
  *
- * Booking follows the same rules as WhatsApp (active package, rides left,
- * within the package distance, one open ride at a time). A retried POST for the
- * same trip while that ride is still waiting returns the same ride (200), not a
- * second one. Buying a package stays in WhatsApp for now (payment link flow).
+ * The package is GHS ride credit: balances are GHS major-unit strings ("944.00").
+ * Booking follows the same rules as WhatsApp (active package, a positive
+ * balance, one open ride at a time; the band fare is deducted at completion, a
+ * shortfall under GHS 2 is waived). A fare the balance does not cover needs a
+ * top-up payment, which only WhatsApp can take for now (409 needs_topup). A
+ * retried POST for the same trip while that ride is still waiting returns the
+ * same ride (200), not a second one. Buying a package stays in WhatsApp too.
  */
 import type { FastifyPluginAsync } from 'fastify';
 import type { Ride, RidePass } from '@prisma/client';
 import { z } from 'zod';
 import { ApiError, V1_ROUTE_CONFIG, idParam, pageArgs, paginationQuery, requireApiKey, toPage } from './shared.js';
-import { customerBalance, passBalances, type PassBalance } from '../../services/rides/passes.js';
+import { customerBalance, passBalances, passCreditMinor, type PassBalance } from '../../services/rides/passes.js';
 import { BOOKED_RIDE, findOpenRide, type Place } from '../../services/rides/rides.js';
 import { bookPackageRide } from '../../services/rides/operations.js';
 import { formatMinor } from '../../services/rides/geo.js';
-import { passStatusOf } from '../../services/rides/views.js';
+import { passStatusOf, rideMoneyView } from '../../services/rides/views.js';
 
 const idParams = z.object({ id: idParam });
 const place = z.object({
@@ -37,15 +40,15 @@ const bookBody = z.object({
 }).strict().refine((b) => (b.destination === undefined) !== (b.destinationId === undefined), 'Give exactly one of destination or destinationId');
 
 function serializePass(p: RidePass, b: PassBalance | undefined) {
-    const bal = b ?? { purchased: 0, used: 0, remaining: 0 };
+    const bal = b ?? { purchasedMinor: 0, usedMinor: 0, remainingMinor: 0, ridesTaken: 0 };
     return {
         id: p.id,
-        status: passStatusOf(p, bal.remaining),
-        ridesTotal: p.ridesTotal,
-        ridesUsed: bal.used,
-        ridesRemaining: p.activatedAt ? Math.max(0, bal.remaining) : 0,
-        maxKm: p.maxKm,
+        status: passStatusOf(p, bal.remainingMinor),
         price: formatMinor(p.priceMinor),
+        credit: formatMinor(passCreditMinor(p)),
+        used: formatMinor(bal.usedMinor),
+        remaining: formatMinor(p.activatedAt ? Math.max(0, bal.remainingMinor) : 0),
+        ridesTaken: bal.ridesTaken,
         currency: p.currency,
         activatedAt: p.activatedAt,
         expiresAt: p.expiresAt,
@@ -62,7 +65,7 @@ function serializeRide(r: Ride & { driver?: { id: string; name: string; vehicle:
         pickup: { label: r.pickupLabel, lat: r.pickupLat, lng: r.pickupLng },
         destination: { label: r.destinationLabel, lat: r.destinationLat, lng: r.destinationLng },
         distanceKm: r.distanceKm,
-        fare: r.kind === 'PAYG' ? formatMinor(r.fareMinor) : null,
+        ...rideMoneyView(r),
         currency: r.currency,
         driver: r.driver ? { id: r.driver.id, name: r.driver.name, vehicle: r.driver.vehicle, plate: r.driver.plate } : null,
         source: r.source,
@@ -75,9 +78,10 @@ function serializeRide(r: Ride & { driver?: { id: string; name: string; vehicle:
 
 const BOOK_ERRORS: Record<string, [number, string]> = {
     no_package: [409, 'The customer has no active package.'],
-    no_rides_left: [409, 'The customer has no rides left on their package.'],
+    no_balance: [409, 'The customer has no ride credit left on their package.'],
+    needs_topup: [409, 'The balance does not cover this fare; the difference can only be paid in WhatsApp for now.'],
     open_ride: [409, 'The customer already has a ride in progress.'],
-    too_far: [422, 'The trip is longer than the package allows.'],
+    not_offered: [422, 'Package rides are not offered for this distance.'],
     bad_location: [400, 'Invalid pickup or destination.'],
 };
 
@@ -102,10 +106,14 @@ const rideRoutes: FastifyPluginAsync = async (fastify) => {
             data: {
                 customerId: id,
                 active: b.active,
-                package: b.pass ? serializePass(b.pass, { purchased: b.purchased, used: b.used, remaining: b.remaining }) : null,
-                purchased: b.purchased,
-                used: b.used,
-                remaining: b.active ? Math.max(0, b.remaining) : 0,
+                package: b.pass ? serializePass(b.pass, b) : null,
+                currency: b.pass?.currency ?? null,
+                credit: formatMinor(b.purchasedMinor),
+                used: formatMinor(b.usedMinor),
+                remaining: formatMinor(b.active ? Math.max(0, b.remainingMinor) : 0),
+                /** remaining less what open bookings already hold. */
+                available: formatMinor(Math.max(0, b.availableMinor)),
+                ridesTaken: b.ridesTaken,
                 expiresAt: b.expiresAt,
             },
         };

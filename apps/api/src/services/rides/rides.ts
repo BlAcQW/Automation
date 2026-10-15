@@ -42,7 +42,8 @@ export const OPEN_STATUSES: RideStatus[] = ['REQUESTED', 'ASSIGNED', 'EN_ROUTE']
  * not a ride: it shows under payments, never in ride lists or counts.
  */
 export const BOOKED_RIDE: Prisma.RideWhereInput = {
-    NOT: [{ kind: 'PAYG', paidAt: null }, { kind: 'PACKAGE', paidAt: null, topupMinor: { gt: 0 } }],
+    // `not: null` matters: a NULL topupMinor (package rides from before the change) would make the NOT unknown and hide the row.
+    NOT: [{ kind: 'PAYG', paidAt: null }, { kind: 'PACKAGE', paidAt: null, topupMinor: { not: null, gt: 0 } }],
 };
 const REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const REF_ATTEMPTS = 3;

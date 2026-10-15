@@ -70,7 +70,7 @@ describe('GET passes and rides', () => {
         const r = await h.app.inject({ url: `/v1/rides/customers/${CID}/rides?limit=5`, headers: auth(k) });
         expect(r.json().data[0]).toMatchObject({ id: 'r1', ref: 'TR-1', fare: null, source: 'APP', pickup: { label: 'Gate' } });
         expect(h.find('ride', 'findMany')[0].args).toMatchObject({
-            where: { tenantId: 'tenant-a', customerId: CID, NOT: [{ kind: 'PAYG', paidAt: null }, { kind: 'PACKAGE', paidAt: null, topupMinor: { gt: 0 } }] }, take: 6,
+            where: { tenantId: 'tenant-a', customerId: CID, NOT: [{ kind: 'PAYG', paidAt: null }, { kind: 'PACKAGE', paidAt: null, topupMinor: { not: null, gt: 0 } }] }, take: 6,
         });
     });
 });

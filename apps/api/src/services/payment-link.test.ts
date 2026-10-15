@@ -215,7 +215,7 @@ describe('createFulfillmentPaymentLink with Payaza as the provider', () => {
         expect(url).toMatch(/^https:\/\/payment\.payaza\.africa\/\?/);
         const p = new URL(url!).searchParams;
         expect(p.get('merchant_key')).toBe('dec(encpub)'); // decrypted public key
-        expect(p.get('connection_mode')).toBe('Live');
+        expect(p.get('connection_mode')).toBe('live');
         expect(p.get('checkout_amount')).toBe('960.00');
         expect(p.get('currency_code')).toBe('GHS');
         expect(p.get('email_address')).toBe('233241234567@customer.bookingflow.app');
@@ -232,7 +232,7 @@ describe('createFulfillmentPaymentLink with Payaza as the provider', () => {
 
     it('uses Test mode for a TEST connection', async () => {
         const url = await createFulfillmentPaymentLink({ ...args, paymentSettings: { ...payaza, payazaMode: 'TEST' }, onCreated: vi.fn() });
-        expect(new URL(url!).searchParams.get('connection_mode')).toBe('Test');
+        expect(new URL(url!).searchParams.get('connection_mode')).toBe('test');
     });
 
     it('PAYAZA selected but keys missing behaves like no gateway: no link, no Paystack fallback', async () => {

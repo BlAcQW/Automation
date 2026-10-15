@@ -6,6 +6,7 @@ import {
     buildPaymentPageUrl,
     ghanaPhoneForPayaza,
     payazaAuthHeaders,
+    payazaChannel,
     probeKeys,
     queryTransaction,
     verifyPayazaSignature,
@@ -44,7 +45,7 @@ describe('buildPaymentPageUrl', () => {
         expect(`${url.origin}${url.pathname}`).toBe('https://payment.payaza.africa/');
         const p = url.searchParams;
         expect(p.get('merchant_key')).toBe(PUBLIC_KEY); // raw key, not base64
-        expect(p.get('connection_mode')).toBe('Live');
+        expect(p.get('connection_mode')).toBe('live');
         expect(p.get('checkout_amount')).toBe('960.00');
         expect(p.get('currency_code')).toBe('GHS');
         expect(p.get('country_code')).toBe('GHA');
@@ -66,7 +67,7 @@ describe('buildPaymentPageUrl', () => {
     });
 
     it('uses Test connection mode for TEST keys', () => {
-        expect(new URL(buildPaymentPageUrl({ ...base, mode: 'TEST' })).searchParams.get('connection_mode')).toBe('Test');
+        expect(new URL(buildPaymentPageUrl({ ...base, mode: 'TEST' })).searchParams.get('connection_mode')).toBe('test');
     });
 
     it('omits redirect_url when there is none', () => {
@@ -132,6 +133,19 @@ describe('verifyPayazaSignature', () => {
     });
 });
 
+describe('payazaChannel', () => {
+    it('maps Payaza transaction types to readable channels', () => {
+        expect(payazaChannel('GH_MOBILEMONEY')).toBe('mobile_money');
+        expect(payazaChannel('MOBILE_MONEY')).toBe('mobile_money');
+        expect(payazaChannel('GH_MOMO')).toBe('mobile_money');
+        expect(payazaChannel('CARD')).toBe('card');
+        expect(payazaChannel('BANK_TRANSFER')).toBe('bank_transfer');
+        expect(payazaChannel('PAYAZA_WALLET')).toBe('payaza_wallet');
+        expect(payazaChannel('')).toBeUndefined();
+        expect(payazaChannel(null)).toBeUndefined();
+    });
+});
+
 describe('queryTransaction', () => {
     const completed = {
         message: 'Transaction data found',
@@ -160,7 +174,7 @@ describe('queryTransaction', () => {
         const v = await queryTransaction(PUBLIC_KEY, 'TEST', 'bf_ref');
         expect(v).toMatchObject({
             status: 'success', amountKobo: 96000, currency: 'GHS', reference: 'bf_ref',
-            channel: 'GH_MOBILEMONEY', transactionId: 'PZ-TX-1', metadata: null,
+            channel: 'mobile_money', transactionId: 'PZ-TX-1', metadata: null,
         });
         expect(v.paidAt).toBeInstanceOf(Date);
     });

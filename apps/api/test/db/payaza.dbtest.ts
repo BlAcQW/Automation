@@ -132,7 +132,7 @@ describe('Payaza on a real database', () => {
 
         const params = linkIn(await buyUpToPay(conv.id)).searchParams;
         expect(params.get('merchant_key')).toBe(PUB);
-        expect(params.get('connection_mode')).toBe('Test');
+        expect(params.get('connection_mode')).toBe('test');
         expect(params.get('checkout_amount')).toBe('960.00');
         expect(params.get('phone_number')).toBe('233241234567');
         expect(params.get('redirect_url')).toBe('https://wa.me/233200000000');

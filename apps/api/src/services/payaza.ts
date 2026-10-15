@@ -85,7 +85,8 @@ export function buildPaymentPageUrl(args: PaymentPageArgs): string {
 
     const params: Array<[string, string]> = [
         ['merchant_key', args.publicKey],
-        ['connection_mode', args.mode === 'LIVE' ? 'Live' : 'Test'],
+        // Lowercase, exactly as the Payment Page docs example (`connection_mode=live`).
+        ['connection_mode', args.mode === 'LIVE' ? 'live' : 'test'],
         ['checkout_amount', minorToMajorString(args.amountMinor)],
         ['currency_code', args.currency.toUpperCase()],
         ['country_code', PAYAZA_COUNTRY_CODE],
@@ -180,6 +181,20 @@ function mapStatus(raw: string | null | undefined): VerifyResult['status'] {
     }
 }
 
+/**
+ * Payaza's transaction_type (GH_MOBILEMONEY, CARD, ...) as the readable channel
+ * the console shows next to Paystack's (mobile_money, card, bank_transfer).
+ * Unknown types are lowercased; empty is undefined.
+ */
+export function payazaChannel(raw: string | null | undefined): string | undefined {
+    const t = (raw ?? '').trim().toUpperCase();
+    if (!t) return undefined;
+    if (/MOBILE_?MONEY|MOMO/.test(t)) return 'mobile_money';
+    if (/CARD/.test(t)) return 'card';
+    if (/BANK|TRANSFER/.test(t)) return 'bank_transfer';
+    return t.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40);
+}
+
 function isAuthFailure(status: number, body: StatusQueryEnvelope | undefined): boolean {
     return status === 401 || status === 403 || /authentication failed/i.test(body?.message ?? '');
 }
@@ -241,7 +256,7 @@ export async function queryTransaction(publicKey: string, mode: PayazaMode, refe
         paidAt: mapped === 'success' && statusDate && !Number.isNaN(statusDate.getTime()) ? statusDate : null,
         reference,
         customerEmail: '',
-        channel: data.transaction_type ?? undefined,
+        channel: payazaChannel(data.transaction_type),
         transactionId: data.transaction_reference ?? undefined,
         metadata: null,
     };

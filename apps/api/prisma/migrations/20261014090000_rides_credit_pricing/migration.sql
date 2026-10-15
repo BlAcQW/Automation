@@ -1,6 +1,9 @@
 -- RIDES pack (TURBO): fares by distance band and the Founding Package as GHS credit.
--- Additive: new nullable/defaulted columns, two backfills, and RidePassEntry.delta made nullable
--- (legacy ride count). No existing column is dropped or renamed; old code keeps working against it.
+-- New nullable/defaulted columns, two backfills, and RidePassEntry.delta made nullable (legacy ride
+-- count). No existing column is dropped or renamed, BUT RidePassEntry.amountMinor is NOT NULL with no
+-- default: the previous build writes balance entries without it (activation, completion, expiry), and
+-- those writes fail once this has run. Deploy this migration and the new API (and worker) together,
+-- with no window where the old build runs against the migrated database.
 
 -- RideSettings: the fare reference point (unset = price from the pickup), package fares and the
 -- flat fares beyond the last tier (null = not offered).

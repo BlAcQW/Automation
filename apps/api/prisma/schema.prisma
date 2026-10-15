@@ -1396,6 +1396,10 @@ model RideSettings {
   /// Tell the driver by SMS when assigned.
   driverSms            Boolean  @default(false)
   timezone             String   @default("Africa/Accra")
+  /// Where the payment page sends the customer after paying for a Founding Package (https). Null = back to WhatsApp.
+  packageThanksUrl     String?  @db.VarChar(500)
+  /// Same for PAYG rides and package-ride top-ups (https). Null = back to WhatsApp.
+  rideThanksUrl        String?  @db.VarChar(500)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

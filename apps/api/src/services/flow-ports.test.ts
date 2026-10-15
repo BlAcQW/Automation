@@ -75,6 +75,18 @@ describe('createPaymentLink: the tenant\'s payment provider', () => {
         resetFlowPaymentPreparersForTests();
     });
 
+    it('a preparer\'s returnUrl (thank-you page) is the callback; otherwise the wa.me link', async () => {
+        resetFlowPaymentPreparersForTests();
+        registerFlowPaymentPreparer('ride_package', async () => ({ ok: true, entityId: 'pass1', onCreated: vi.fn(), returnUrl: 'https://turbo.example/thanks' }));
+        registerFlowPaymentPreparer('ride_payg', async () => ({ ok: true, entityId: 'ride1', onCreated: vi.fn() }));
+        const ports = createFlowPorts({ prisma: prismaWith(null), tenant: payazaTenant, log });
+        await ports.createPaymentLink(payReq({ kind: 'ride_package' }));
+        await ports.createPaymentLink(payReq({ kind: 'ride_payg', idempotencyKey: 'c1:wamid.IN2:pay' }));
+        expect((createFulfillmentPaymentLink.mock.calls[0] as any)[0].callbackUrl).toBe('https://turbo.example/thanks');
+        expect((createFulfillmentPaymentLink.mock.calls[1] as any)[0].callbackUrl).toBe('https://wa.me/233200000000');
+        resetFlowPaymentPreparersForTests();
+    });
+
     it('a tenant row without provider fields still works (Paystack path)', async () => {
         const ports = createFlowPorts({ prisma: prismaWith(null), tenant, log });
         await ports.createPaymentLink(payReq());

@@ -54,6 +54,11 @@ const MAX_REFERENCE_LENGTH = 200;
 
 // ---------------------------------------------------------------- preparers
 
+/** The business's thank-you page for this kind (ride settings), when set: the payment page returns there. */
+function returnUrl(url: string | null | undefined): { returnUrl?: string } {
+    return url ? { returnUrl: url } : {};
+}
+
 export async function prepareRidePackage(input: FlowPaymentPrepareInput): Promise<FlowPaymentPrepared> {
     const prisma = input.prisma as RidesClient;
     const customer = await resolveConversationCustomer(prisma, input);
@@ -68,6 +73,7 @@ export async function prepareRidePackage(input: FlowPaymentPrepareInput): Promis
     return {
         ok: true,
         entityId: passId,
+        ...returnUrl(s.packageThanksUrl),
         onCreated: ({ reference }) => recordPassLink(prisma, input.tenantId, passId, reference),
         onFailed: async () => {
             if (hold.reused) return;
@@ -92,9 +98,11 @@ export async function prepareRidePayg(input: FlowPaymentPrepareInput): Promise<F
     });
     if (!reserved.ok) return { ok: false, reason: reserved.reason };
     const rideId = reserved.ride.id;
+    const s = await getRideSettings(prisma, input.tenantId);
     return {
         ok: true,
         entityId: rideId,
+        ...returnUrl(s.rideThanksUrl),
         onCreated: ({ reference }) => recordRideLink(prisma, input.tenantId, rideId, reference),
         onFailed: async () => {
             if (reserved.reused) return;
@@ -122,6 +130,7 @@ export async function prepareRideTopup(input: FlowPaymentPrepareInput): Promise<
     return {
         ok: true,
         entityId: rideId,
+        ...returnUrl(s.rideThanksUrl),
         onCreated: ({ reference }) => recordRideLink(prisma, input.tenantId, rideId, reference),
         onFailed: async () => {
             if (reserved.reused) return;

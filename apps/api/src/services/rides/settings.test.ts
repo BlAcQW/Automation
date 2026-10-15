@@ -56,8 +56,9 @@ describe('toSettingsView (console contract shape)', () => {
                 fares: [{ upToKm: 6, amount: '16.00' }, { upToKm: 10, amount: '25.00' }], overFare: '40.00',
                 // Legacy (ride-count packages), kept for the console still deployed during the rollout.
                 rides: 60, maxKm: 6,
+                thanksUrl: null,
             },
-            payg: { open: true, dailyLimit: 10, fares: [{ upToKm: 6, amount: '25.00' }, { upToKm: 10, amount: '35.00' }], overFare: '50.00' },
+            payg: { open: true, dailyLimit: 10, fares: [{ upToKm: 6, amount: '25.00' }, { upToKm: 10, amount: '35.00' }], overFare: '50.00', thanksUrl: null },
             roadFactor: 1.3,
             driverSms: false,
             timezone: 'Africa/Accra',
@@ -87,6 +88,24 @@ describe('settingsPatchSchema / patchToData', () => {
             paygOverFareMinor: null,
         });
         expect(patchToData(settingsPatchSchema.parse({ fareRef: null }))).toEqual({ fareRefLabel: null, fareRefLat: null, fareRefLng: null });
+    });
+    it('thank-you URLs: https only, max 500 chars, null clears', () => {
+        const patch = settingsPatchSchema.parse({ package: { thanksUrl: 'https://turbo.example/thanks' }, payg: { thanksUrl: ' https://turbo.example/ride?x=1 ' } });
+        expect(patchToData(patch)).toEqual({ packageThanksUrl: 'https://turbo.example/thanks', rideThanksUrl: 'https://turbo.example/ride?x=1' });
+        expect(patchToData(settingsPatchSchema.parse({ package: { thanksUrl: null }, payg: { thanksUrl: null } }))).toEqual({ packageThanksUrl: null, rideThanksUrl: null });
+        expect(() => settingsPatchSchema.parse({ package: { thanksUrl: 'http://turbo.example/thanks' } })).toThrow();
+        expect(() => settingsPatchSchema.parse({ package: { thanksUrl: 'javascript:alert(1)' } })).toThrow();
+        expect(() => settingsPatchSchema.parse({ payg: { thanksUrl: 'not a url' } })).toThrow();
+        expect(() => settingsPatchSchema.parse({ payg: { thanksUrl: `https://turbo.example/${'a'.repeat(500)}` } })).toThrow();
+        expect(() => settingsPatchSchema.parse({ payg: { thanksUrl: '' } })).toThrow();
+    });
+    it('thank-you URLs are read back only when still a valid https URL, and shown in the view', () => {
+        const row = { ...DEFAULT_RIDE_SETTINGS, packageFares: DEFAULT_RIDE_SETTINGS.packageFares, paygFares: DEFAULT_RIDE_SETTINGS.paygFares } as any;
+        const s = resolveSettings({ ...row, packageThanksUrl: 'https://turbo.example/p', rideThanksUrl: 'http://bad.example' });
+        expect(s.packageThanksUrl).toBe('https://turbo.example/p');
+        expect(s.rideThanksUrl).toBeNull();
+        expect(toSettingsView(s).package.thanksUrl).toBe('https://turbo.example/p');
+        expect(toSettingsView(s).payg.thanksUrl).toBeNull();
     });
     it('accepts and ignores the legacy package.rides / package.maxKm for one release', () => {
         const patch = settingsPatchSchema.parse({ package: { rides: 60, maxKm: 6, cap: 40 } });

@@ -42,6 +42,25 @@ export interface RideSettingsValues {
     roadFactor: number;
     driverSms: boolean;
     timezone: string;
+    /** Where the payment page returns the customer after a Founding Package payment (https). Null: the wa.me chat link. */
+    packageThanksUrl: string | null;
+    /** Same for PAYG rides and package-ride top-ups. */
+    rideThanksUrl: string | null;
+}
+
+export const MAX_THANKS_URL_LENGTH = 500;
+
+/** An absolute https URL of at most 500 chars, else null. Stored values are re-checked on read. */
+export function safeThanksUrl(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const v = raw.trim();
+    if (!v || v.length > MAX_THANKS_URL_LENGTH) return null;
+    try {
+        const u = new URL(v);
+        return u.protocol === 'https:' && !!u.hostname ? v : null;
+    } catch {
+        return null;
+    }
 }
 
 export const DEFAULT_RIDE_SETTINGS: Readonly<RideSettingsValues> = Object.freeze({
@@ -62,6 +81,8 @@ export const DEFAULT_RIDE_SETTINGS: Readonly<RideSettingsValues> = Object.freeze
     roadFactor: 1.3,
     driverSms: false,
     timezone: 'Africa/Accra',
+    packageThanksUrl: null,
+    rideThanksUrl: null,
 });
 
 const fareTierSchema = z.object({
@@ -86,7 +107,9 @@ function fareRefOf(label: string | null | undefined, lat: number | null | undefi
     return { label, lat, lng };
 }
 
-type SettingsRow = Omit<RideSettingsValues, 'paygFares' | 'packageFares' | 'fareRef' | 'packageOverFareMinor' | 'paygOverFareMinor'> & {
+type SettingsRow = Omit<RideSettingsValues, 'paygFares' | 'packageFares' | 'fareRef' | 'packageOverFareMinor' | 'paygOverFareMinor' | 'packageThanksUrl' | 'rideThanksUrl'> & {
+    packageThanksUrl?: string | null;
+    rideThanksUrl?: string | null;
     paygFares: unknown;
     packageFares?: unknown;
     packageOverFareMinor?: number | null;
@@ -122,6 +145,8 @@ export function resolveSettings(row: SettingsRow | null): RideSettingsValues {
         roadFactor: row.roadFactor,
         driverSms: row.driverSms,
         timezone: safeZone(row.timezone),
+        packageThanksUrl: safeThanksUrl(row.packageThanksUrl),
+        rideThanksUrl: safeThanksUrl(row.rideThanksUrl),
     };
 }
 
@@ -167,12 +192,16 @@ export function toSettingsView(s: RideSettingsValues) {
             /** Legacy (ride-count packages), unused; kept for one release for the console still deployed. */
             rides: s.packageRides,
             maxKm: s.maxKm,
+            /** Thank-you page after paying for the package (https), null = back to WhatsApp. */
+            thanksUrl: s.packageThanksUrl,
         },
         payg: {
             open: s.paygOpen,
             dailyLimit: s.paygDailyLimit,
             fares: fareList(s.paygFares),
             overFare: overView(s.paygOverFareMinor),
+            /** Thank-you page after paying for a PAYG ride or a package-ride top-up (https), null = back to WhatsApp. */
+            thanksUrl: s.rideThanksUrl,
         },
         roadFactor: s.roadFactor,
         driverSms: s.driverSms,
@@ -197,6 +226,12 @@ const fares = z
     .max(10)
     .refine((t) => new Set(t.map((x) => x.upToKm)).size === t.length, 'Each tier needs its own upToKm');
 
+/** An https URL (max 500 chars), or null to clear (back to the wa.me chat link). */
+const thanksUrlInput = z.union([
+    z.string().trim().min(1).max(MAX_THANKS_URL_LENGTH).refine((v) => safeThanksUrl(v) !== null, 'Must be an https:// URL'),
+    z.null(),
+]);
+
 /** null = not offered beyond the last tier. */
 const overFareInput = z.union([money, z.null()]);
 
@@ -220,6 +255,7 @@ export const settingsPatchSchema = z
                 holdMinutes: z.number().int().min(5).max(MAX_HOLD_MINUTES),
                 fares,
                 overFare: overFareInput,
+                thanksUrl: thanksUrlInput,
                 /** Legacy (ride-count packages): accepted and ignored for one release. */
                 rides: z.unknown(),
                 maxKm: z.unknown(),
@@ -232,6 +268,7 @@ export const settingsPatchSchema = z
                 dailyLimit: z.number().int().min(0).max(10_000),
                 fares,
                 overFare: overFareInput,
+                thanksUrl: thanksUrlInput,
             })
             .partial()
             .strict(),
@@ -261,6 +298,8 @@ export function patchToData(p: SettingsPatch): Prisma.RideSettingsUncheckedUpdat
     if (p.package?.holdMinutes !== undefined) d.holdMinutes = p.package.holdMinutes;
     if (p.package?.fares !== undefined) d.packageFares = tiersToJson(p.package.fares);
     if (p.package?.overFare !== undefined) d.packageOverFareMinor = p.package.overFare;
+    if (p.package?.thanksUrl !== undefined) d.packageThanksUrl = p.package.thanksUrl;
+    if (p.payg?.thanksUrl !== undefined) d.rideThanksUrl = p.payg.thanksUrl;
     if (p.payg?.open !== undefined) d.paygOpen = p.payg.open;
     if (p.payg?.dailyLimit !== undefined) d.paygDailyLimit = p.payg.dailyLimit;
     if (p.payg?.fares !== undefined) d.paygFares = tiersToJson(p.payg.fares);

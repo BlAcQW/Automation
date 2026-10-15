@@ -238,6 +238,20 @@ describe('preparers', () => {
         expect(await prepareRideTopup(prep({ kind: 'ride_topup', amount: 6, vars }))).toEqual({ ok: false, reason: 'fare_changed' });
         expect(await prepareRideTopup(prep({ kind: 'ride_topup', amount: 6, vars: {} }))).toEqual({ ok: false, reason: 'no_trip' });
     });
+
+    it('return URL: package -> packageThanksUrl, PAYG and top-up -> rideThanksUrl, none when unset', async () => {
+        const vars = { pickup_lat: '5.65', pickup_lng: '-0.18', pickup_label: 'Gate', trip_dest: 'Library', trip_dest_lat: '5.66', trip_dest_lng: '-0.19', trip_dest_id: 'd2', pkg_fare: '16' };
+        m.getRideSettings.mockResolvedValue({ packagePriceMinor: 96000, currency: 'GHS', packageThanksUrl: 'https://t.example/pkg', rideThanksUrl: 'https://t.example/ride' });
+        m.holdFoundingSlot.mockResolvedValue({ ok: true, pass: { id: 'p9' }, reused: false });
+        m.reservePaygRide.mockResolvedValue({ ok: true, ride: { id: 'r9' }, reused: false });
+        m.reserveTopupRide.mockResolvedValue({ ok: true, ride: { id: 'r7' }, reused: false });
+        expect(await prepareRidePackage(prep())).toMatchObject({ ok: true, returnUrl: 'https://t.example/pkg' });
+        expect(await prepareRidePayg(prep({ kind: 'ride_payg', amount: 25, vars }))).toMatchObject({ ok: true, returnUrl: 'https://t.example/ride' });
+        expect(await prepareRideTopup(prep({ kind: 'ride_topup', amount: 6, vars }))).toMatchObject({ ok: true, returnUrl: 'https://t.example/ride' });
+        m.getRideSettings.mockResolvedValue({ packagePriceMinor: 96000, currency: 'GHS', packageThanksUrl: null, rideThanksUrl: null });
+        const r = await prepareRidePackage(prep());
+        expect(r.ok && r.returnUrl).toBeFalsy();
+    });
 });
 
 describe('registerRidePayments', () => {

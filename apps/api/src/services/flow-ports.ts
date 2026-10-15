@@ -70,6 +70,11 @@ export type FlowPaymentPrepared =
         onCreated: (link: { reference: string; authorizationUrl: string }) => Promise<void> | void;
         /** No link after all (Paystack refused): release what was reserved. */
         onFailed?: () => Promise<void> | void;
+        /**
+         * Where the payment page returns the customer (e.g. the business's thank-you
+         * page for this kind). Absent: the wa.me link back into the chat.
+         */
+        returnUrl?: string;
     }
     | { ok: false; reason: string };
 
@@ -161,7 +166,7 @@ export function createFlowPorts(deps: FlowPortsDeps): FlowPorts {
             entityId: prepared.entityId,
             amount: req.amount,
             customerPhone: req.customerPhone ?? '',
-            callbackUrl: whatsappReturnUrl(tenant.whatsappDisplayNumber),
+            callbackUrl: prepared.returnUrl || whatsappReturnUrl(tenant.whatsappDisplayNumber),
             paymentSettings,
             onCreated: async (link) => {
                 reference = link.reference;

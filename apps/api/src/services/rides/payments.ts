@@ -32,7 +32,7 @@ import { raiseAlert } from '../alerts.js';
 import { createNotification } from '../notifications.js';
 import type { RidesClient } from './db.js';
 import { getRideSettings } from './settings.js';
-import { activatePassOnPayment, holdFoundingSlot, recordPassLink } from './passes.js';
+import { AMOUNT_TOLERANCE_MINOR, activatePassOnPayment, holdFoundingSlot, recordPassLink } from './passes.js';
 import { confirmPaygOnPayment, confirmTopupOnPayment, recordRideLink, reservePaygRide, reserveTopupRide, setRideStatus } from './rides.js';
 import { afterRideRequested, resolveConversationCustomer, sendActivationWelcome } from './operations.js';
 import { emitPassActivated, emitRideRequested } from './events.js';
@@ -272,6 +272,34 @@ export async function fulfillRidePayg(input: FulfillmentInput): Promise<Fulfillm
     }
 }
 
+/**
+ * More than the difference was paid (e.g. a payment on an older link after the
+ * difference shrank on a re-quote). The ride is still confirmed; the excess is
+ * TURBO's to refund: a critical alert once per reference, and a staff notice
+ * on the first delivery.
+ */
+async function flagTopupOverpayment(input: FulfillmentInput, ride: { id: string; ref: string; customerId: string; topupMinor: number | null }, fresh: boolean): Promise<void> {
+    const excess = input.amountMinor - (ride.topupMinor ?? 0);
+    if (excess <= AMOUNT_TOLERANCE_MINOR) return;
+    const currency = input.currency.toUpperCase();
+    await raiseAlert(input.prisma, {
+        kind: `${RIDE_TOPUP_KIND}.overpaid`,
+        severity: 'critical',
+        tenantId: input.tenantId,
+        message: `A package ride top-up (${ride.ref}) was overpaid: ${money(input.amountMinor, currency)} received for ${money(ride.topupMinor ?? 0, currency)}. The ride is booked; refund the extra ${money(excess, currency)} from your Paystack dashboard.`,
+        context: { reference: input.reference, rideId: ride.id, customerId: ride.customerId, paidMinor: input.amountMinor, topupMinor: ride.topupMinor, excessMinor: excess },
+        dedupeKey: `${RIDE_TOPUP_KIND}.overpaid:${input.tenantId}:${input.reference}`,
+    });
+    if (!fresh) return;
+    await createNotification(input.prisma, {
+        tenantId: input.tenantId,
+        type: 'SYSTEM',
+        title: 'Payment needs a refund',
+        message: `Top-up ${input.reference} for ride ${ride.ref} was overpaid. Please refund ${money(excess, currency)}.`,
+        metadata: { kind: `${RIDE_TOPUP_KIND}.refund_due`, reference: input.reference },
+    }).catch((err: unknown) => input.log.warn({ err }, 'Refund notification not created'));
+}
+
 export async function fulfillRideTopup(input: FulfillmentInput): Promise<FulfillmentOutcome> {
     const bad = invalid(input);
     if (bad) return bad;
@@ -294,6 +322,7 @@ export async function fulfillRideTopup(input: FulfillmentInput): Promise<Fulfill
         case 'confirmed':
         case 'already_confirmed': {
             await recordPayment(input, 'payment.succeeded', facts);
+            await flagTopupOverpayment(input, ride, res.outcome === 'confirmed');
             if (res.outcome === 'confirmed') await afterRideRequested(deps, ride);
             else await emitRideRequested(prisma, ride);
             const flow = await flowOutcome(input, ride.conversationId, RIDE_TOPUP_KIND, true);

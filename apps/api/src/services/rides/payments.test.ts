@@ -7,7 +7,7 @@ const m = vi.hoisted(() => ({
     advanceFlowOnPackPayment: vi.fn(), publishEventOnce: vi.fn(), raiseAlert: vi.fn(), createNotification: vi.fn(),
     notifyRideCustomer: vi.fn(), getRideSettings: vi.fn(),
 }));
-vi.mock('./passes.js', () => ({ activatePassOnPayment: m.activatePassOnPayment, holdFoundingSlot: m.holdFoundingSlot, recordPassLink: m.recordPassLink }));
+vi.mock('./passes.js', () => ({ AMOUNT_TOLERANCE_MINOR: 1, activatePassOnPayment: m.activatePassOnPayment, holdFoundingSlot: m.holdFoundingSlot, recordPassLink: m.recordPassLink }));
 vi.mock('./rides.js', () => ({
     confirmPaygOnPayment: m.confirmPaygOnPayment, reservePaygRide: m.reservePaygRide, recordRideLink: m.recordRideLink, setRideStatus: m.setRideStatus,
     reserveTopupRide: m.reserveTopupRide, confirmTopupOnPayment: m.confirmTopupOnPayment,
@@ -161,6 +161,22 @@ describe('ride_topup fulfiller (a package ride the balance did not cover)', () =
         expect(m.createNotification).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ message: expect.stringMatching(/Please refund GHS 6\./) }));
         expect(m.notifyRideCustomer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'ride_topup.not_confirmed' }));
     });
+    it('overpaid: still confirmed, with a critical alert naming the excess to refund (once per reference)', async () => {
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'confirmed', ride: topRide });
+        expect(await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 1000 }))).toEqual({ status: 'applied' });
+        expect(m.raiseAlert).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            kind: 'ride_topup.overpaid', severity: 'critical', dedupeKey: 'ride_topup.overpaid:t1:ref1',
+            message: expect.stringMatching(/refund the extra GHS 4 /), context: expect.objectContaining({ excessMinor: 400 }),
+        }));
+        expect(m.createNotification).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ message: expect.stringMatching(/Please refund GHS 4\./) }));
+        // Exact (or within a pesewa): no alert.
+        vi.clearAllMocks();
+        m.createNotification.mockResolvedValue(undefined);
+        m.advanceFlowOnPackPayment.mockResolvedValue('advanced');
+        await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 601 }));
+        expect(m.raiseAlert).not.toHaveBeenCalled();
+    });
+
     it('underpaid and redelivery', async () => {
         m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'underpaid', ride: topRide });
         expect(await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 100 }))).toEqual({ status: 'rejected', reason: 'amount_insufficient' });

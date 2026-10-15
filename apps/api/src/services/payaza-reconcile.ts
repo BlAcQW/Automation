@@ -126,7 +126,7 @@ const TENANT_SELECT = { id: true, payazaPublicKey: true, payazaMode: true } as c
 
 /** Tenants on Payaza with both keys stored (the secret is what makes the link valid in the first place). */
 export async function payazaTenants(prisma: ExtendedPrismaClient): Promise<PayazaTenantKeys[]> {
-    return (prisma as any).tenant.findMany({
+    return prisma.tenant.findMany({
         where: { paymentProvider: 'PAYAZA', payazaPublicKey: { not: null }, payazaSecretKey: { not: null } },
         select: TENANT_SELECT,
         orderBy: { id: 'asc' },
@@ -136,7 +136,7 @@ export async function payazaTenants(prisma: ExtendedPrismaClient): Promise<Payaz
 
 /** Payaza keys of one tenant when it is on Payaza and connected, else null. */
 export async function payazaTenant(prisma: ExtendedPrismaClient, tenantId: string): Promise<PayazaTenantKeys | null> {
-    return (prisma as any).tenant.findFirst({
+    return prisma.tenant.findFirst({
         where: { id: tenantId, paymentProvider: 'PAYAZA', payazaPublicKey: { not: null }, payazaSecretKey: { not: null } },
         select: TENANT_SELECT,
     });
@@ -149,7 +149,7 @@ export async function payazaTenant(prisma: ExtendedPrismaClient, tenantId: strin
  */
 export async function awaitingReferences(prisma: ExtendedPrismaClient, tenantId: string, now: Date, take = 100): Promise<string[]> {
     const lateSince = new Date(now.getTime() - LATE_WINDOW_MS);
-    const db = prisma as any;
+    const db = prisma;
     const [passes, rides] = await Promise.all([
         db.ridePass.findMany({
             where: {
@@ -170,7 +170,7 @@ export async function awaitingReferences(prisma: ExtendedPrismaClient, tenantId:
             take,
         }),
     ]);
-    const refs = [...passes, ...rides].map((r: { paymentReference: string | null }) => r.paymentReference as string);
+    const refs = [...passes, ...rides].map((r) => r.paymentReference as string);
     return [...new Set(refs)].filter((ref) => parseFulfillmentReference(ref) !== null);
 }
 

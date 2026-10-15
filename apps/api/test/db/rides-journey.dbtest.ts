@@ -213,7 +213,7 @@ describe('TURBO journey on a real database', () => {
         // ---- PAYG with a capacity of 1
         const s = await api(ownerToken, 'PATCH', '/rides/settings', { payg: { dailyLimit: 1 } });
         expect(s.statusCode).toBe(200);
-        expect(s.json().payg).toEqual({ open: true, dailyLimit: 1, fares: [{ upToKm: 6, amount: '25.00' }, { upToKm: 10, amount: '35.00' }], overFare: '50.00' });
+        expect(s.json().payg).toEqual({ open: true, dailyLimit: 1, fares: [{ upToKm: 6, amount: '25.00' }, { upToKm: 10, amount: '35.00' }], overFare: '50.00', thanksUrl: null });
         expect((await api(staffToken, 'PATCH', '/rides/settings', { payg: { open: false } })).statusCode).toBe(403);
 
         await say(conv.id, { text: 'menu' });

@@ -108,7 +108,7 @@ const paymentStep = z.object({
     waitingText: z.string().min(1).max(500).optional(),
     failureText: z.string().min(1).max(500).optional(),
     /** Variables an external event may set when it advances this step. */
-    produces: z.array(varName).max(10).optional(),
+    produces: z.array(varName).max(20).optional(),
     onSuccess: stateName,
     onFailure: stateName.optional(),
 }).strict();
@@ -129,7 +129,7 @@ const actionStep = z.object({
     action: z.string().min(1).max(60),
     args: z.record(z.string().regex(ATTR_NAME), z.string().max(500)).optional(),
     /** Variables the action may set; anything else it returns is dropped. */
-    produces: z.array(varName).max(10).optional(),
+    produces: z.array(varName).max(20).optional(),
     next: stateName,
     onError: stateName.optional(),
 }).strict();

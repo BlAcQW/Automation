@@ -16,14 +16,15 @@ import { Prisma } from '@prisma/client';
 import type { ActionRequest, ActionResult } from '../flows/engine.js';
 import { isRegisteredFlowAction, registerFlowAction } from '../flows/actions.js';
 import type { RidesClient, RidesDb } from './db.js';
-import { getRideSettings } from './settings.js';
-import { customerBalance, foundingAvailability, PASS_DISPLAY_NAME } from './passes.js';
+import { getRideSettings, type RideSettingsValues } from './settings.js';
+import { customerBalance, foundingAvailability, passCreditMinor, PASS_DISPLAY_NAME } from './passes.js';
 import {
     BOOKED_RIDE, findOpenRide, paygStatus, quotePackageRide, quotePaygRide, type Place,
 } from './rides.js';
 import { bookPackageRide, changeRideStatus, resolveConversationCustomer, type OpsDeps } from './operations.js';
-import { formatMinor, isValidCoordinate } from './geo.js';
-import { formatDate, rides } from './texts.js';
+import { formatMinor, isValidCoordinate, toMinor } from './geo.js';
+import { bandFare, bandLabel } from './pricing.js';
+import { formatDate } from './texts.js';
 import { pickupFromVars, tripFromVars } from './trip-vars.js';
 import { scoped } from '../../lib/logger.js';
 import { isWhatsAppPhoneId } from '../whatsapp-identity.js';
@@ -54,7 +55,31 @@ const STATUS_TEXT: Record<string, string> = {
     PENDING_PAYMENT: 'waiting for payment',
 };
 
-export const UNKNOWN_PLACE_TEXT = "I couldn't find that place. Reply with a number from the list, or share the location pin.";
+export const UNKNOWN_PLACE_TEXT = "I couldn't find that place. 📍 Please send it as a location pin: tap 📎 (or +) → Location → search for the place → tap it to send. Or reply with a number from the list.";
+
+/**
+ * "• 0–6 km: GHS 16 (PAYG 25)" per package band, with the PAYG fare for the same
+ * distance when PAYG offers one.
+ */
+export function fareListText(s: Pick<RideSettingsValues, 'packageFares' | 'packageOverFareMinor' | 'paygFares' | 'paygOverFareMinor'>): string {
+    const payg = { tiers: s.paygFares, overFareMinor: s.paygOverFareMinor };
+    const tiers = [...s.packageFares].sort((a, b) => a.upToKm - b.upToKm);
+    const lines = tiers.map((t, i) => ({ label: bandLabel(tiers, i), fare: t.fareMinor, at: t.upToKm }));
+    if (s.packageOverFareMinor !== null && tiers.length) {
+        lines.push({ label: bandLabel(tiers, tiers.length), fare: s.packageOverFareMinor, at: tiers[tiers.length - 1].upToKm + 0.01 });
+    }
+    return lines.map((l) => {
+        const p = bandFare(l.at, payg);
+        return `• ${l.label}: GHS ${amount(l.fare)}${p ? ` (PAYG ${amount(p.fareMinor)})` : ''}`;
+    }).join('\n');
+}
+
+/** Legacy `rides_left` for conversations still on the old flow version: roughly how many of the cheapest rides the balance buys. */
+function legacyRidesLeft(availableMinor: number, s: Pick<RideSettingsValues, 'packageFares'>): number {
+    if (availableMinor <= 0) return 0;
+    const cheapest = Math.min(...s.packageFares.map((t) => t.fareMinor));
+    return Math.max(1, Math.floor(availableMinor / Math.max(1, cheapest)));
+}
 
 // ---------------------------------------------------------------- destinations
 
@@ -177,18 +202,21 @@ export function createRideFlowActions(prisma: RidesClient) {
                 ok: true,
                 vars: {
                     pkg_price: amount(s.packagePriceMinor),
-                    pkg_rides: s.packageRides,
                     pkg_days: s.validityDays,
-                    pkg_max_km: s.maxKm,
-                    pkg_per_ride: amount(Math.round(s.packagePriceMinor / Math.max(1, s.packageRides))),
+                    pkg_fares: fareListText(s),
                     founding_cap: a.cap,
                     founding_left: a.left,
                     founding_open: yes(a.available),
                     hold_minutes: s.holdMinutes,
+                    // Legacy names, still read by conversations pinned to the previous flow version (one release).
+                    pkg_rides: s.packageRides,
+                    pkg_max_km: s.maxKm,
+                    pkg_per_ride: amount(Math.round(s.packagePriceMinor / Math.max(1, s.packageRides))),
                 },
             };
         },
 
+        /** Where the customer stands: member, GHS balance (what a booking may use), open ride. */
         async 'turbo.balance'(req) {
             const customer = await customerOf(req);
             if (!customer) {
@@ -205,19 +233,26 @@ export function createRideFlowActions(prisma: RidesClient) {
                 customerBalance(prisma, req.tenantId, customer.id),
                 findOpenRide(prisma, req.tenantId, customer.id),
             ]);
+            const available = b.active ? Math.max(0, b.availableMinor) : 0;
             return {
                 ok: true,
                 vars: {
                     needs_phone: 'no',
                     member: yes(b.active),
                     pass_name: PASS_DISPLAY_NAME,
-                    rides_total: b.purchased,
-                    rides_used: b.used,
-                    rides_left: b.active ? b.remaining : 0,
+                    balance: amount(available),
+                    balance_minor: available,
+                    credit_total: amount(b.pass ? passCreditMinor(b.pass) : 0),
+                    credit_used: amount(b.usedMinor),
+                    rides_taken: b.ridesTaken,
                     expiry_date: b.expiresAt ? formatDate(b.expiresAt, s.timezone) : '-',
                     open_ride: yes(!!open),
                     open_ride_ref: open?.ref ?? '',
                     open_ride_status: open ? STATUS_TEXT[open.status] ?? open.status.toLowerCase() : '',
+                    // Legacy names (previous flow version, one release).
+                    rides_total: b.pass?.ridesTotal ?? 0,
+                    rides_used: b.ridesTaken,
+                    rides_left: legacyRidesLeft(available, s),
                 },
             };
         },
@@ -232,8 +267,9 @@ export function createRideFlowActions(prisma: RidesClient) {
                 orderBy: { createdAt: 'desc' },
                 take: 5,
             });
+            const fareOf = (r: (typeof list)[number]) => (r.kind === 'PACKAGE' && r.fareMinor === 0 ? 'Package' : `${r.kind === 'PAYG' ? 'PAYG' : 'Package'} GHS ${amount(r.fareMinor)}`);
             const lines = list.map((r, i) =>
-                `${i + 1}. ${formatDate(r.requestedAt, s.timezone)} · ${r.pickupLabel} → ${r.destinationLabel} · ${r.kind === 'PAYG' ? `PAYG GHS ${amount(r.fareMinor)}` : 'Package'} · ${STATUS_TEXT[r.status] ?? r.status}`);
+                `${i + 1}. ${formatDate(r.requestedAt, s.timezone)} · ${r.pickupLabel} → ${r.destinationLabel} · ${fareOf(r)} · ${STATUS_TEXT[r.status] ?? r.status}`);
             return { ok: true, vars: { history_text: lines.length ? lines.join('\n') : 'No rides yet.', history_count: list.length } };
         },
 
@@ -253,45 +289,70 @@ export function createRideFlowActions(prisma: RidesClient) {
                     account_student_id: str(attrs.studentId),
                     account_university: str(attrs.university),
                     package_status: b.active && b.expiresAt
-                        ? `${PASS_DISPLAY_NAME} · ${rides(b.remaining)} left · expires ${formatDate(b.expiresAt, s.timezone)}`
+                        ? `${PASS_DISPLAY_NAME} · GHS ${amount(Math.max(0, b.availableMinor))} left · expires ${formatDate(b.expiresAt, s.timezone)}`
                         : 'No active package',
                 },
             };
         },
 
-        /** The numbered list of saved places, as one block for the destination prompt. */
+        /** The numbered list of saved places, and whether fares are measured from a reference point (fare_ref). */
         async 'turbo.destinations'(req) {
-            const list = await activeDestinations(prisma, req.tenantId);
+            const [list, s] = await Promise.all([activeDestinations(prisma, req.tenantId), getRideSettings(prisma, req.tenantId)]);
             const menu = list.length
                 ? `Reply with a number:\n${list.map((d, i) => `${i + 1}. ${d.label}`).join('\n')}\n\nOr share the destination's location pin.`
                 : "Share the destination's location pin (tap 📎 or +, then Location).";
-            return { ok: true, vars: { destination_menu: menu, dest_count: list.length } };
+            return { ok: true, vars: { destination_menu: menu, dest_count: list.length, fare_ref: yes(!!s.fareRef) } };
         },
 
+        /**
+         * Price a package ride and say how it is paid (pay_mode): balance, waive
+         * (difference under GHS 2) or topup (pay topup_amount by Paystack). With a
+         * fare reference point the pickup is not needed yet.
+         */
         async 'turbo.quote_ride'(req) {
             const customer = await customerOf(req);
             if (!customer) return { ok: false };
+            const s = await getRideSettings(prisma, req.tenantId);
             const pickup = pickupFromVars(req.vars);
             const destination = await resolveDestination(prisma, req.tenantId, req.vars);
-            if (!pickup || !destination) return { ok: true, vars: { quote_ok: 'no', quote_code: 'unknown_place', quote_reason: UNKNOWN_PLACE_TEXT } };
-            const q = await quotePackageRide(prisma, { tenantId: req.tenantId, customerId: customer.id, pickup, destination });
-            const trip = tripVarsOf(destination, q.distanceKm);
-            if (q.ok) return { ok: true, vars: { quote_ok: 'yes', quote_code: 'ok', quote_reason: '', ...trip, rides_left: q.remaining } };
-            const reason = q.reason === 'too_far'
-                ? `That trip is about ${km(q.distanceKm ?? 0)} km. Founding Package rides cover 0–${q.maxKm} km.\n\nFor longer trips, choose PAYG Ride from the menu.`
-                : q.reason === 'no_rides_left' ? "You've used all the rides on your package."
+            if (!destination) return { ok: true, vars: { quote_ok: 'no', quote_code: 'unknown_place', quote_reason: UNKNOWN_PLACE_TEXT } };
+            const q = await quotePackageRide(prisma, { tenantId: req.tenantId, customerId: customer.id, pickup, destination, settings: s });
+            const trip = tripVarsOf(destination, q.priceDistanceKm);
+            if (q.ok) {
+                const st = q.settlement;
+                const balance = Math.max(0, q.availableMinor);
+                const balanceLine = st.mode === 'waive'
+                    ? `Balance: GHS ${amount(balance)} → GHS 0 (we've covered the last GHS ${amount(st.waivedMinor)})`
+                    : `Balance: GHS ${amount(balance)} → GHS ${amount(st.balanceAfterMinor)}`;
+                return {
+                    ok: true,
+                    vars: {
+                        quote_ok: 'yes', quote_code: 'ok', quote_reason: '', ...trip,
+                        pkg_fare: amount(q.fareMinor), fare_band: q.band, pay_mode: st.mode,
+                        balance: amount(balance), balance_after: amount(st.balanceAfterMinor), balance_use: amount(st.balanceAppliedMinor),
+                        topup_amount: st.mode === 'topup' ? amount(st.topupMinor) : '', balance_line: balanceLine,
+                        hold_minutes: s.holdMinutes, rides_left: legacyRidesLeft(balance, s),
+                    },
+                };
+            }
+            const reason = q.reason === 'not_offered'
+                ? `That trip is about ${km(q.priceDistanceKm ?? 0)} km. Package rides go up to ${q.maxKm} km.\n\nFor longer trips, choose PAYG Ride from the menu.`
+                : q.reason === 'no_balance' ? "🎟️ You have no ride credit left on your package (Balance: GHS 0).\n\nYou can still book a PAYG ride from the menu."
                     : q.reason === 'no_package' ? "You don't have an active TURBO package."
-                        : UNKNOWN_PLACE_TEXT;
-            return { ok: true, vars: { quote_ok: 'no', quote_code: q.reason, quote_reason: reason, ...trip, rides_left: q.remaining ?? 0 } };
+                        : q.reason === 'needs_pickup' ? 'Please share your pickup location first. Reply BOOK to start again.'
+                            : UNKNOWN_PLACE_TEXT;
+            return { ok: true, vars: { quote_ok: 'no', quote_code: q.reason, quote_reason: reason, ...trip, pkg_fare: '', pay_mode: '', rides_left: 0 } };
         },
 
+        /** Book from the balance (pay_mode balance / waive). The fare shown (pkg_fare) must still be the fare. */
         async 'turbo.request_ride'(req) {
             const customer = await customerOf(req);
             const trip = tripFromVars(req.vars);
             if (!customer || !trip) return { ok: false };
+            const shown = req.vars.pkg_fare ? toMinor(req.vars.pkg_fare) : null;
             const r = await bookPackageRide(deps, {
                 tenantId: req.tenantId, customerId: customer.id, conversationId: req.conversationId,
-                pickup: trip.pickup, destination: trip.destination, source: 'WHATSAPP',
+                pickup: trip.pickup, destination: trip.destination, source: 'WHATSAPP', expectedFareMinor: shown ?? undefined,
             });
             if (r.ok) return { ok: true, vars: { request_ok: 'yes', request_reason: '', ride_ref: r.ride.ref } };
             if (r.reason === 'open_ride') {
@@ -304,10 +365,12 @@ export function createRideFlowActions(prisma: RidesClient) {
                 }
                 return { ok: true, vars: { request_ok: 'no', request_reason: `You already have a ride in progress${open ? ` (${open.ref})` : ''}.`, ride_ref: '' } };
             }
-            const reason = r.reason === 'too_far' ? `That trip is about ${km(r.distanceKm ?? 0)} km, beyond your package's 0–${r.maxKm} km.`
-                : r.reason === 'no_rides_left' ? "You've used all the rides on your package."
-                    : r.reason === 'no_package' ? "You don't have an active TURBO package."
-                        : UNKNOWN_PLACE_TEXT;
+            const reason = r.reason === 'fare_changed' ? `The fare for this trip is now GHS ${amount(r.fareMinor ?? 0)}. Nothing was booked; please book again.`
+                : r.reason === 'needs_topup' ? 'Your balance no longer covers this ride. Nothing was booked; please book again.'
+                    : r.reason === 'not_offered' ? `Package rides go up to ${r.maxKm} km. For longer trips, choose PAYG Ride from the menu.`
+                        : r.reason === 'no_balance' ? 'You have no ride credit left on your package. You can still book a PAYG ride from the menu.'
+                            : r.reason === 'no_package' ? "You don't have an active TURBO package."
+                                : UNKNOWN_PLACE_TEXT;
             return { ok: true, vars: { request_ok: 'no', request_reason: reason, ride_ref: '' } };
         },
 
@@ -323,19 +386,20 @@ export function createRideFlowActions(prisma: RidesClient) {
         async 'turbo.payg_quote'(req) {
             const pickup = pickupFromVars(req.vars);
             const destination = await resolveDestination(prisma, req.tenantId, req.vars);
-            if (!pickup || !destination) return { ok: true, vars: { quote_ok: 'no', quote_code: 'unknown_place', quote_reason: UNKNOWN_PLACE_TEXT } };
+            if (!destination) return { ok: true, vars: { quote_ok: 'no', quote_code: 'unknown_place', quote_reason: UNKNOWN_PLACE_TEXT } };
             const [q, status] = await Promise.all([
                 quotePaygRide(prisma, { tenantId: req.tenantId, pickup, destination }),
                 paygStatus(prisma, req.tenantId),
             ]);
-            const trip = tripVarsOf(destination, q.distanceKm);
-            if (q.ok && status.open) return { ok: true, vars: { quote_ok: 'yes', quote_code: 'ok', quote_reason: '', ...trip, payg_fare: amount(q.fareMinor) } };
+            const trip = tripVarsOf(destination, q.priceDistanceKm);
+            if (q.ok && status.open) return { ok: true, vars: { quote_ok: 'yes', quote_code: 'ok', quote_reason: '', ...trip, payg_fare: amount(q.fareMinor), fare_band: q.band } };
             const code = !q.ok ? q.reason : status.reason;
             const reason = code === 'not_offered'
-                ? `That trip is about ${km(q.distanceKm ?? 0)} km. PAYG rides go up to ${!q.ok ? q.maxKm : ''} km.`
+                ? `That trip is about ${km(q.priceDistanceKm ?? 0)} km. PAYG rides go up to ${!q.ok ? q.maxKm : ''} km.`
                 : code === 'full' ? "🔴 PAYG is currently unavailable\n\nToday's available PAYG slots have been filled.\n\nPioneer Members receive priority access.\n\nPlease try again later."
                     : code === 'closed' ? '🔴 PAYG is currently unavailable\n\nPioneer Members receive priority access.\n\nPlease try again later.'
-                        : UNKNOWN_PLACE_TEXT;
+                        : code === 'needs_pickup' ? 'Please share your pickup location first. Reply MENU to start again.'
+                            : UNKNOWN_PLACE_TEXT;
             return { ok: true, vars: { quote_ok: 'no', quote_code: code, quote_reason: reason, ...trip, payg_fare: '' } };
         },
 
@@ -350,8 +414,8 @@ export function createRideFlowActions(prisma: RidesClient) {
             }
             const r = await changeRideStatus(deps, { tenantId: req.tenantId, rideId: open.id, status: 'CANCELLED', reason: 'customer', by: 'customer' });
             if (!r.ok) return { ok: true, vars: { cancel_ok: 'no', cancel_reason: "That ride can't be cancelled any more. Reply SUPPORT to talk to the team." } };
-            const refund = r.refundDue ? '\n\nYour payment will be refunded by the TURBO team.' : '';
-            return { ok: true, vars: { cancel_ok: 'yes', cancel_reason: `❌ Ride ${open.ref} cancelled. No ride was deducted.${refund}` } };
+            const refund = r.refundDue ? `\n\nYour payment of GHS ${amount(r.refundMinor ?? 0)} will be refunded by the TURBO team.` : '';
+            return { ok: true, vars: { cancel_ok: 'yes', cancel_reason: `❌ Ride ${open.ref} cancelled. Nothing was deducted from your balance.${refund}` } };
         },
     };
     return actions;

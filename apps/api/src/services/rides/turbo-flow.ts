@@ -9,11 +9,22 @@
  *  - "Student ID / University" is asked as two questions;
  *  - the newcomer menu shows "PAYG Ride" only while PAYG is open, so it reads
  *    exactly like the draft (1 Pioneer · 2 Learn More · 3 Support) when closed;
- *  - package numbers (60 rides, GHS 960, 0–6 km, 50) come from the tenant's
- *    ride settings, so the copy follows a price change.
+ *  - package numbers (GHS 960 credit, the fare bands, 50) come from the
+ *    tenant's ride settings, so the copy follows a price change.
+ *
+ * FARES AND CREDIT (docs/TURBO-BUILD.md decisions 11-18). The Founding Package
+ * is GHS ride credit; each ride costs its distance band's fare, deducted when
+ * the ride is completed. Booking order depends on `fare_ref` (from
+ * turbo.destinations), never on which pickup variables happen to be set:
+ *  - fare_ref = yes (fares measured from the reference point): destination
+ *    first -> fare shown -> pickup pin (for the driver) -> confirm;
+ *  - fare_ref = no: pickup first, then destination (the old order).
+ * A package fare the balance does not cover: the whole balance + a Paystack
+ * link for the difference (ride_topup), unless the difference is under GHS 2
+ * (waived). No balance: offer PAYG.
  *
  * Needs, before validation: the turbo.* actions (registerRideFlowActions) and
- * the ride_package / ride_payg payment kinds (registerRidePayments).
+ * the ride_package / ride_payg / ride_topup payment kinds (registerRidePayments).
  */
 
 export const TURBO_FLOW_KEY = 'turbo-founding';
@@ -24,11 +35,11 @@ const WELCOME = [
     '',
     'Founding Package',
     '',
-    '• {pkg_rides} rides',
+    '• GHS {pkg_price} ride credit',
     '• Valid for {pkg_days} days',
-    '• 0–{pkg_max_km} km rides',
-    '• GHS {pkg_price}',
-    "• That's just GHS {pkg_per_ride} per ride",
+    '',
+    'Fare per ride:',
+    '{pkg_fares}',
     '',
     '🔥 Only {founding_cap} Founding Packages available.',
 ].join('\n');
@@ -40,11 +51,10 @@ const ACTIVATED = [
     '',
     '🎟️ Your Package',
     '',
-    '{pkg_rides} rides',
+    'GHS {pkg_price} ride credit',
     'Valid for {pkg_days} days',
-    '0–{pkg_max_km} km',
     '',
-    'Balance: {pkg_rides} rides',
+    'Balance: GHS {pkg_price}',
     '',
     'You now have priority access to TURBO rides.',
 ].join('\n');
@@ -52,6 +62,18 @@ const ACTIVATED = [
 const PAYG_FULL = "🔴 PAYG is currently unavailable\n\nToday's available PAYG slots have been filled.\n\nPioneer Members receive priority access.\n\nPlease try again later.";
 const PAYG_CLOSED = '🔴 PAYG is currently unavailable\n\nPioneer Members receive priority access.\n\nPlease try again later.';
 const SHARE_PIN = 'Please share your location: tap 📎 (or +), choose Location, then send your current location.';
+const PICKUP_PIN = '📍 Now share your pickup location pin so the driver can find you: tap 📎 (or +) → Location → Send your current location.';
+const BALANCE_VARS = [
+    'member', 'pass_name', 'balance', 'balance_minor', 'credit_total', 'credit_used', 'rides_taken', 'expiry_date',
+    'open_ride', 'open_ride_ref', 'open_ride_status',
+];
+const QUOTE_VARS = [
+    'quote_ok', 'quote_code', 'quote_reason', 'trip_dest', 'trip_dest_lat', 'trip_dest_lng', 'trip_dest_id', 'trip_km',
+    'pkg_fare', 'fare_band', 'pay_mode', 'balance', 'balance_after', 'balance_use', 'topup_amount', 'balance_line', 'hold_minutes', 'place_misses',
+];
+const PAYG_QUOTE_VARS = [
+    'quote_ok', 'quote_code', 'quote_reason', 'trip_dest', 'trip_dest_lat', 'trip_dest_lng', 'trip_dest_id', 'trip_km', 'payg_fare', 'fare_band', 'place_misses',
+];
 
 export const turboFoundingFlow = {
     key: TURBO_FLOW_KEY,
@@ -73,7 +95,7 @@ export const turboFoundingFlow = {
         // ---- every visit starts by reading where the customer stands
         entry: {
             type: 'action', action: 'turbo.balance',
-            produces: ['needs_phone', 'member', 'pass_name', 'rides_total', 'rides_used', 'rides_left', 'expiry_date', 'open_ride', 'open_ride_ref', 'open_ride_status'],
+            produces: ['needs_phone', ...BALANCE_VARS],
             next: 'entry_phone', onError: 'oops',
         },
         // WhatsApp hides this customer's number (username). TURBO needs a real,
@@ -120,7 +142,7 @@ export const turboFoundingFlow = {
         },
         entry_pkg: {
             type: 'action', action: 'turbo.founding_available',
-            produces: ['pkg_price', 'pkg_rides', 'pkg_days', 'pkg_max_km', 'pkg_per_ride', 'founding_cap', 'founding_left', 'founding_open', 'hold_minutes'],
+            produces: ['pkg_price', 'pkg_days', 'pkg_fares', 'founding_cap', 'founding_left', 'founding_open', 'hold_minutes'],
             next: 'entry_payg', onError: 'oops',
         },
         entry_payg: {
@@ -158,7 +180,7 @@ export const turboFoundingFlow = {
         },
         learn: {
             type: 'notify',
-            text: 'TURBO gives Central University students safe, reliable rides around campus and town.\n\n🎟️ Founding Package: {pkg_rides} rides for GHS {pkg_price}, valid for {pkg_days} days, trips of 0–{pkg_max_km} km. Book any time right here in WhatsApp.\n\n🚗 Pay-as-you-go: single rides when PAYG slots are open.\n\nMore at https://www.turboghana.app',
+            text: 'TURBO gives Central University students safe, reliable rides around campus and town.\n\n🎟️ Founding Package: GHS {pkg_price} of ride credit, valid for {pkg_days} days. Each ride costs its distance fare, taken from your credit when the ride is completed:\n{pkg_fares}\n\nBook any time right here in WhatsApp.\n\n🚗 Pay-as-you-go: single rides when PAYG slots are open.\n\nMore at https://www.turboghana.app',
             next: 'main_route',
         },
 
@@ -194,7 +216,7 @@ export const turboFoundingFlow = {
         reg_save: { type: 'action', action: 'turbo.register', produces: ['customer_name', 'welcome_name'], next: 'pay_confirm', onError: 'oops' },
         pay_confirm: {
             type: 'menu',
-            prompt: "You're almost in! 🚗\n\nFounding Package — GHS {pkg_price}\n\n{pkg_rides} rides\n{pkg_days} days validity\n0–{pkg_max_km} km\n\nProceed to payment?",
+            prompt: "You're almost in! 🚗\n\nFounding Package — GHS {pkg_price}\n\nGHS {pkg_price} ride credit\n{pkg_days} days validity\n\nFare per ride:\n{pkg_fares}\n\nProceed to payment?",
             options: [
                 { label: 'Pay GHS {pkg_price}', next: 'pay' },
                 { label: 'Cancel', next: 'cancelled' },
@@ -210,42 +232,58 @@ export const turboFoundingFlow = {
         activated: { type: 'notify', text: ACTIVATED, next: 'member_menu' },
         pay_failed: { type: 'notify', text: "We couldn't complete your Founding Package purchase. If you were charged, the TURBO team will contact you about a refund.", next: 'entry' },
 
-        // ---- book a package ride
-        book: { type: 'action', action: 'turbo.balance', produces: ['member', 'pass_name', 'rides_total', 'rides_used', 'rides_left', 'expiry_date', 'open_ride', 'open_ride_ref', 'open_ride_status'], next: 'book_check', onError: 'oops' },
+        // ---- book a package ride (GHS credit)
+        book: { type: 'action', action: 'turbo.balance', produces: BALANCE_VARS, next: 'book_check', onError: 'oops' },
         book_check: {
             type: 'branch',
             cases: [
                 { when: { var: 'member', op: 'neq', value: 'yes' }, next: 'no_package' },
                 { when: { var: 'open_ride', op: 'eq', value: 'yes' }, next: 'ride_status' },
-                { when: { var: 'rides_left', op: 'lte', value: '0' }, next: 'no_rides' },
+                { when: { var: 'balance_minor', op: 'lte', value: '0' }, next: 'no_balance' },
             ],
             default: 'book_dests',
         },
         no_package: { type: 'notify', text: "You don't have an active TURBO package yet.", next: 'entry' },
-        no_rides: { type: 'notify', text: "You've used all the rides on your package. 🎟️", next: 'entry' },
-        book_dests: { type: 'action', action: 'turbo.destinations', produces: ['destination_menu', 'dest_count'], next: 'book_pickup', onError: 'oops' },
-        book_pickup: { type: 'location', prompt: '📍 Where should we pick you up?\n\nPlease share your WhatsApp location.', invalid: SHARE_PIN, var: 'pickup', next: 'book_dest' },
-        book_dest: { type: 'location', acceptText: true, prompt: '📍 Pickup received.\n\nWhere are you going?\n\n{destination_menu}', var: 'dest', next: 'book_quote' },
-        book_quote: {
-            type: 'action', action: 'turbo.quote_ride',
-            produces: ['quote_ok', 'quote_code', 'quote_reason', 'trip_dest', 'trip_dest_lat', 'trip_dest_lng', 'trip_dest_id', 'trip_km', 'rides_left', 'place_misses'],
-            next: 'book_quoted', onError: 'oops',
+        no_balance: {
+            type: 'menu',
+            prompt: '🎟️ You have no ride credit left on your package (Balance: GHS 0).\n\nYou can still book a single PAYG ride.',
+            options: [
+                { label: 'PAYG Ride', next: 'payg' },
+                { label: 'Main menu', next: 'entry' },
+            ],
         },
+        book_dests: { type: 'action', action: 'turbo.destinations', produces: ['destination_menu', 'dest_count', 'fare_ref'], next: 'book_order', onError: 'oops' },
+        book_order: { type: 'branch', cases: [{ when: { var: 'fare_ref', op: 'eq', value: 'yes' }, next: 'book_dest' }], default: 'book_pickup_first' },
+        // fare_ref = yes: destination first, the fare, then the pickup pin.
+        book_dest: { type: 'location', acceptText: true, prompt: '📍 Where are you going?\n\n{destination_menu}', var: 'dest', next: 'book_quote' },
+        // fare_ref = no: pickup first (the old order).
+        book_pickup_first: { type: 'location', prompt: '📍 Where should we pick you up?\n\nPlease share your WhatsApp location.', invalid: SHARE_PIN, var: 'pickup', next: 'book_dest_after_pickup' },
+        book_dest_after_pickup: { type: 'location', acceptText: true, prompt: '📍 Pickup received.\n\nWhere are you going?\n\n{destination_menu}', var: 'dest', next: 'book_quote' },
+        book_quote: { type: 'action', action: 'turbo.quote_ride', produces: QUOTE_VARS, next: 'book_quoted', onError: 'oops' },
         book_quoted: {
             type: 'branch',
             cases: [
-                { when: { var: 'quote_ok', op: 'eq', value: 'yes' }, next: 'book_confirm' },
+                { when: { var: 'quote_ok', op: 'eq', value: 'yes' }, next: 'book_after_quote' },
                 { when: { var: 'place_misses', op: 'gte', value: '3' }, next: 'place_help' },
                 { when: { var: 'quote_code', op: 'eq', value: 'unknown_place' }, next: 'book_dest_again' },
+                { when: { var: 'quote_code', op: 'eq', value: 'no_balance' }, next: 'no_balance' },
             ],
             default: 'book_refused',
         },
-        book_dest_again: { type: 'notify', text: '{quote_reason}', next: 'book_dest' },
+        book_dest_again: { type: 'notify', text: '{quote_reason}', next: 'book_dest_retry' },
+        book_dest_retry: { type: 'branch', cases: [{ when: { var: 'fare_ref', op: 'eq', value: 'yes' }, next: 'book_dest' }], default: 'book_dest_after_pickup' },
         place_help: { type: 'notify', text: "I still couldn't find that place, so I'm passing you to the TURBO team.", next: 'support' },
         book_refused: { type: 'notify', text: '{quote_reason}', next: 'entry' },
+        book_after_quote: { type: 'branch', cases: [{ when: { var: 'fare_ref', op: 'eq', value: 'yes' }, next: 'book_pickup' }], default: 'book_pay_route' },
+        book_pickup: {
+            type: 'location',
+            prompt: `🚗 {trip_dest} · about {trip_km} km · Fare: GHS {pkg_fare}\n\n${PICKUP_PIN}`,
+            invalid: SHARE_PIN, var: 'pickup', next: 'book_pay_route',
+        },
+        book_pay_route: { type: 'branch', cases: [{ when: { var: 'pay_mode', op: 'eq', value: 'topup' }, next: 'book_topup_confirm' }], default: 'book_confirm' },
         book_confirm: {
             type: 'menu',
-            prompt: '🚗 Your TURBO Ride\n\nPickup: {pickup_label}\nDestination: {trip_dest}\n\nPackage ride: 1 ride\n\nYour current balance: {rides_left}\n\nConfirm?',
+            prompt: '🚗 Your TURBO Ride\n\nPickup: {pickup_label}\nDestination: {trip_dest}\nAbout {trip_km} km ({fare_band})\n\nFare: GHS {pkg_fare}\n{balance_line}\n\nThe fare is taken from your balance when the ride is completed.\n\nConfirm?',
             options: [
                 { label: 'Confirm Ride', next: 'book_request' },
                 { label: 'Cancel', next: 'cancelled' },
@@ -255,8 +293,29 @@ export const turboFoundingFlow = {
         book_requested: { type: 'branch', cases: [{ when: { var: 'request_ok', op: 'eq', value: 'yes' }, next: 'book_done' }], default: 'book_request_refused' },
         book_request_refused: { type: 'notify', text: '{request_reason}', next: 'entry' },
         book_done: { type: 'end', text: "✅ Ride Request Received\n\nWe're finding your TURBO driver.\n\nPlease stay available." },
+        // The balance does not cover the fare (difference of GHS 2 or more): balance + top-up.
+        book_topup_confirm: {
+            type: 'menu',
+            prompt: '🚗 Your TURBO Ride\n\nPickup: {pickup_label}\nDestination: {trip_dest}\nAbout {trip_km} km ({fare_band})\n\nFare: GHS {pkg_fare}\nFrom your balance: GHS {balance_use}\nTo pay now: GHS {topup_amount}\n\nYour balance does not cover this ride, so we use all of it and you pay the difference.',
+            options: [
+                { label: 'Pay GHS {topup_amount} & Book', next: 'book_topup_pay' },
+                { label: 'Cancel', next: 'cancelled' },
+            ],
+        },
+        book_topup_pay: {
+            type: 'payment', kind: 'ride_topup', amountVar: 'topup_amount',
+            prompt: '💳 Pay GHS {topup_amount} here (Mobile Money or card):\n{payment_url}\n\nYour ride is booked as soon as the payment is confirmed (held for {hold_minutes} minutes).',
+            waitingText: "⏳ We're waiting for your payment to be confirmed. We'll message you here as soon as it is.\n\nPay here: {payment_url}",
+            failureText: "Sorry, we couldn't start your payment. The fare or your balance may have changed: please book again, or reply SUPPORT to talk to the TURBO team.",
+            onSuccess: 'book_topup_paid', onFailure: 'book_topup_failed',
+        },
+        book_topup_paid: {
+            type: 'end',
+            text: "✅ Payment received. Your ride is confirmed.\n\nGHS {balance_use} from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.",
+        },
+        book_topup_failed: { type: 'notify', text: "We couldn't complete your top-up payment, so the ride is not booked. If you were charged, the TURBO team will contact you about a refund.", next: 'entry' },
 
-        // ---- PAYG
+        // ---- PAYG (same order rule as package rides)
         payg: { type: 'action', action: 'turbo.payg_open', produces: ['payg_open', 'payg_reason', 'payg_fare_from', 'payg_left', 'hold_minutes'], next: 'payg_check', onError: 'oops' },
         payg_check: {
             type: 'branch',
@@ -268,25 +327,30 @@ export const turboFoundingFlow = {
         },
         payg_full: { type: 'notify', text: PAYG_FULL, next: 'entry' },
         payg_closed: { type: 'notify', text: PAYG_CLOSED, next: 'entry' },
-        payg_dests: { type: 'action', action: 'turbo.destinations', produces: ['destination_menu', 'dest_count'], next: 'payg_pickup', onError: 'oops' },
-        payg_pickup: { type: 'location', prompt: '🚗 PAY-AS-YOU-GO\n\nFare: GHS {payg_fare_from}\n\nEnter your pickup location.\n\nShare your WhatsApp location.', invalid: SHARE_PIN, var: 'pickup', next: 'payg_dest' },
-        payg_dest: { type: 'location', acceptText: true, prompt: '📍 Pickup received.\n\nWhere are you going?\n\n{destination_menu}', var: 'dest', next: 'payg_quote' },
-        payg_quote: {
-            type: 'action', action: 'turbo.payg_quote',
-            produces: ['quote_ok', 'quote_code', 'quote_reason', 'trip_dest', 'trip_dest_lat', 'trip_dest_lng', 'trip_dest_id', 'trip_km', 'payg_fare', 'place_misses'],
-            next: 'payg_quoted', onError: 'oops',
-        },
+        payg_dests: { type: 'action', action: 'turbo.destinations', produces: ['destination_menu', 'dest_count', 'fare_ref'], next: 'payg_order', onError: 'oops' },
+        payg_order: { type: 'branch', cases: [{ when: { var: 'fare_ref', op: 'eq', value: 'yes' }, next: 'payg_dest' }], default: 'payg_pickup' },
+        payg_dest: { type: 'location', acceptText: true, prompt: '🚗 PAY-AS-YOU-GO\n\nWhere are you going?\n\n{destination_menu}', var: 'dest', next: 'payg_quote' },
+        payg_pickup: { type: 'location', prompt: '🚗 PAY-AS-YOU-GO\n\nFares from GHS {payg_fare_from}\n\nEnter your pickup location.\n\nShare your WhatsApp location.', invalid: SHARE_PIN, var: 'pickup', next: 'payg_dest_after_pickup' },
+        payg_dest_after_pickup: { type: 'location', acceptText: true, prompt: '📍 Pickup received.\n\nWhere are you going?\n\n{destination_menu}', var: 'dest', next: 'payg_quote' },
+        payg_quote: { type: 'action', action: 'turbo.payg_quote', produces: PAYG_QUOTE_VARS, next: 'payg_quoted', onError: 'oops' },
         payg_quoted: {
             type: 'branch',
             cases: [
-                { when: { var: 'quote_ok', op: 'eq', value: 'yes' }, next: 'payg_confirm' },
+                { when: { var: 'quote_ok', op: 'eq', value: 'yes' }, next: 'payg_after_quote' },
                 { when: { var: 'place_misses', op: 'gte', value: '3' }, next: 'place_help' },
                 { when: { var: 'quote_code', op: 'eq', value: 'unknown_place' }, next: 'payg_dest_again' },
             ],
             default: 'payg_refused',
         },
-        payg_dest_again: { type: 'notify', text: '{quote_reason}', next: 'payg_dest' },
+        payg_dest_again: { type: 'notify', text: '{quote_reason}', next: 'payg_dest_retry' },
+        payg_dest_retry: { type: 'branch', cases: [{ when: { var: 'fare_ref', op: 'eq', value: 'yes' }, next: 'payg_dest' }], default: 'payg_dest_after_pickup' },
         payg_refused: { type: 'notify', text: '{quote_reason}', next: 'entry' },
+        payg_after_quote: { type: 'branch', cases: [{ when: { var: 'fare_ref', op: 'eq', value: 'yes' }, next: 'payg_pickup_pin' }], default: 'payg_confirm' },
+        payg_pickup_pin: {
+            type: 'location',
+            prompt: `🚗 {trip_dest} · about {trip_km} km · Fare: GHS {payg_fare}\n\n${PICKUP_PIN}`,
+            invalid: SHARE_PIN, var: 'pickup', next: 'payg_confirm',
+        },
         payg_confirm: {
             type: 'menu', prompt: 'Your ride is GHS {payg_fare}.',
             options: [
@@ -305,11 +369,11 @@ export const turboFoundingFlow = {
         payg_failed: { type: 'notify', text: "We couldn't complete your PAYG booking. If you were charged, the TURBO team will contact you about a refund.", next: 'entry' },
 
         // ---- balance, history, account
-        balance: { type: 'action', action: 'turbo.balance', produces: ['member', 'pass_name', 'rides_total', 'rides_used', 'rides_left', 'expiry_date', 'open_ride', 'open_ride_ref', 'open_ride_status'], next: 'balance_check', onError: 'oops' },
+        balance: { type: 'action', action: 'turbo.balance', produces: BALANCE_VARS, next: 'balance_check', onError: 'oops' },
         balance_check: { type: 'branch', cases: [{ when: { var: 'member', op: 'eq', value: 'yes' }, next: 'balance_show' }], default: 'no_package' },
         balance_show: {
             type: 'notify',
-            text: '🎟️ Your TURBO Package\n\n{pass_name}\nRides purchased: {rides_total}\nRides used: {rides_used}\nRides remaining: {rides_left}\n\nExpiry: {expiry_date}',
+            text: '🎟️ Your TURBO Package\n\n{pass_name}\nRide credit: GHS {credit_total}\nUsed: GHS {credit_used} ({rides_taken} rides)\nBalance: GHS {balance}\n\nExpiry: {expiry_date}',
             next: 'member_menu',
         },
         history: { type: 'action', action: 'turbo.history', produces: ['history_text', 'history_count'], next: 'history_show', onError: 'oops' },

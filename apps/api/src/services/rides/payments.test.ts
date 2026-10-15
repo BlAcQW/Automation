@@ -5,7 +5,7 @@ const m = vi.hoisted(() => ({
     confirmPaygOnPayment: vi.fn(), reservePaygRide: vi.fn(), recordRideLink: vi.fn(), setRideStatus: vi.fn(), reserveTopupRide: vi.fn(), confirmTopupOnPayment: vi.fn(),
     sendActivationWelcome: vi.fn(), afterRideRequested: vi.fn(), resolveConversationCustomer: vi.fn(), emitPassActivated: vi.fn(), emitRideRequested: vi.fn(),
     advanceFlowOnPackPayment: vi.fn(), publishEventOnce: vi.fn(), raiseAlert: vi.fn(), createNotification: vi.fn(),
-    notifyRideCustomer: vi.fn(), getRideSettings: vi.fn(),
+    notifyRideCustomer: vi.fn(), getRideSettings: vi.fn(), endIdleFlowAfterPayment: vi.fn(),
 }));
 vi.mock('./passes.js', () => ({ AMOUNT_TOLERANCE_MINOR: 1, activatePassOnPayment: m.activatePassOnPayment, holdFoundingSlot: m.holdFoundingSlot, recordPassLink: m.recordPassLink }));
 vi.mock('./rides.js', () => ({
@@ -15,7 +15,7 @@ vi.mock('./rides.js', () => ({
 vi.mock('./operations.js', () => ({ sendActivationWelcome: m.sendActivationWelcome, afterRideRequested: m.afterRideRequested, resolveConversationCustomer: m.resolveConversationCustomer }));
 vi.mock('./events.js', () => ({ emitPassActivated: m.emitPassActivated, emitRideRequested: m.emitRideRequested }));
 vi.mock('./settings.js', () => ({ getRideSettings: m.getRideSettings }));
-vi.mock('../flow-payments.js', () => ({ advanceFlowOnPackPayment: m.advanceFlowOnPackPayment }));
+vi.mock('../flow-payments.js', () => ({ advanceFlowOnPackPayment: m.advanceFlowOnPackPayment, endIdleFlowAfterPayment: m.endIdleFlowAfterPayment }));
 vi.mock('../events/emit.js', () => ({ publishEventOnce: m.publishEventOnce }));
 vi.mock('../alerts.js', () => ({ raiseAlert: m.raiseAlert }));
 vi.mock('../notifications.js', () => ({ createNotification: m.createNotification }));
@@ -47,10 +47,13 @@ describe('ride_package fulfiller', () => {
         expect(m.advanceFlowOnPackPayment).toHaveBeenCalledWith(expect.anything(), { conversationId: 'conv1', kind: 'ride_package', success: true });
         expect(order).toEqual(['event', 'flow']);
         expect(m.sendActivationWelcome).not.toHaveBeenCalled();
+        expect(m.endIdleFlowAfterPayment).not.toHaveBeenCalled();
 
+        // The chat moved on (e.g. it already said pay_failed): welcome sent directly, the stale flow is reset.
         m.advanceFlowOnPackPayment.mockResolvedValue('not_waiting');
         await fulfillRidePackage(input());
         expect(m.sendActivationWelcome).toHaveBeenCalledWith(expect.anything(), pass);
+        expect(m.endIdleFlowAfterPayment).toHaveBeenCalledWith(expect.anything(), log, { tenantId: 't1', conversationId: 'conv1' });
     });
 
     it('a lost flow-state write throws (retried); the retry repeats only the once-only event, never the welcome', async () => {
@@ -109,11 +112,11 @@ describe('ride_package fulfiller', () => {
 });
 
 describe('ride_payg fulfiller', () => {
-    it('confirmed: flow success; when the chat moved on the customer gets "Payment Received"; ride.requested follows', async () => {
+    it('confirmed: flow success; when the chat moved on the customer gets "Payment confirmed"; ride.requested follows', async () => {
         m.confirmPaygOnPayment.mockResolvedValue({ outcome: 'confirmed', ride });
         m.advanceFlowOnPackPayment.mockResolvedValue('not_waiting');
         expect(await fulfillRidePayg(input({ entityId: 'r1', amountMinor: 2500 }))).toEqual({ status: 'applied' });
-        expect(m.notifyRideCustomer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'ride_payg.paid', text: expect.stringMatching(/^✅ Payment Received/) }));
+        expect(m.notifyRideCustomer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'ride_payg.paid', text: expect.stringMatching(/^✅ Payment confirmed, thank you!\n\nYour ride is confirmed/) }));
         expect(m.afterRideRequested).toHaveBeenCalledWith(expect.anything(), ride);
     });
 

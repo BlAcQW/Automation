@@ -44,7 +44,12 @@ const WELCOME = [
     '🔥 Only {founding_cap} Founding Packages available.',
 ].join('\n');
 
+/** First line of every payment success state (texts.ts PAYMENT_CONFIRMED_LINE; flows are data, so repeated here). */
+const PAID = '✅ Payment confirmed, thank you!';
+
 const ACTIVATED = [
+    PAID,
+    '',
     '🎉 WELCOME TO TURBO, {welcome_name}!',
     '',
     "You're officially one of our Founding 50.",
@@ -311,7 +316,7 @@ export const turboFoundingFlow = {
         },
         book_topup_paid: {
             type: 'end',
-            text: "✅ Payment received. Your ride is confirmed.\n\nGHS {balance_use} from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.",
+            text: `${PAID}\n\nYour ride is confirmed.\n\nGHS {balance_use} from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.`,
         },
         book_topup_failed: { type: 'notify', text: "We couldn't complete your top-up payment, so the ride is not booked. If you were charged, the TURBO team will contact you about a refund.", next: 'entry' },
 
@@ -365,7 +370,7 @@ export const turboFoundingFlow = {
             failureText: "Sorry, we couldn't book your PAYG ride just now. Today's PAYG slots may have just filled.",
             onSuccess: 'payg_paid', onFailure: 'payg_failed',
         },
-        payg_paid: { type: 'end', text: "✅ Payment Received\n\nYour ride is confirmed.\n\nWe're assigning your driver now." },
+        payg_paid: { type: 'end', text: `${PAID}\n\nYour ride is confirmed.\n\nWe're assigning your driver now.` },
         payg_failed: { type: 'notify', text: "We couldn't complete your PAYG booking. If you were charged, the TURBO team will contact you about a refund.", next: 'entry' },
 
         // ---- balance, history, account

@@ -31,7 +31,7 @@
 import type { FulfillmentInput, FulfillmentOutcome } from '../payment-fulfillers.js';
 import { hasFulfillmentOwner, isRegisteredFulfillmentKind, registerFulfillmentOwner, registerPaymentFulfiller } from '../payment-fulfillers.js';
 import { hasFlowPaymentPreparer, registerFlowPaymentPreparer, type FlowPaymentPrepareInput, type FlowPaymentPrepared } from '../flow-ports.js';
-import { advanceFlowOnPackPayment } from '../flow-payments.js';
+import { advanceFlowOnPackPayment, endIdleFlowAfterPayment } from '../flow-payments.js';
 import { publishEventOnce } from '../events/emit.js';
 import { raiseAlert } from '../alerts.js';
 import { createNotification } from '../notifications.js';
@@ -214,7 +214,12 @@ export async function fulfillRidePackage(input: FulfillmentInput): Promise<Fulfi
             await emitPassActivated(prisma, pass);
             const flow = await flowOutcome(input, pass.conversationId, RIDE_PACKAGE_KIND, true);
             if (res.outcome === 'already_activated') return { status: 'already_applied' };
-            if (flow === 'not_waiting') await sendActivationWelcome(deps, pass);
+            if (flow === 'not_waiting') {
+                // The flow already moved on (e.g. it said pay_failed when the hold lapsed): tell the customer directly
+                // ("Payment confirmed" + the package), and reset the stale flow so their next message opens the member menu.
+                await sendActivationWelcome(deps, pass);
+                if (pass.conversationId) await endIdleFlowAfterPayment(prisma, input.log, { tenantId: input.tenantId, conversationId: pass.conversationId });
+            }
             return { status: 'applied' };
         }
         case 'refused':

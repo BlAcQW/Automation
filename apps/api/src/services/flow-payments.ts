@@ -337,6 +337,45 @@ export async function advanceFlowOnPackPayment(
 }
 
 /**
+ * A payment confirmed after the chat moved on (the customer was told directly,
+ * outside the flow): whatever question the flow is sitting on was asked before
+ * the payment landed and is now stale (e.g. the newcomer menu after a package
+ * was activated late). Mark the flow ended, so the customer's next message
+ * starts it again from the top (the member menu for a new member; globals such
+ * as BOOK still work on that first message).
+ *
+ * Only an 'active' flow is touched: a flow WAITING on another payment keeps it,
+ * and an ended / handed-off one needs nothing. Compare-and-set on
+ * contextVersion like every flow state write; a lost race re-reads once.
+ * Never throws (the payment is already applied); returns true when it wrote.
+ */
+export async function endIdleFlowAfterPayment(
+    prisma: any,
+    log: FulfillmentInput['log'],
+    args: { tenantId: string; conversationId: string },
+): Promise<boolean> {
+    try {
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const row = await prisma.conversation.findFirst({
+                where: { id: args.conversationId, tenantId: args.tenantId },
+                select: { botContext: true, contextVersion: true },
+            });
+            const state = readFlowState(row?.botContext);
+            if (!row || !state || state.status !== 'active') return false;
+            const botContext = { ...(row.botContext as Record<string, unknown>), flow: { ...state, status: 'ended', misses: 0 } };
+            const { count } = await prisma.conversation.updateMany({
+                where: { id: args.conversationId, tenantId: args.tenantId, contextVersion: row.contextVersion },
+                data: { botContext, contextVersion: { increment: 1 } },
+            });
+            if (count === 1) return true;
+        }
+    } catch (err) {
+        log.warn({ err, conversationId: args.conversationId }, 'Could not reset the flow after a late payment');
+    }
+    return false;
+}
+
+/**
  * The tenant of a flow payment: the one owning the conversation its entity id
  * names. Webhook context (no tenant yet), so looked up by id alone; used by the
  * Payaza webhook to choose the verifying key from our own data.

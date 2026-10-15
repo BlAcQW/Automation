@@ -26,6 +26,7 @@ import {
     decodeFlowEntityId,
     registerFlowPaymentFulfiller,
     canEncodeFlowEntityId,
+    endIdleFlowAfterPayment,
 } from './flow-payments.js';
 import { makeFlowKit, PAY_FLOW, PAY_THEN_STAFF_FLOW } from '../test-utils/flow-kit.js';
 
@@ -426,5 +427,44 @@ describe('flow_payment owner (the Payaza webhook picks the verifying key from it
         expect(await resolveFulfillmentTenant(prisma, 'flow_payment', 'not-an-entity')).toBeNull();
         expect(prisma.conversation.findUnique).toHaveBeenCalledTimes(2);
         registerFlowPaymentFulfiller(); // still safe to call twice
+    });
+});
+
+describe('endIdleFlowAfterPayment (late payment confirmed outside the flow)', () => {
+    const flow = (status: string) => ({ flowKey: 'k', flowVersion: 1, current: 'menu', status, vars: { a: '1' }, misses: 2, lastInboundId: 'in1' });
+    function fakePrisma(botContext: unknown, counts: number[] = [1]) {
+        const updates: any[] = [];
+        return {
+            updates,
+            conversation: {
+                findFirst: vi.fn(async () => ({ botContext, contextVersion: 7 })),
+                updateMany: vi.fn(async (a: any) => { updates.push(a); return { count: counts.shift() ?? 0 }; }),
+            },
+        };
+    }
+
+    it('ends an active flow (compare-and-set on contextVersion), keeping the rest of botContext', async () => {
+        const p = fakePrisma({ other: 'x', flow: flow('active') });
+        expect(await endIdleFlowAfterPayment(p, log, { tenantId: 't1', conversationId: 'c1' })).toBe(true);
+        expect(p.updates[0].where).toEqual({ id: 'c1', tenantId: 't1', contextVersion: 7 });
+        expect(p.updates[0].data.botContext).toEqual({ other: 'x', flow: { ...flow('active'), status: 'ended', misses: 0 } });
+    });
+
+    it('leaves a flow waiting on another payment, and finished flows, alone', async () => {
+        for (const status of ['waiting', 'ended', 'handed_off']) {
+            const p = fakePrisma({ flow: flow(status) });
+            expect(await endIdleFlowAfterPayment(p, log, { tenantId: 't1', conversationId: 'c1' })).toBe(false);
+            expect(p.conversation.updateMany).not.toHaveBeenCalled();
+        }
+        expect(await endIdleFlowAfterPayment(fakePrisma(null), log, { tenantId: 't1', conversationId: 'c1' })).toBe(false);
+    });
+
+    it('retries once on a lost race and never throws', async () => {
+        const p = fakePrisma({ flow: flow('active') }, [0, 1]);
+        expect(await endIdleFlowAfterPayment(p, log, { tenantId: 't1', conversationId: 'c1' })).toBe(true);
+        expect(p.updates).toHaveLength(2);
+        const broken = { conversation: { findFirst: vi.fn(async () => { throw new Error('db down'); }), updateMany: vi.fn() } };
+        expect(await endIdleFlowAfterPayment(broken, log, { tenantId: 't1', conversationId: 'c1' })).toBe(false);
+        expect(log.warn).toHaveBeenCalled();
     });
 });

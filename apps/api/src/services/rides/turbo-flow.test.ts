@@ -153,7 +153,7 @@ describe('newcomer', () => {
 
         const adv = await advanceFlow(deps, { tenantId: 't1', conversationId: 'c1', event: { type: 'payment.succeeded', eventId: 'ref_1', kind: 'ride_package', reference: 'ref_1' } });
         expect(adv.applied).toBe(true);
-        expect(adv.reply).toBe("🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50.\n\n🎟️ Your Package\n\nGHS 960 ride credit\nValid for 60 days\n\nBalance: GHS 960\n\nYou now have priority access to TURBO rides.\n\nWhat would you like to do?\n\n1. Book a Ride\n2. PAYG Ride\n3. Check Balance\n4. Ride History\n5. My Account\n6. Support");
+        expect(adv.reply).toBe("✅ Payment confirmed, thank you!\n\n🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50.\n\n🎟️ Your Package\n\nGHS 960 ride credit\nValid for 60 days\n\nBalance: GHS 960\n\nYou now have priority access to TURBO rides.\n\nWhat would you like to do?\n\n1. Book a Ride\n2. PAYG Ride\n3. Check Balance\n4. Ride History\n5. My Account\n6. Support");
     });
 
     it('a payment that is not honoured takes the failure branch', async () => {
@@ -229,7 +229,7 @@ describe('member', () => {
         expect(f.calls.payments[0]).toMatchObject({ kind: 'ride_topup', amount: 6 });
         expect(state.calls.some((c) => c.name === 'turbo.request_ride')).toBe(false);
         const adv = await advanceFlow(deps, { tenantId: 't1', conversationId: 'c1', event: { type: 'payment.succeeded', eventId: 't9', kind: 'ride_topup', reference: flow().vars.payment_reference } });
-        expect(adv.reply).toBe("✅ Payment received. Your ride is confirmed.\n\nGHS 10 from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.");
+        expect(adv.reply).toBe("✅ Payment confirmed, thank you!\n\nYour ride is confirmed.\n\nGHS 10 from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.");
     });
 
     it('a top-up that fails goes back to the menu with the refund note', async () => {
@@ -298,7 +298,7 @@ describe('member', () => {
         expect(pay.reply).toMatch(/^💳 Pay GHS 25 here/);
         expect(f.calls.payments[0]).toMatchObject({ kind: 'ride_payg', amount: 25 });
         const adv = await advanceFlow(deps, { tenantId: 't1', conversationId: 'c1', event: { type: 'payment.succeeded', eventId: 'r9', kind: 'ride_payg', reference: flow().vars.payment_reference } });
-        expect(adv.reply).toBe("✅ Payment Received\n\nYour ride is confirmed.\n\nWe're assigning your driver now.");
+        expect(adv.reply).toBe("✅ Payment confirmed, thank you!\n\nYour ride is confirmed.\n\nWe're assigning your driver now.");
     });
 
     it('an open ride is shown first and can be cancelled', async () => {

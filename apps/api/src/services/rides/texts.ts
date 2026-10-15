@@ -21,9 +21,16 @@ export function rides(n: number): string {
     return `${n} ${n === 1 ? 'ride' : 'rides'}`;
 }
 
+/**
+ * The first line of every successful-payment message (flow success states and
+ * direct messages alike), so the customer always reads that the money landed.
+ */
+export const PAYMENT_CONFIRMED_LINE = '✅ Payment confirmed, thank you!';
+
 export function packageActivatedText(a: { name: string | null; creditMinor: number; days: number; balanceMinor: number; currency: string }): string {
     const name = (a.name ?? '').trim().toUpperCase() || 'TURBER';
     return [
+        PAYMENT_CONFIRMED_LINE,
         `🎉 WELCOME TO TURBO, ${name}!`,
         "You're officially one of our Founding 50.",
         `🎟️ Your Package\n\n${money(a.creditMinor, a.currency)} ride credit\nValid for ${a.days} days`,
@@ -45,13 +52,13 @@ export function rideCompletedText(pkg: { deductedMinor: number; balanceAfterMino
     return `✅ Ride Completed\n\nThanks for riding with TURBO.\n\n${balance}Need another ride?\nReply BOOK.`;
 }
 
-export const PAYG_PAYMENT_RECEIVED_TEXT = "✅ Payment Received\n\nYour ride is confirmed.\n\nWe're assigning your driver now.";
+export const PAYG_PAYMENT_RECEIVED_TEXT = `${PAYMENT_CONFIRMED_LINE}\n\nYour ride is confirmed.\n\nWe're assigning your driver now.`;
 
 export const RIDE_REQUEST_RECEIVED_TEXT = "✅ Ride Request Received\n\nWe're finding your TURBO driver.\n\nPlease stay available.";
 
 /** A package ride whose top-up was paid (when the chat had moved on). */
 export function topupReceivedText(balanceUseMinor: number, currency: string): string {
-    return `✅ Payment received. Your ride is confirmed.\n\n${money(balanceUseMinor, currency)} from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.`;
+    return `${PAYMENT_CONFIRMED_LINE}\n\nYour ride is confirmed.\n\n${money(balanceUseMinor, currency)} from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.`;
 }
 
 /** `refundMinor`: a paid amount the customer gets back (PAYG fare or top-up), else null. */

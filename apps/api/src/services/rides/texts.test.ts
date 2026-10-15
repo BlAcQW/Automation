@@ -14,15 +14,15 @@ describe('TURBO wording', () => {
     });
     it('package activated (GHS credit)', () => {
         expect(packageActivatedText({ name: 'Ama Mensah', creditMinor: 96000, days: 60, balanceMinor: 96000, currency: 'GHS' }))
-            .toMatch(/^🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50\.\n\n🎟️ Your Package\n\nGHS 960 ride credit\nValid for 60 days\n\nBalance: GHS 960/);
+            .toMatch(/^✅ Payment confirmed, thank you!\n\n🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50\.\n\n🎟️ Your Package\n\nGHS 960 ride credit\nValid for 60 days\n\nBalance: GHS 960/);
         expect(packageActivatedText({ name: null, creditMinor: 96000, days: 60, balanceMinor: 96000, currency: 'GHS' })).toMatch(/WELCOME TO TURBO, TURBER!/);
     });
     it('top-up received / not confirmed', () => {
-        expect(topupReceivedText(1400, 'GHS')).toBe("✅ Payment received. Your ride is confirmed.\n\nGHS 14 from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.");
+        expect(topupReceivedText(1400, 'GHS')).toBe("✅ Payment confirmed, thank you!\n\nYour ride is confirmed.\n\nGHS 14 from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.");
         expect(topupNotConfirmedText(200, 'GHS')).toMatch(/payment of GHS 2,[\s\S]*refund/);
     });
     it('PAYG payment received', () => {
-        expect(PAYG_PAYMENT_RECEIVED_TEXT).toBe("✅ Payment Received\n\nYour ride is confirmed.\n\nWe're assigning your driver now.");
+        expect(PAYG_PAYMENT_RECEIVED_TEXT).toBe("✅ Payment confirmed, thank you!\n\nYour ride is confirmed.\n\nWe're assigning your driver now.");
     });
     it('helpers', () => {
         expect(formatDate(new Date('2026-12-05T23:30:00Z'), 'Africa/Accra')).toBe('5 Dec 2026');

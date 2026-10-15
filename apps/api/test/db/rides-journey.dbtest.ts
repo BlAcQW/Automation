@@ -160,7 +160,7 @@ describe('TURBO journey on a real database', () => {
         // ---- Pay (verified webhook) -> activated
         const paid = await pay(inits[0]);
         expect(paid.result.body).toEqual({ ok: true, entity: 'ride_package' });
-        expect(paid.reply).toBe("🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50.\n\n🎟️ Your Package\n\nGHS 960 ride credit\nValid for 60 days\n\nBalance: GHS 960\n\nYou now have priority access to TURBO rides.\n\nWhat would you like to do?\n\n1. Book a Ride\n2. PAYG Ride\n3. Check Balance\n4. Ride History\n5. My Account\n6. Support");
+        expect(paid.reply).toBe("✅ Payment confirmed, thank you!\n\n🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50.\n\n🎟️ Your Package\n\nGHS 960 ride credit\nValid for 60 days\n\nBalance: GHS 960\n\nYou now have priority access to TURBO rides.\n\nWhat would you like to do?\n\n1. Book a Ride\n2. PAYG Ride\n3. Check Balance\n4. Ride History\n5. My Account\n6. Support");
         expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: held.id } })).status).toBe('ACTIVE');
         // Redelivered webhook: nothing new.
         const again = await pay(inits[0]);
@@ -226,7 +226,7 @@ describe('TURBO journey on a real database', () => {
         expect(pending).toMatchObject({ kind: 'PAYG', status: 'PENDING_PAYMENT', fareMinor: 2500 });
         const paygPaid = await pay(inits[1]);
         expect(paygPaid.result.body).toEqual({ ok: true, entity: 'ride_payg' });
-        expect(paygPaid.reply).toBe("✅ Payment Received\n\nYour ride is confirmed.\n\nWe're assigning your driver now.");
+        expect(paygPaid.reply).toBe("✅ Payment confirmed, thank you!\n\nYour ride is confirmed.\n\nWe're assigning your driver now.");
         expect((await rawPrisma().ride.findUniqueOrThrow({ where: { id: pending.id } })).status).toBe('REQUESTED');
 
         // The day's one PAYG seat is taken: a second customer is told so.

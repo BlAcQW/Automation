@@ -74,6 +74,13 @@ model Tenant {
   paystackSecretKey           String? // Encrypted (AES-GCM via crypto.ts)
   paystackPublicKey           String? // Public, plaintext OK
   paymentCurrency             String              @default("NGN") // ISO 4217
+  // Which gateway new fulfillment payment links (TURBO rides, flow payment
+  // steps) use. Bookings and orders always use Paystack. PAYAZA with no
+  // Payaza keys means no gateway (no link), never a silent fall back.
+  paymentProvider             PaymentProvider     @default(PAYSTACK)
+  payazaPublicKey             String? // Encrypted (AES-GCM via crypto.ts)
+  payazaSecretKey             String? // Encrypted; only used to verify webhook signatures
+  payazaMode                  PayazaMode          @default(TEST)
   // Phase 4a — SaaS plan id. Kept as String so the catalog (services/plans.ts)
   // can grow without a migration. Validated against the catalog at the API boundary.
   planId                      String              @default("free")
@@ -180,6 +187,16 @@ model Tenant {
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
+}
+
+enum PaymentProvider {
+  PAYSTACK
+  PAYAZA
+}
+
+enum PayazaMode {
+  TEST
+  LIVE
 }
 
 enum Vertical {
@@ -1451,9 +1468,11 @@ model RidePass {
   paymentReference         String?        @unique
   paidAt                   DateTime?
   paidAmountMinor          Int?
-  /// Paystack's transaction id and channel (mobile_money, card) for the paid charge.
+  /// The provider's transaction id and channel (mobile_money, card) for the paid charge.
   providerTransactionId    String?
   paymentChannel           String?
+  /// PAYSTACK | PAYAZA: which gateway took the money (set when the payment is applied). Null before.
+  paymentProvider          String?
   cancelledAt              DateTime?
   /// hold_expired | cap_full_after_hold | duplicate_purchase | ...
   cancelReason             String?
@@ -1562,9 +1581,11 @@ model Ride {
   paymentExpiresAt      DateTime?
   paidAt                DateTime?
   paidAmountMinor       Int?
-  /// Paystack's transaction id and channel (mobile_money, card) for the paid charge.
+  /// The provider's transaction id and channel (mobile_money, card) for the paid charge.
   providerTransactionId String?
   paymentChannel        String?
+  /// PAYSTACK | PAYAZA: which gateway took the money (set when the payment is applied). Null before.
+  paymentProvider       String?
   /// PAYG: the YYYY-MM-DD (tenant timezone) whose capacity this ride holds.
   paygDay               String?
   /// WHATSAPP | APP | CONSOLE

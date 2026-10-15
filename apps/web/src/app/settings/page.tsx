@@ -13,14 +13,19 @@ import {
 import toast from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge, DashboardInput, Switch } from '@bookingflow/ui';
+import { PaymentProviderChoice, PayazaCard, type PaymentProvider, type PayazaStatus } from '@/components/payments/payaza-card';
 
 const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD'] as const;
 type SupportedCurrency = (typeof SUPPORTED_CURRENCIES)[number];
 
 interface PaymentsStatus {
+    /** Paystack. */
     connected: boolean;
     publicKey: string | null;
     currency: string;
+    /** Which gateway new ride / flow payment links use. Absent on an older API. */
+    provider?: PaymentProvider;
+    payaza?: PayazaStatus;
 }
 
 interface BillingPlan {
@@ -670,7 +675,7 @@ export default function SettingsPage() {
             {/* Plan & Usage (Phase 4a) */}
             <PlanAndUsageCard />
 
-            {/* Payments (Paystack) */}
+            {/* Payments: provider choice + Paystack */}
             <Card>
                 <CardHeader>
                     <CardTitle>
@@ -679,6 +684,16 @@ export default function SettingsPage() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
+                    {paymentsStatus?.payaza && (
+                        <div className="mb-4">
+                            <PaymentProviderChoice
+                                provider={paymentsStatus.provider ?? 'PAYSTACK'}
+                                payazaConnected={paymentsStatus.payaza.connected}
+                                canEdit={user?.role === 'OWNER'}
+                                onChanged={fetchPaymentsStatus}
+                            />
+                        </div>
+                    )}
                     {paymentsStatus?.connected ? (
                         <div className="space-y-4">
                             <div className="flex items-center justify-between p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700/50">
@@ -780,6 +795,16 @@ export default function SettingsPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Payaza: second payment provider (ride and flow payment links) */}
+            {paymentsStatus?.payaza && (
+                <PayazaCard
+                    status={paymentsStatus.payaza}
+                    selected={paymentsStatus.provider === 'PAYAZA'}
+                    canEdit={user?.role === 'OWNER'}
+                    onChanged={fetchPaymentsStatus}
+                />
+            )}
 
             {/* SMS Fallback (Arkesel, Phase 5) */}
             <SmsFallbackCard />

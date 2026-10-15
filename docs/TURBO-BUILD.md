@@ -134,9 +134,45 @@ Money rules behind 13/14: the balance log (`RidePassEntry.amountMinor`, pesewas)
    `NEXT_PUBLIC_MOCK=1 TURBO_DEMO_DEPLOY=1` on a separate Vercel project.
 
 Known limits for this MVP: refunds (late or unhonoured payments, ops-cancelled
-PAYG) are done by TURBO in their Paystack dashboard, prompted by an alert and
-a staff notification; distance is straight line × 1.3, not road routing;
-driver messages are SMS only (no driver app).
+PAYG) are done by TURBO in their payment provider's dashboard (Paystack or
+Payaza, the alert names which), prompted by an alert and a staff notification;
+distance is straight line × 1.3, not road routing; driver messages are SMS only
+(no driver app).
+
+## Payaza instead of Paystack (per organisation)
+
+An organisation can take ride and flow payments through **Payaza** instead of
+Paystack. Bookings and orders always stay on Paystack. Migration
+`20261015090000_payaza_provider` (additive: `Tenant.paymentProvider`,
+`payazaPublicKey`, `payazaSecretKey` (both encrypted), `payazaMode`;
+`RidePass/Ride.paymentProvider`).
+
+Setup for a tenant (the owner, in Bookly **Settings**):
+
+1. In the Payaza dashboard (business.payaza.africa) **Settings → Developers →
+   Generate Keys**, in Test mode first.
+2. Bookly **Settings → Payaza** card: choose **Test**, paste the public and
+   secret key, **Connect Payaza**. The public key is checked against Payaza
+   (an "Authentication failed" answer is refused); the secret key cannot be
+   checked, it only verifies webhooks.
+3. Copy the **Payaza webhook URL** shown on the card
+   (`https://<bookly-api>/payments/payaza/webhook`, built from `API_PUBLIC_URL`)
+   into Payaza **Settings → Developers → Webhooks** for collections, Live and
+   Test. Without it nothing activates.
+4. **Settings → Payments (Paystack) → Payment provider → Payaza** (only
+   possible once Payaza is connected; audited as `payments.provider_changed`).
+   New ride / flow payment links are Payaza payment pages from then on; links
+   already sent keep working on the gateway that made them.
+5. Test end to end (buy a package with a Payaza test card or test MoMo), then
+   **Disconnect**, reconnect with the **Live** keys in **Live** mode.
+
+How it works: the link is Payaza's hosted page (`payment.payaza.africa`) with
+our usual reference `bf_f_{kind}_{entityId}_{ts}`. On a webhook Bookly finds
+the tenant from its own row for that entity, verifies `x-payaza-signature`
+(base64 HMAC-SHA512 of the body with that tenant's secret), and only for a
+`Completed` notification asks Payaza's status query for the real status and
+amount; the ride fulfillers check that amount as for Paystack. Disconnecting
+Payaza switches the organisation back to Paystack.
 
 ## Console API contract (R6)
 
@@ -188,3 +224,4 @@ switched off; the same account and balance carry into the app later.
 | 2026-10-06 | Inbox | turbo ad96e94, d26a4cf | Customer chats + takeover in the console; hand back to the bot restarts at the menu |
 | 2026-10-14 | Fares & credit | feat/turbo-fare-credit | Fare reference point, distance bands with flat over fare, package = GHS credit (deducted at completion), ride_topup + GHS 2 waiver, destination-first flow, GHS copy; migration 20261014090000_rides_credit_pricing |
 | 2026-10-06 | Channels | 22bd7df, 4f10b35, turbo f27cef7 | Connect WhatsApp from the console (own Meta account, prefilled; code backup), Instagram & Messenger; admin Channels panel; Embedded Signup v4 |
+| 2026-10-15 | Payaza | feat/payaza-provider | Per-organisation provider (Paystack / Payaza) for ride + flow payment links; Payaza payment page, signed webhook + status query, settings UI; migration 20261015090000_payaza_provider |

@@ -34,6 +34,8 @@ import {
     AMOUNT_TOLERANCE_MINOR, HOLD_LIFETIME_FACTOR, MAX_UNPAID_HOLDS_PER_DAY,
 } from './passes.js';
 import { paygDayKey, releasePaygSlot, reservePaygSlot } from './capacity.js';
+import { money } from './texts.js';
+import { raiseAlert } from '../alerts.js';
 
 export const OPEN_STATUSES: RideStatus[] = ['REQUESTED', 'ASSIGNED', 'EN_ROUTE'];
 /**
@@ -649,15 +651,21 @@ export async function setRideStatus(
             // `before` may be stale: a concurrent caller can have committed the change while we waited on the lock.
             const current = (await tx.ride.findFirst({ where: { id: args.rideId, tenantId: args.tenantId }, select: { status: true } }))?.status ?? before.status;
             if (current === args.status) {
-                return { ok: true as const, changed: false, deducted: false, refundDue: false, refundMinor: null, previousStatus: current, passId: before.passId };
+                return { ok: true as const, changed: false, deducted: false, refundDue: false, refundMinor: null, shortfallMinor: 0, previousStatus: current, passId: before.passId };
             }
             return { ok: false as const, error: 'invalid_state' as const, status: current };
         }
 
         let deducted = false;
+        let shortfallMinor = 0;
         if (args.status === 'COMPLETED' && before.kind === 'PACKAGE' && before.passId) {
             const pass = await tx.ridePass.findFirst({ where: { id: before.passId, tenantId: args.tenantId } });
-            const amount = pass ? deductionMinor(before, pass) : before.balanceAppliedMinor ?? 0;
+            const wanted = pass ? deductionMinor(before, pass) : before.balanceAppliedMinor ?? 0;
+            // Never below zero: the reservation should make this impossible, so a shortfall (a manual
+            // adjustment, a legacy ride) is deducted only down to 0 and raised as an alert below.
+            const { remainingMinor } = await passBalance(tx, args.tenantId, before.passId);
+            const amount = Math.min(wanted, Math.max(0, remainingMinor));
+            shortfallMinor = wanted - amount;
             try {
                 await tx.ridePassEntry.create({ data: { tenantId: args.tenantId, passId: before.passId, type: 'RIDE', amountMinor: -amount, rideId: before.id } });
                 deducted = true;
@@ -674,9 +682,19 @@ export async function setRideStatus(
         }
         const refundDue = args.status === 'CANCELLED' && !!before.paidAt && (before.kind === 'PAYG' || (before.topupMinor ?? 0) > 0);
         const refundMinor = refundDue ? before.paidAmountMinor ?? (before.kind === 'PAYG' ? before.fareMinor : before.topupMinor) : null;
-        return { ok: true as const, changed: true, deducted, refundDue, refundMinor, previousStatus: before.status, passId: before.passId };
+        return { ok: true as const, changed: true, deducted, refundDue, refundMinor, shortfallMinor, previousStatus: before.status, passId: before.passId };
     });
     if (!result.ok) return result;
+    if (result.shortfallMinor > 0) {
+        const short = await prisma.ride.findFirst({ where: { id: args.rideId, tenantId: args.tenantId }, select: { ref: true, currency: true, customerId: true } });
+        const amount = money(result.shortfallMinor, short?.currency ?? 'GHS');
+        await raiseAlert(prisma, {
+            kind: 'ride_pass.deduction_shortfall', severity: 'critical', tenantId: args.tenantId,
+            message: `Ride ${short?.ref ?? args.rideId} completed, but the package balance was ${amount} short of what the ride held. Only the balance left was deducted; ${amount} was not collected.`,
+            context: { rideId: args.rideId, passId: result.passId, customerId: short?.customerId, shortfallMinor: result.shortfallMinor },
+            dedupeKey: `ride_pass.deduction_shortfall:${args.tenantId}:${args.rideId}`,
+        });
+    }
 
     const ride = await prisma.ride.findFirst({ where: { id: args.rideId, tenantId: args.tenantId }, include: rideInclude });
     if (!ride) return { ok: false, error: 'not_found' };

@@ -38,7 +38,7 @@
  * can refund it.
  */
 import type { FulfillmentInput, FulfillmentOutcome } from './payment-fulfillers.js';
-import { isRegisteredFulfillmentKind, registerPaymentFulfiller } from './payment-fulfillers.js';
+import { hasFulfillmentOwner, isRegisteredFulfillmentKind, registerFulfillmentOwner, registerPaymentFulfiller } from './payment-fulfillers.js';
 import { advanceFlow, createPrismaFlowStore, readFlowState, FLOW_CONFLICT_REPLY } from './flows/index.js';
 import { createFlowPorts } from './flow-ports.js';
 import { emitFlowCompleted } from './flow-events.js';
@@ -336,8 +336,20 @@ export async function advanceFlowOnPackPayment(
     return 'advanced';
 }
 
+/**
+ * The tenant of a flow payment: the one owning the conversation its entity id
+ * names. Webhook context (no tenant yet), so looked up by id alone; used by the
+ * Payaza webhook to choose the verifying key from our own data.
+ */
+async function flowPaymentOwner(prisma: any, entityId: string): Promise<string | null> {
+    const entity = decodeFlowEntityId(entityId);
+    if (!entity) return null;
+    const conv = await prisma.conversation.findUnique({ where: { id: entity.conversationId }, select: { tenantId: true } });
+    return conv?.tenantId ?? null;
+}
+
 /** Safe to call more than once. */
 export function registerFlowPaymentFulfiller(): void {
-    if (isRegisteredFulfillmentKind(FLOW_PAYMENT_KIND)) return;
-    registerPaymentFulfiller(FLOW_PAYMENT_KIND, fulfillFlowPayment);
+    if (!isRegisteredFulfillmentKind(FLOW_PAYMENT_KIND)) registerPaymentFulfiller(FLOW_PAYMENT_KIND, fulfillFlowPayment);
+    if (!hasFulfillmentOwner(FLOW_PAYMENT_KIND)) registerFulfillmentOwner(FLOW_PAYMENT_KIND, flowPaymentOwner);
 }

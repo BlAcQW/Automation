@@ -17,7 +17,8 @@ import { decrypt } from './crypto.js';
 import { initializeTransaction } from './paystack.js';
 import { resolveCollectionRoute } from './collection-route.js';
 import { readWalletCurrency } from './ledger.js';
-import { isRegisteredFulfillmentKind } from './payment-fulfillers.js';
+import { buildFulfillmentReference, isRegisteredFulfillmentKind, type PaymentProviderName } from './payment-fulfillers.js';
+import { buildPaymentPageUrl, ghanaPhoneForPayaza } from './payaza.js';
 import { scoped } from '../lib/logger.js';
 
 const log = scoped('payment-link');
@@ -104,6 +105,23 @@ export async function createPaymentLink(args: PaymentLinkArgs): Promise<string |
     }
 }
 
+/**
+ * The tenant's gateway choice as stored on Tenant (keys still encrypted). A
+ * full Tenant row satisfies it. Absent or PAYSTACK = the Paystack path.
+ */
+export interface TenantPaymentSettings {
+    paymentProvider?: string | null;
+    payazaPublicKey?: string | null;
+    payazaSecretKey?: string | null;
+    payazaMode?: string | null;
+}
+
+/** Placeholder email for gateways that require one (the customer never sees it). */
+function placeholderEmail(customerPhone: string): string {
+    const digits = customerPhone.replace(/[^0-9]/g, '');
+    return `${digits || 'customer'}@customer.bookingflow.app`;
+}
+
 export interface FulfillmentPaymentLinkArgs {
     tenantId: string;
     /** Tenant.paystackSecretKey as stored (encrypted); null if not connected. */
@@ -122,6 +140,8 @@ export interface FulfillmentPaymentLinkArgs {
      * to Paystack's dashboard default. Deliberately never the orders page.
      */
     callbackUrl?: string;
+    /** Which gateway the tenant chose (Tenant.paymentProvider + Payaza keys). */
+    paymentSettings?: TenantPaymentSettings;
     /**
      * REQUIRED persistence hook. The new entity lives outside this service, so
      * the caller must save `reference` and `authorizationUrl` on it (and
@@ -135,11 +155,54 @@ export interface FulfillmentPaymentLinkArgs {
         reference: string;
         authorizationUrl: string;
         collectionRoute: 'OWN_GATEWAY';
+        provider: PaymentProviderName;
     }) => Promise<void> | void;
 }
 
 /**
+ * Payaza's hosted payment page for a fulfillment kind. No API call: the URL
+ * is built here. Same reference scheme as Paystack, so the webhook can find
+ * the kind and entity in it (Payaza echoes no metadata). The amount on the
+ * page is visible to the customer and therefore never trusted: the Payaza
+ * webhook re-reads it from Payaza's status query, and the fulfiller checks it
+ * against its own row.
+ */
+async function createPayazaFulfillmentLink(args: FulfillmentPaymentLinkArgs, settings: TenantPaymentSettings): Promise<string | null> {
+    if (!settings.payazaPublicKey || !settings.payazaSecretKey) {
+        // Payaza chosen but not connected (or half-connected: without the secret no webhook can be verified,
+        // so the money would arrive and nothing would be told). Same as no gateway; never a silent Paystack fallback.
+        log.warn({ tenantId: args.tenantId, kind: args.kind }, 'Payaza selected but not connected; no payment link');
+        return null;
+    }
+    try {
+        const reference = buildFulfillmentReference(args.kind, args.entityId);
+        const url = buildPaymentPageUrl({
+            publicKey: decrypt(settings.payazaPublicKey),
+            mode: settings.payazaMode === 'LIVE' ? 'LIVE' : 'TEST',
+            amountMinor: Math.round(args.amount * 100),
+            currency: args.currency,
+            email: placeholderEmail(args.customerPhone),
+            firstName: 'WhatsApp',
+            lastName: 'Customer',
+            phone: ghanaPhoneForPayaza(args.customerPhone),
+            reference,
+            additionalDetails: { tenantId: args.tenantId, fulfillmentKind: args.kind, entityId: args.entityId },
+            redirectUrl: args.callbackUrl,
+        });
+        await args.onCreated({ reference, authorizationUrl: url, collectionRoute: 'OWN_GATEWAY', provider: 'PAYAZA' });
+        return url;
+    } catch (err) {
+        log.error({ err, kind: args.kind, entityId: args.entityId }, 'Payaza fulfillment payment link failed');
+        return null;
+    }
+}
+
+/**
  * Payment link for a registered fulfillment kind (rides, etc.).
+ *
+ * PROVIDER. `paymentSettings.paymentProvider === 'PAYAZA'` builds a Payaza payment
+ * page instead (createPayazaFulfillmentLink); missing Payaza keys mean no link,
+ * never a Paystack fallback. Everything below describes the Paystack path.
  *
  * Writes `fulfillmentKind` + `entityId` + `tenantId` into the Paystack
  * metadata; the webhook dispatches on them (services/payment-fulfillers.ts).
@@ -161,6 +224,10 @@ export async function createFulfillmentPaymentLink(args: FulfillmentPaymentLinkA
         return null;
     }
 
+    if (args.paymentSettings?.paymentProvider === 'PAYAZA') {
+        return createPayazaFulfillmentLink(args, args.paymentSettings);
+    }
+
     // Platform key deliberately omitted: own gateway or nothing.
     const route = resolveCollectionRoute({ tenantSecretKeyEncrypted: args.paystackSecretKeyEncrypted }, undefined);
     if (!route) {
@@ -169,16 +236,15 @@ export async function createFulfillmentPaymentLink(args: FulfillmentPaymentLinkA
     }
 
     try {
-        const digits = args.customerPhone.replace(/[^0-9]/g, '');
         const callbackUrl = args.callbackUrl ?? config.paystack.callbackUrl ?? undefined;
 
         const init = await initializeTransaction({
             secretKey: route.secretKey,
-            email: `${digits || 'customer'}@customer.bookingflow.app`,
+            email: placeholderEmail(args.customerPhone),
             amountKobo: Math.round(args.amount * 100),
             currency: args.currency,
             // bf_f_ = fulfillment, distinct from order (bf_o_) references.
-            reference: `bf_f_${args.kind}_${args.entityId}_${Date.now()}`,
+            reference: buildFulfillmentReference(args.kind, args.entityId),
             callbackUrl,
             metadata: {
                 tenantId: args.tenantId,
@@ -193,6 +259,7 @@ export async function createFulfillmentPaymentLink(args: FulfillmentPaymentLinkA
             reference: init.reference,
             authorizationUrl: init.authorizationUrl,
             collectionRoute: 'OWN_GATEWAY',
+            provider: 'PAYSTACK',
         });
 
         return init.authorizationUrl;

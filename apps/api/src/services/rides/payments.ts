@@ -21,10 +21,15 @@
  * throw only for transient failures. Money that cannot be honoured (late
  * payment and the 50 are gone, already has a package, PAYG full) is recorded on
  * the row, NOT applied, and raises a critical alert + a staff notification so
- * TURBO refunds it from their own Paystack.
+ * TURBO refunds it from their own gateway (Paystack or Payaza: the alert names
+ * the one that took the money, input.provider).
+ *
+ * OWNERS. Each kind also registers an owner resolver (the tenant of a pass /
+ * ride, by id). The Payaza webhook uses it to pick the verifying key from OUR
+ * row, since Payaza's payload carries nothing trustworthy about the tenant.
  */
 import type { FulfillmentInput, FulfillmentOutcome } from '../payment-fulfillers.js';
-import { isRegisteredFulfillmentKind, registerPaymentFulfiller } from '../payment-fulfillers.js';
+import { hasFulfillmentOwner, isRegisteredFulfillmentKind, registerFulfillmentOwner, registerPaymentFulfiller } from '../payment-fulfillers.js';
 import { hasFlowPaymentPreparer, registerFlowPaymentPreparer, type FlowPaymentPrepareInput, type FlowPaymentPrepared } from '../flow-ports.js';
 import { advanceFlowOnPackPayment } from '../flow-payments.js';
 import { publishEventOnce } from '../events/emit.js';
@@ -37,7 +42,7 @@ import { confirmPaygOnPayment, confirmTopupOnPayment, recordRideLink, reservePay
 import { afterRideRequested, resolveConversationCustomer, sendActivationWelcome } from './operations.js';
 import { emitPassActivated, emitRideRequested } from './events.js';
 import { notifyRideCustomer } from './notify.js';
-import { PAYG_PAYMENT_RECEIVED_TEXT, money, packageNotActivatedText, paygNotConfirmedText, topupNotConfirmedText, topupReceivedText } from './texts.js';
+import { PAYG_PAYMENT_RECEIVED_TEXT, money, packageNotActivatedText, paygNotConfirmedText, refundSourceText, topupNotConfirmedText, topupReceivedText } from './texts.js';
 import { toMinor } from './geo.js';
 import { tripFromVars } from './trip-vars.js';
 
@@ -160,7 +165,7 @@ async function refuseLoudly(
         kind: `${args.kind}.not_applied`,
         severity: 'critical',
         tenantId: input.tenantId,
-        message: `A ${args.what} payment of ${money(input.amountMinor, input.currency.toUpperCase())} arrived but was not applied (${args.reason}). Refund it from your Paystack dashboard.`,
+        message: `A ${args.what} payment of ${money(input.amountMinor, input.currency.toUpperCase())} arrived but was not applied (${args.reason}). Refund it from ${refundSourceText(input.provider)}.`,
         context: { reference: input.reference, amount: input.amountMinor, currency: input.currency, reason: args.reason, ...args.context },
         dedupeKey: `${args.kind}.not_applied:${input.tenantId}:${input.reference}`,
     });
@@ -180,7 +185,7 @@ export async function fulfillRidePackage(input: FulfillmentInput): Promise<Fulfi
     const prisma = input.prisma as RidesClient;
     const deps = { prisma, log: input.log };
     const res = await activatePassOnPayment(prisma, {
-        tenantId: input.tenantId, passId: input.entityId, reference: input.reference, amountMinor: input.amountMinor, currency: input.currency, transactionId: input.transactionId, channel: input.channel,
+        tenantId: input.tenantId, passId: input.entityId, reference: input.reference, amountMinor: input.amountMinor, currency: input.currency, transactionId: input.transactionId, channel: input.channel, provider: input.provider,
     });
     if (res.outcome === 'not_found') return { status: 'rejected', reason: 'pass_not_found' };
     const { pass } = res;
@@ -226,7 +231,7 @@ export async function fulfillRidePayg(input: FulfillmentInput): Promise<Fulfillm
     const prisma = input.prisma as RidesClient;
     const deps = { prisma, log: input.log };
     const res = await confirmPaygOnPayment(prisma, {
-        tenantId: input.tenantId, rideId: input.entityId, reference: input.reference, amountMinor: input.amountMinor, currency: input.currency, transactionId: input.transactionId, channel: input.channel,
+        tenantId: input.tenantId, rideId: input.entityId, reference: input.reference, amountMinor: input.amountMinor, currency: input.currency, transactionId: input.transactionId, channel: input.channel, provider: input.provider,
     });
     if (res.outcome === 'not_found') return { status: 'rejected', reason: 'ride_not_found' };
     const { ride } = res;
@@ -286,7 +291,7 @@ async function flagTopupOverpayment(input: FulfillmentInput, ride: { id: string;
         kind: `${RIDE_TOPUP_KIND}.overpaid`,
         severity: 'critical',
         tenantId: input.tenantId,
-        message: `A package ride top-up (${ride.ref}) was overpaid: ${money(input.amountMinor, currency)} received for ${money(ride.topupMinor ?? 0, currency)}. The ride is booked; refund the extra ${money(excess, currency)} from your Paystack dashboard.`,
+        message: `A package ride top-up (${ride.ref}) was overpaid: ${money(input.amountMinor, currency)} received for ${money(ride.topupMinor ?? 0, currency)}. The ride is booked; refund the extra ${money(excess, currency)} from ${refundSourceText(input.provider)}.`,
         context: { reference: input.reference, rideId: ride.id, customerId: ride.customerId, paidMinor: input.amountMinor, topupMinor: ride.topupMinor, excessMinor: excess },
         dedupeKey: `${RIDE_TOPUP_KIND}.overpaid:${input.tenantId}:${input.reference}`,
     });
@@ -306,7 +311,7 @@ export async function fulfillRideTopup(input: FulfillmentInput): Promise<Fulfill
     const prisma = input.prisma as RidesClient;
     const deps = { prisma, log: input.log };
     const res = await confirmTopupOnPayment(prisma, {
-        tenantId: input.tenantId, rideId: input.entityId, reference: input.reference, amountMinor: input.amountMinor, currency: input.currency, transactionId: input.transactionId, channel: input.channel,
+        tenantId: input.tenantId, rideId: input.entityId, reference: input.reference, amountMinor: input.amountMinor, currency: input.currency, transactionId: input.transactionId, channel: input.channel, provider: input.provider,
     });
     if (res.outcome === 'not_found') return { status: 'rejected', reason: 'ride_not_found' };
     const { ride } = res;
@@ -352,6 +357,19 @@ export async function fulfillRideTopup(input: FulfillmentInput): Promise<Fulfill
     }
 }
 
+// ---------------------------------------------------------------- owners
+
+/** The tenant of a pass / ride, by id. Webhook context (no tenant yet), so not tenant-scoped by design. */
+export async function ridePassOwner(prisma: RidesClient, id: string): Promise<string | null> {
+    const row = await prisma.ridePass.findUnique({ where: { id }, select: { tenantId: true } });
+    return row?.tenantId ?? null;
+}
+
+export async function rideOwner(prisma: RidesClient, id: string): Promise<string | null> {
+    const row = await prisma.ride.findUnique({ where: { id }, select: { tenantId: true } });
+    return row?.tenantId ?? null;
+}
+
 /** Safe to call more than once. */
 export function registerRidePayments(): void {
     if (!isRegisteredFulfillmentKind(RIDE_PACKAGE_KIND)) registerPaymentFulfiller(RIDE_PACKAGE_KIND, fulfillRidePackage);
@@ -360,4 +378,7 @@ export function registerRidePayments(): void {
     if (!hasFlowPaymentPreparer(RIDE_PACKAGE_KIND)) registerFlowPaymentPreparer(RIDE_PACKAGE_KIND, prepareRidePackage);
     if (!hasFlowPaymentPreparer(RIDE_PAYG_KIND)) registerFlowPaymentPreparer(RIDE_PAYG_KIND, prepareRidePayg);
     if (!hasFlowPaymentPreparer(RIDE_TOPUP_KIND)) registerFlowPaymentPreparer(RIDE_TOPUP_KIND, prepareRideTopup);
+    if (!hasFulfillmentOwner(RIDE_PACKAGE_KIND)) registerFulfillmentOwner(RIDE_PACKAGE_KIND, ridePassOwner);
+    if (!hasFulfillmentOwner(RIDE_PAYG_KIND)) registerFulfillmentOwner(RIDE_PAYG_KIND, rideOwner);
+    if (!hasFulfillmentOwner(RIDE_TOPUP_KIND)) registerFulfillmentOwner(RIDE_TOPUP_KIND, rideOwner);
 }

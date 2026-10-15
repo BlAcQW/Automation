@@ -1,7 +1,8 @@
 /**
  * The real FlowPorts: what a flow's side-effect steps actually do.
  *
- *  - createPaymentLink -> createFulfillmentPaymentLink (own gateway only), with
+ *  - createPaymentLink -> createFulfillmentPaymentLink (own gateway only: the
+ *    tenant's Paystack key, or its Payaza page when Tenant.paymentProvider is PAYAZA), with
  *    an entity id that encodes the conversation and the payment step
  *    (flow-payments.ts) and a return URL back into the WhatsApp chat.
  *  - enqueueStaff      -> a hand-off to a person (triggerTakeover) with the
@@ -32,7 +33,7 @@
  */
 import type { FlowPorts, PaymentLinkRequest, StaffRequest } from './flows/index.js';
 import { readFlowState, runRegisteredAction } from './flows/index.js';
-import { createFulfillmentPaymentLink } from './payment-link.js';
+import { createFulfillmentPaymentLink, type TenantPaymentSettings } from './payment-link.js';
 import { canEncodeFlowEntityId, encodeFlowEntityId } from './flow-entity-id.js';
 import { triggerTakeover } from './human-takeover.js';
 import { createNotification } from './notifications.js';
@@ -91,7 +92,8 @@ export function resetFlowPaymentPreparersForTests(): void {
 
 export interface FlowPortsDeps {
     prisma: any;
-    tenant: { id: string; paystackSecretKey?: string | null; whatsappDisplayNumber?: string | null };
+    /** A Tenant row (or the subset used here): Paystack key, gateway choice + Payaza keys, WhatsApp number. */
+    tenant: { id: string; paystackSecretKey?: string | null; whatsappDisplayNumber?: string | null } & TenantPaymentSettings;
     log: { warn: (obj: object, msg: string) => void; error: (obj: object, msg: string) => void };
 }
 
@@ -130,6 +132,13 @@ async function existingLink(
 
 export function createFlowPorts(deps: FlowPortsDeps): FlowPorts {
     const { prisma, tenant, log } = deps;
+    // Which gateway makes the link: Paystack unless the tenant chose Payaza (payment-link.ts).
+    const paymentSettings: TenantPaymentSettings = {
+        paymentProvider: tenant.paymentProvider ?? null,
+        payazaPublicKey: tenant.payazaPublicKey ?? null,
+        payazaSecretKey: tenant.payazaSecretKey ?? null,
+        payazaMode: tenant.payazaMode ?? null,
+    };
 
     async function createPreparedLink(preparer: FlowPaymentPreparer, req: PaymentLinkRequest): Promise<{ url: string; reference?: string } | null> {
         let prepared: FlowPaymentPrepared;
@@ -153,6 +162,7 @@ export function createFlowPorts(deps: FlowPortsDeps): FlowPorts {
             amount: req.amount,
             customerPhone: req.customerPhone ?? '',
             callbackUrl: whatsappReturnUrl(tenant.whatsappDisplayNumber),
+            paymentSettings,
             onCreated: async (link) => {
                 reference = link.reference;
                 await prepared.onCreated({ reference: link.reference, authorizationUrl: link.authorizationUrl });
@@ -204,6 +214,7 @@ export function createFlowPorts(deps: FlowPortsDeps): FlowPorts {
                 amount: req.amount,
                 customerPhone: req.customerPhone ?? '',
                 callbackUrl: whatsappReturnUrl(tenant.whatsappDisplayNumber),
+                paymentSettings,
                 // The entity is the conversation's flow state, which the engine
                 // saves (payment_url, payment_reference) right after this returns.
                 onCreated: ({ reference: ref }) => { reference = ref; },

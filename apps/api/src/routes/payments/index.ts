@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
+import payazaRoutes, { payazaWebhookUrl } from './payaza.js';
+import { reportUnattributedCharge, type UnattributedChargeInput } from './unattributed.js';
 import { fulfillBookingCharge, fulfillOrderCharge, republishPaymentSucceeded } from '../../services/payment-fulfillment.js';
 import { dispatchFulfillment } from '../../services/payment-fulfillers.js';
 import { markPayoutFailed, markPayoutPaid, markPayoutReversed } from '../../services/payout-transfer.js';
 import { DEFAULT_PAYMENT_CURRENCY } from '../../services/ledger.js';
-import { raiseAlert } from '../../services/alerts.js';
 import {
     initializeTransaction,
     verifyTransaction,
@@ -66,29 +67,18 @@ export function validatePaystackKeysForEnv(
     return { ok: true, secretKey, publicKey };
 }
 
-export interface UnattributedChargeInput {
-    reference: string;
-    tenantId: string;
-    amount?: number | null;
-    currency?: string | null;
-}
+export { buildUnattributedChargeReport, MAX_LOGGED_REFERENCE_LENGTH, type UnattributedChargeInput } from './unattributed.js';
 
-/**
- * Real Paystack references are short; a tenant holding its own key can sign a
- * webhook with any reference it likes, so bound what reaches logs and audit.
- */
-export const MAX_LOGGED_REFERENCE_LENGTH = 100;
-const MAX_LOGGED_CURRENCY_LENGTH = 8;
+const providerSchema = z.object({ provider: z.enum(['PAYSTACK', 'PAYAZA']) });
 
-/** Shape the log line and audit entry for a verified charge we could not attribute. */
-export function buildUnattributedChargeReport(reason: string, input: UnattributedChargeInput) {
-    const amountMinor =
-        typeof input.amount === 'number' && Number.isFinite(input.amount) ? input.amount : null;
-    const currency =
-        typeof input.currency === 'string' ? input.currency.slice(0, MAX_LOGGED_CURRENCY_LENGTH) : null;
-    const reference = String(input.reference).slice(0, MAX_LOGGED_REFERENCE_LENGTH);
-    const base = { reference, tenantId: input.tenantId, amountMinor, currency, reason };
-    return { auditAction: 'payment.unattributed', targetId: reference, log: base, metadata: base };
+/** First characters of the stored (encrypted) Payaza public key, for display. Never the secret. */
+function payazaKeyPrefix(encrypted: string | null | undefined): string | null {
+    if (!encrypted) return null;
+    try {
+        return decrypt(encrypted).slice(0, 12);
+    } catch {
+        return null;
+    }
 }
 
 interface PaystackWebhookEvent {
@@ -165,27 +155,11 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         reason: string,
         input: UnattributedChargeInput,
     ): Promise<void> {
-        const report = buildUnattributedChargeReport(reason, input);
-        log.error(report.log, 'Verified Paystack charge could not be attributed to a booking or order');
-        await audit({
-            prisma: fastify.prisma,
-            action: report.auditAction,
-            actorType: 'SYSTEM',
-            tenantId: input.tenantId,
-            targetType: 'PaystackCharge',
-            targetId: report.targetId,
-            metadata: report.metadata,
-        });
-        await raiseAlert(fastify.prisma, {
-            kind: 'payment.unattributed',
-            severity: 'critical',
-            tenantId: input.tenantId,
-            message: `Verified Paystack charge could not be attributed (${reason}).`,
-            context: { reference: input.reference, reason, amount: input.amount, currency: input.currency },
-            // Tenant in the key: two tenants' charges sharing a reference stay separate.
-            dedupeKey: `payment.unattributed:${input.tenantId}:${String(input.reference)}`,
-        });
+        await reportUnattributedCharge(fastify.prisma, log, 'Paystack', reason, input);
     }
+
+    // Payaza: /payments/payaza/{connect,disconnect,webhook}.
+    await fastify.register(payazaRoutes, { prefix: '/payaza' });
 
     // POST /payments/connect — owner-only, validates the secret against
     // Paystack with a cheap verify call before storing it (encrypted).
@@ -267,17 +241,61 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
         return { disconnected: true };
     });
 
-    // GET /payments/status — for the dashboard.
+    // GET /payments/status — for the dashboard. `connected`/`publicKey` are
+    // Paystack's (unchanged shape); `provider` + `payaza` are additive.
     fastify.get('/status', { preHandler: [fastify.authenticate] }, async (request) => {
         const tenant = await fastify.prisma.tenant.findUnique({
             where: { id: request.user.tenantId },
-            select: { paystackPublicKey: true, paystackSecretKey: true, paymentCurrency: true },
+            select: {
+                paystackPublicKey: true, paystackSecretKey: true, paymentCurrency: true,
+                paymentProvider: true, payazaPublicKey: true, payazaSecretKey: true, payazaMode: true,
+            },
         });
         return {
             connected: !!tenant?.paystackSecretKey,
             publicKey: tenant?.paystackPublicKey ?? null,
             currency: tenant?.paymentCurrency ?? DEFAULT_PAYMENT_CURRENCY,
+            provider: tenant?.paymentProvider ?? 'PAYSTACK',
+            payaza: {
+                connected: !!(tenant?.payazaPublicKey && tenant?.payazaSecretKey),
+                mode: tenant?.payazaMode ?? 'TEST',
+                publicKeyPrefix: payazaKeyPrefix(tenant?.payazaPublicKey),
+                webhookUrl: payazaWebhookUrl(),
+            },
         };
+    });
+
+    // PATCH /payments/provider — owner-only. Which gateway NEW fulfillment
+    // links (rides, flow payment steps) use. Payaza only once connected.
+    fastify.patch('/provider', { preHandler: [fastify.authenticate] }, async (request) => {
+        if (request.user.role !== 'OWNER') {
+            throw fastify.httpErrors.forbidden('Only owner can change the payment provider');
+        }
+        const parsed = providerSchema.safeParse(request.body ?? {});
+        if (!parsed.success) throw fastify.httpErrors.badRequest('provider must be PAYSTACK or PAYAZA');
+        const { provider } = parsed.data;
+
+        const tenant = await fastify.prisma.tenant.findUnique({
+            where: { id: request.user.tenantId },
+            select: { paymentProvider: true, payazaPublicKey: true, payazaSecretKey: true },
+        });
+        if (provider === 'PAYAZA' && !(tenant?.payazaPublicKey && tenant?.payazaSecretKey)) {
+            throw fastify.httpErrors.badRequest('Connect Payaza (public and secret key) before choosing it.');
+        }
+        await fastify.prisma.tenant.update({
+            where: { id: request.user.tenantId },
+            data: { paymentProvider: provider },
+        });
+        await audit({
+            prisma: fastify.prisma,
+            action: 'payments.provider_changed',
+            actorType: 'USER',
+            actorId: request.user.userId,
+            tenantId: request.user.tenantId,
+            metadata: { from: tenant?.paymentProvider ?? 'PAYSTACK', to: provider },
+            ipAddress: request.ip,
+        });
+        return { provider };
     });
 
     // POST /payments/orders/:id/initialize — (re-)initialise a Paystack
@@ -686,6 +704,7 @@ const paymentsRoutes: FastifyPluginAsync = async (fastify) => {
                 tenantId,
                 reference,
                 metadata: event.data.metadata as Record<string, unknown>,
+                provider: 'PAYSTACK',
                 log: request.log,
                 verify: async () => {
                     try {

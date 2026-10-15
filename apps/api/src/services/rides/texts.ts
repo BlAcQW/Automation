@@ -108,3 +108,13 @@ export function driverSmsText(a: { ref: string; customerName: string | null; cus
 export function money(minor: number, currency: string): string {
     return `${currency} ${formatMinor(minor).replace(/\.00$/, '')}`;
 }
+
+/**
+ * Staff-facing: where the business refunds a payment Bookly cannot honour, by
+ * the gateway that took the money. Bookly never refunds rides itself.
+ */
+export function refundSourceText(provider: string | null | undefined): string {
+    if (provider === 'PAYAZA') return 'your Payaza dashboard';
+    if (provider === 'PAYSTACK') return 'your Paystack dashboard';
+    return "your payment provider's dashboard (Paystack or Payaza)";
+}

@@ -6,6 +6,10 @@ import {
     parseFulfillmentMetadata,
     dispatchFulfillment,
     RESERVED_FULFILLMENT_KINDS,
+    buildFulfillmentReference,
+    parseFulfillmentReference,
+    registerFulfillmentOwner,
+    resolveFulfillmentTenant,
 } from './payment-fulfillers.js';
 
 const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -147,5 +151,109 @@ describe('dispatchFulfillment', () => {
     it('treats an unknown outcome as a failure rather than success', async () => {
         registerPaymentFulfiller('ride_package', vi.fn().mockResolvedValue(undefined));
         await expect(dispatchFulfillment(base())).rejects.toThrow(/outcome/i);
+    });
+});
+
+describe('dispatchFulfillment with trusted metadata (providers that do not echo metadata, e.g. Payaza)', () => {
+    const trusted = { fulfillmentKind: 'ride_package', entityId: 'e1', tenantId: 't1' };
+    const payazaVerified = verified({ metadata: null, reference: 'ref1' });
+
+    it('uses the trusted metadata when the provider returns none, and passes the provider to the fulfiller', async () => {
+        const f = vi.fn().mockResolvedValue({ status: 'applied' });
+        registerPaymentFulfiller('ride_package', f);
+        const r = await dispatchFulfillment(base({
+            trustedMetadata: trusted, provider: 'PAYAZA', verify: vi.fn().mockResolvedValue(payazaVerified),
+        }));
+        expect(r.body).toEqual({ ok: true, entity: 'ride_package' });
+        expect(f).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'e1', amountMinor: 5000, provider: 'PAYAZA' }));
+    });
+
+    it('still refuses when the trusted metadata disagrees with the dispatched kind, entity or tenant', async () => {
+        const f = vi.fn();
+        registerPaymentFulfiller('ride_package', f);
+        for (const bad of [
+            { ...trusted, entityId: 'OTHER' },
+            { ...trusted, tenantId: 'someone_else' },
+            { ...trusted, fulfillmentKind: 'ride_payg' },
+        ]) {
+            const r = await dispatchFulfillment(base({ trustedMetadata: bad, verify: vi.fn().mockResolvedValue(payazaVerified) }));
+            expect(r.unattributedReason).toBe('fulfillment_metadata_mismatch');
+        }
+        expect(f).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the provider answered about a different reference', async () => {
+        const f = vi.fn();
+        registerPaymentFulfiller('ride_package', f);
+        const r = await dispatchFulfillment(base({
+            trustedMetadata: trusted, verify: vi.fn().mockResolvedValue(verified({ metadata: null, reference: 'other_ref' })),
+        }));
+        expect(r.unattributedReason).toBe('fulfillment_metadata_mismatch');
+        expect(f).not.toHaveBeenCalled();
+    });
+
+    it('provider metadata, when present, still wins over trusted metadata (Paystack behaviour unchanged)', async () => {
+        const f = vi.fn();
+        registerPaymentFulfiller('ride_package', f);
+        const r = await dispatchFulfillment(base({
+            trustedMetadata: trusted,
+            verify: vi.fn().mockResolvedValue(verified({ metadata: { fulfillmentKind: 'ride_package', entityId: 'OTHER', tenantId: 't1' } })),
+        }));
+        expect(r.unattributedReason).toBe('fulfillment_metadata_mismatch');
+        expect(f).not.toHaveBeenCalled();
+    });
+
+    it('without trusted metadata, a provider answer with no metadata is still a mismatch', async () => {
+        registerPaymentFulfiller('ride_package', vi.fn());
+        const r = await dispatchFulfillment(base({ verify: vi.fn().mockResolvedValue(payazaVerified) }));
+        expect(r.unattributedReason).toBe('fulfillment_metadata_mismatch');
+    });
+});
+
+describe('fulfillment references', () => {
+    it('builds bf_f_{kind}_{entityId}_{ts}', () => {
+        expect(buildFulfillmentReference('ride_package', 'pass1', 1700000000000)).toBe('bf_f_ride_package_pass1_1700000000000');
+    });
+
+    it('parses back kind and entity id against the registered kinds, even when both contain underscores', () => {
+        registerPaymentFulfiller('ride_package', vi.fn());
+        registerPaymentFulfiller('flow_payment', vi.fn());
+        expect(parseFulfillmentReference('bf_f_ride_package_ck_9a_1700000000000')).toEqual({ kind: 'ride_package', entityId: 'ck_9a' });
+        expect(parseFulfillmentReference('bf_f_flow_payment_conv_1.pay_step.2500.GHS_1700000000000'))
+            .toEqual({ kind: 'flow_payment', entityId: 'conv_1.pay_step.2500.GHS' });
+    });
+
+    it('refuses a kind that is an underscore-prefix of another (references would be ambiguous)', () => {
+        registerPaymentFulfiller('ride', vi.fn());
+        expect(() => registerPaymentFulfiller('ride_payg', vi.fn())).toThrow(/ambiguous/);
+        resetPaymentFulfillersForTests();
+        registerPaymentFulfiller('ride_payg', vi.fn());
+        expect(() => registerPaymentFulfiller('ride', vi.fn())).toThrow(/ambiguous/);
+        // A plain string prefix without the separator is fine.
+        registerPaymentFulfiller('ride_pay', vi.fn());
+        expect(parseFulfillmentReference('bf_f_ride_payg_r1_1')).toEqual({ kind: 'ride_payg', entityId: 'r1' });
+        expect(parseFulfillmentReference('bf_f_ride_pay_r1_1')).toEqual({ kind: 'ride_pay', entityId: 'r1' });
+    });
+
+    it('returns null for anything that is not one of ours', () => {
+        registerPaymentFulfiller('ride_package', vi.fn());
+        for (const ref of ['', 'bf_o_ord1_1', 'PZ-123', 'bf_f_ride_package__1', 'bf_f_ride_package_e1', 'bf_f_unknown_e1_1', `bf_f_ride_package_${'x'.repeat(101)}_1`, 'bf_f_ride_package_e1_1x']) {
+            expect(parseFulfillmentReference(ref)).toBeNull();
+        }
+    });
+});
+
+describe('fulfillment owners (which tenant a reference belongs to)', () => {
+    it('asks the resolver registered for the kind', async () => {
+        const owner = vi.fn().mockResolvedValue('t9');
+        registerFulfillmentOwner('ride_package', owner);
+        expect(await resolveFulfillmentTenant(prisma, 'ride_package', 'e1')).toBe('t9');
+        expect(owner).toHaveBeenCalledWith(prisma, 'e1');
+    });
+
+    it('is null for a kind with no resolver, and refuses double registration', async () => {
+        expect(await resolveFulfillmentTenant(prisma, 'nope', 'e1')).toBeNull();
+        registerFulfillmentOwner('ride_package', vi.fn());
+        expect(() => registerFulfillmentOwner('ride_package', vi.fn())).toThrow(/already/);
     });
 });

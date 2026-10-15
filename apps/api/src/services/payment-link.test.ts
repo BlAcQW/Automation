@@ -164,7 +164,7 @@ describe('createFulfillmentPaymentLink', () => {
         const onCreated = vi.fn();
         await createFulfillmentPaymentLink({ ...args, onCreated });
         expect(onCreated).toHaveBeenCalledWith({
-            reference: 'bf_o_ride_package_pk1_1', authorizationUrl: 'https://pay/r', collectionRoute: 'OWN_GATEWAY',
+            reference: 'bf_o_ride_package_pk1_1', authorizationUrl: 'https://pay/r', collectionRoute: 'OWN_GATEWAY', provider: 'PAYSTACK',
         });
     });
 
@@ -192,5 +192,78 @@ describe('createFulfillmentPaymentLink', () => {
         for (const amount of [0, -5, NaN]) {
             expect(await createFulfillmentPaymentLink({ ...args, amount, onCreated: vi.fn() })).toBeNull();
         }
+    });
+});
+
+describe('createFulfillmentPaymentLink with Payaza as the provider', () => {
+    const payaza = { paymentProvider: 'PAYAZA', payazaPublicKey: 'encpub', payazaSecretKey: 'encsec', payazaMode: 'LIVE' };
+    const args = {
+        tenantId: 't1', paystackSecretKeyEncrypted: 'enc', currency: 'GHS',
+        kind: 'ride_package', entityId: 'pk1', amount: 960, customerPhone: '+233 24 123 4567',
+        callbackUrl: 'https://wa.me/233200000000', paymentSettings: payaza,
+    };
+    beforeEach(() => {
+        resetPaymentFulfillersForTests();
+        registerPaymentFulfiller('ride_package', vi.fn());
+        vi.clearAllMocks();
+    });
+
+    it('builds the Payaza payment page instead of calling Paystack, with the same reference scheme', async () => {
+        const onCreated = vi.fn();
+        const url = await createFulfillmentPaymentLink({ ...args, onCreated });
+        expect(initializeTransaction).not.toHaveBeenCalled();
+        expect(url).toMatch(/^https:\/\/payment\.payaza\.africa\/\?/);
+        const p = new URL(url!).searchParams;
+        expect(p.get('merchant_key')).toBe('dec(encpub)'); // decrypted public key
+        expect(p.get('connection_mode')).toBe('Live');
+        expect(p.get('checkout_amount')).toBe('960.00');
+        expect(p.get('currency_code')).toBe('GHS');
+        expect(p.get('email_address')).toBe('233241234567@customer.bookingflow.app');
+        expect(p.get('phone_number')).toBe('233241234567');
+        const reference = p.get('transaction_reference')!;
+        expect(reference).toMatch(/^bf_f_ride_package_pk1_[0-9]+$/);
+        expect(JSON.parse(p.get('additional_details')!)).toEqual({ tenantId: 't1', fulfillmentKind: 'ride_package', entityId: 'pk1' });
+        expect(p.get('redirect_url')).toBe('https://wa.me/233200000000');
+        expect(url!.split('&').pop()!.startsWith('redirect_url=')).toBe(true);
+        // The secret key never leaves the server.
+        expect(url).not.toContain('encsec');
+        expect(onCreated).toHaveBeenCalledWith({ reference, authorizationUrl: url, collectionRoute: 'OWN_GATEWAY', provider: 'PAYAZA' });
+    });
+
+    it('uses Test mode for a TEST connection', async () => {
+        const url = await createFulfillmentPaymentLink({ ...args, paymentSettings: { ...payaza, payazaMode: 'TEST' }, onCreated: vi.fn() });
+        expect(new URL(url!).searchParams.get('connection_mode')).toBe('Test');
+    });
+
+    it('PAYAZA selected but keys missing behaves like no gateway: no link, no Paystack fallback', async () => {
+        for (const missing of [{ payazaPublicKey: null }, { payazaSecretKey: null }]) {
+            const onCreated = vi.fn();
+            expect(await createFulfillmentPaymentLink({ ...args, paymentSettings: { ...payaza, ...missing }, onCreated })).toBeNull();
+            expect(onCreated).not.toHaveBeenCalled();
+        }
+        expect(initializeTransaction).not.toHaveBeenCalled();
+    });
+
+    it('still refuses unregistered kinds and bad amounts before building a page', async () => {
+        expect(await createFulfillmentPaymentLink({ ...args, kind: 'nope', onCreated: vi.fn() })).toBeNull();
+        expect(await createFulfillmentPaymentLink({ ...args, amount: 0, onCreated: vi.fn() })).toBeNull();
+    });
+
+    it('returns null when persisting fails', async () => {
+        expect(await createFulfillmentPaymentLink({ ...args, onCreated: vi.fn().mockRejectedValue(new Error('db')) })).toBeNull();
+    });
+
+    it('leaves an empty phone when the number is not a Ghana number', async () => {
+        const url = await createFulfillmentPaymentLink({ ...args, customerPhone: '', onCreated: vi.fn() });
+        const p = new URL(url!).searchParams;
+        expect(p.get('phone_number')).toBe('');
+        expect(p.get('email_address')).toBe('customer@customer.bookingflow.app');
+    });
+
+    it('a PAYSTACK provider (or none) keeps the Paystack path', async () => {
+        (initializeTransaction as any).mockResolvedValue({ authorizationUrl: 'https://pay/r', reference: 'r', accessCode: 'ac' });
+        expect(await createFulfillmentPaymentLink({ ...args, paymentSettings: { ...payaza, paymentProvider: 'PAYSTACK' }, onCreated: vi.fn() })).toBe('https://pay/r');
+        expect(await createFulfillmentPaymentLink({ ...args, paymentSettings: undefined, onCreated: vi.fn() })).toBe('https://pay/r');
+        expect(initializeTransaction).toHaveBeenCalledTimes(2);
     });
 });

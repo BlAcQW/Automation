@@ -173,7 +173,7 @@ export type ActivationOutcome =
  */
 export async function activatePassOnPayment(
     prisma: RidesClient,
-    args: { tenantId: string; passId: string; reference: string; amountMinor: number; currency: string; transactionId?: string; channel?: string; now?: Date },
+    args: { tenantId: string; passId: string; reference: string; amountMinor: number; currency: string; transactionId?: string; channel?: string; provider?: string; now?: Date },
 ): Promise<ActivationOutcome> {
     const now = args.now ?? new Date();
     return prisma.$transaction(async (tx): Promise<ActivationOutcome> => {
@@ -192,7 +192,7 @@ export async function activatePassOnPayment(
             return { outcome: 'underpaid', pass };
         }
 
-        const paid = { paymentReference: args.reference, paidAt: now, paidAmountMinor: args.amountMinor, providerTransactionId: args.transactionId ?? null, paymentChannel: args.channel ?? null };
+        const paid = { paymentReference: args.reference, paidAt: now, paidAmountMinor: args.amountMinor, providerTransactionId: args.transactionId ?? null, paymentChannel: args.channel ?? null, paymentProvider: args.provider ?? null };
         const refuse = async (reason: 'cap_full' | 'has_active'): Promise<ActivationOutcome> => {
             const updated = await tx.ridePass.update({
                 where: { id: pass.id, tenantId: args.tenantId },

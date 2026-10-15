@@ -123,3 +123,15 @@ describe('payment views carry a purpose', () => {
             .toMatchObject({ kind: 'PACKAGE', purpose: 'PACKAGE_TOPUP', amount: '24.00', rideRef: 'TR-1', passId: 'p1' });
     });
 });
+
+describe('payment views name the provider that took the money', () => {
+    const customer = { id: 'c1', name: 'Ama', phone: '+233241234567' };
+    const r = { id: 'r1', ref: 'TR-1', kind: 'PAYG', passId: null, fareMinor: 2500, topupMinor: null, paidAmountMinor: 2500, paidAt: now, status: 'REQUESTED', paymentExpiresAt: null, currency: 'GHS', paymentReference: 'bf_f_x', providerTransactionId: 'PZ1', paymentChannel: 'GH_MOBILEMONEY', createdAt: now, customer } as any;
+    it('PAYSTACK / PAYAZA as recorded, null when unknown or unrecognised', () => {
+        expect(packagePaymentView({ ...pass(), paymentProvider: 'PAYAZA', customer } as any, false, now).provider).toBe('PAYAZA');
+        expect(packagePaymentView({ ...pass(), paymentProvider: null, customer } as any, false, now).provider).toBeNull();
+        expect(paygPaymentView({ ...r, paymentProvider: 'PAYSTACK' }, false, now).provider).toBe('PAYSTACK');
+        expect(paygPaymentView({ ...r, paymentProvider: 'stripe' }, false, now).provider).toBeNull();
+        expect(paygPaymentView(r, false, now).provider).toBeNull();
+    });
+});

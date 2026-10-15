@@ -22,7 +22,7 @@ vi.mock('../notifications.js', () => ({ createNotification: m.createNotification
 vi.mock('./notify.js', () => ({ notifyRideCustomer: m.notifyRideCustomer }));
 
 import { fulfillRidePackage, fulfillRidePayg, fulfillRideTopup, prepareRidePackage, prepareRidePayg, prepareRideTopup, registerRidePayments } from './payments.js';
-import { getPaymentFulfiller, resetPaymentFulfillersForTests } from '../payment-fulfillers.js';
+import { getPaymentFulfiller, resetPaymentFulfillersForTests, resolveFulfillmentTenant } from '../payment-fulfillers.js';
 import { hasFlowPaymentPreparer, resetFlowPaymentPreparersForTests } from '../flow-ports.js';
 
 const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -250,5 +250,48 @@ describe('registerRidePayments', () => {
         expect(getPaymentFulfiller('ride_payg')).toBe(fulfillRidePayg);
         expect(getPaymentFulfiller('ride_topup')).toBe(fulfillRideTopup);
         expect(hasFlowPaymentPreparer('ride_package') && hasFlowPaymentPreparer('ride_payg') && hasFlowPaymentPreparer('ride_topup')).toBe(true);
+    });
+
+    it('registers owner resolvers that find the tenant from the stored pass / ride by id', async () => {
+        resetPaymentFulfillersForTests();
+        resetFlowPaymentPreparersForTests();
+        registerRidePayments();
+        registerRidePayments();
+        const prisma: any = {
+            ridePass: { findUnique: vi.fn(async ({ where }: any) => (where.id === 'p1' ? { tenantId: 'tA' } : null)) },
+            ride: { findUnique: vi.fn(async ({ where }: any) => (where.id === 'r1' ? { tenantId: 'tB' } : null)) },
+        };
+        expect(await resolveFulfillmentTenant(prisma, 'ride_package', 'p1')).toBe('tA');
+        expect(await resolveFulfillmentTenant(prisma, 'ride_package', 'nope')).toBeNull();
+        expect(await resolveFulfillmentTenant(prisma, 'ride_payg', 'r1')).toBe('tB');
+        expect(await resolveFulfillmentTenant(prisma, 'ride_topup', 'r1')).toBe('tB');
+    });
+});
+
+describe('provider: recorded on the row, and refund wording names it', () => {
+    it('passes the provider to the pass / ride writers', async () => {
+        m.activatePassOnPayment.mockResolvedValue({ outcome: 'activated', pass });
+        await fulfillRidePackage(input({ provider: 'PAYAZA' }));
+        expect(m.activatePassOnPayment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider: 'PAYAZA' }));
+        m.confirmPaygOnPayment.mockResolvedValue({ outcome: 'confirmed', ride: { ...ride, ref: 'T1' } });
+        await fulfillRidePayg(input({ provider: 'PAYAZA', entityId: 'r1' }));
+        expect(m.confirmPaygOnPayment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider: 'PAYAZA' }));
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'confirmed', ride: { ...ride, ref: 'T2', topupMinor: 96000 } });
+        await fulfillRideTopup(input({ provider: 'PAYAZA', entityId: 'r1' }));
+        expect(m.confirmTopupOnPayment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ provider: 'PAYAZA' }));
+    });
+
+    it('a refused Payaza payment tells TURBO to refund from Payaza; an unknown provider names both', async () => {
+        m.activatePassOnPayment.mockResolvedValue({ outcome: 'refused', pass, reason: 'cap_full' });
+        await fulfillRidePackage(input({ provider: 'PAYAZA' }));
+        expect(m.raiseAlert).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ message: expect.stringContaining('Refund it from your Payaza dashboard.') }));
+        await fulfillRidePackage(input());
+        expect(m.raiseAlert).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ message: expect.stringContaining("your payment provider's dashboard (Paystack or Payaza)") }));
+    });
+
+    it('an overpaid Payaza top-up names Payaza', async () => {
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'confirmed', ride: { ...ride, ref: 'T3', topupMinor: 1000 } });
+        await fulfillRideTopup(input({ provider: 'PAYAZA', entityId: 'r1', amountMinor: 5000 }));
+        expect(m.raiseAlert).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'ride_topup.overpaid', message: expect.stringContaining('from your Payaza dashboard') }));
     });
 });

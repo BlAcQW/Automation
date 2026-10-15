@@ -361,7 +361,7 @@ async function topupBlocker(tx: RidesDb, ride: Ride, now: Date, revive: boolean)
  */
 export async function confirmTopupOnPayment(
     prisma: RidesClient,
-    args: { tenantId: string; rideId: string; reference: string; amountMinor: number; currency: string; transactionId?: string; channel?: string; now?: Date },
+    args: { tenantId: string; rideId: string; reference: string; amountMinor: number; currency: string; transactionId?: string; channel?: string; provider?: string; now?: Date },
 ): Promise<TopupPaymentOutcome> {
     const now = args.now ?? new Date();
     return prisma.$transaction(async (tx): Promise<TopupPaymentOutcome> => {
@@ -380,7 +380,7 @@ export async function confirmTopupOnPayment(
         if (args.currency.toUpperCase() !== ride.currency.toUpperCase() || args.amountMinor < (ride.topupMinor ?? 0) - AMOUNT_TOLERANCE_MINOR) {
             return { outcome: 'underpaid', ride };
         }
-        const paid = { paymentReference: args.reference, paidAt: now, paidAmountMinor: args.amountMinor, providerTransactionId: args.transactionId ?? null, paymentChannel: args.channel ?? null, paymentExpiresAt: null };
+        const paid = { paymentReference: args.reference, paidAt: now, paidAmountMinor: args.amountMinor, providerTransactionId: args.transactionId ?? null, paymentChannel: args.channel ?? null, paymentProvider: args.provider ?? null, paymentExpiresAt: null };
         const live = ride.status === 'PENDING_PAYMENT';
         const revive = ride.status === 'CANCELLED' && ride.cancelReason === 'payment_timeout';
         if (!live && !revive) {
@@ -499,7 +499,7 @@ export type PaygPaymentOutcome =
  */
 export async function confirmPaygOnPayment(
     prisma: RidesClient,
-    args: { tenantId: string; rideId: string; reference: string; amountMinor: number; currency: string; transactionId?: string; channel?: string; now?: Date },
+    args: { tenantId: string; rideId: string; reference: string; amountMinor: number; currency: string; transactionId?: string; channel?: string; provider?: string; now?: Date },
 ): Promise<PaygPaymentOutcome> {
     const now = args.now ?? new Date();
     return prisma.$transaction(async (tx): Promise<PaygPaymentOutcome> => {
@@ -521,7 +521,7 @@ export async function confirmPaygOnPayment(
         if (args.currency.toUpperCase() !== ride.currency.toUpperCase() || args.amountMinor < ride.fareMinor - AMOUNT_TOLERANCE_MINOR) {
             return { outcome: 'underpaid', ride };
         }
-        const paid = { paymentReference: args.reference, paidAt: now, paidAmountMinor: args.amountMinor, providerTransactionId: args.transactionId ?? null, paymentChannel: args.channel ?? null, paymentExpiresAt: null };
+        const paid = { paymentReference: args.reference, paidAt: now, paidAmountMinor: args.amountMinor, providerTransactionId: args.transactionId ?? null, paymentChannel: args.channel ?? null, paymentProvider: args.provider ?? null, paymentExpiresAt: null };
 
         if (ride.status === 'PENDING_PAYMENT') {
             const updated = await tx.ride.update({ where: { id: ride.id, tenantId: args.tenantId }, data: { ...paid, status: 'REQUESTED', requestedAt: now } });

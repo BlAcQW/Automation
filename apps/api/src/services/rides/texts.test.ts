@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { driverAssignedText, rideCompletedText, packageActivatedText, formatDate, money, rides, rideCancelledText, expiryReminderText, lowBalanceText, driverSmsText, PAYG_PAYMENT_RECEIVED_TEXT, topupReceivedText, topupNotConfirmedText } from './texts.js';
+import { driverAssignedText, rideCompletedText, packageActivatedText, formatDate, money, rides, rideCancelledText, expiryReminderText, lowBalanceText, driverSmsText, PAYG_PAYMENT_RECEIVED_TEXT, topupReceivedText, topupNotConfirmedText, refundSourceText } from './texts.js';
 
 describe('TURBO wording', () => {
     it('driver assigned', () => {
@@ -40,5 +40,14 @@ describe('TURBO wording', () => {
         expect(sms).not.toMatch(/https?:|www\.|\.example/);
         expect(sms.length).toBeLessThanOrEqual(200);
         expect(driverSmsText({ ref: 'TR-3', customerName: 'Kofi', customerPhone: '+233', pickup: 'St.Mary Hostel', destination: 'U.C.C Gate', kind: 'PACKAGE' })).toContain('St.Mary Hostel, to U.C.C Gate');
+    });
+});
+
+describe('refundSourceText (staff-facing: where to refund)', () => {
+    it('names the gateway that took the money, and both when unknown', () => {
+        expect(refundSourceText('PAYAZA')).toBe('your Payaza dashboard');
+        expect(refundSourceText('PAYSTACK')).toBe('your Paystack dashboard');
+        expect(refundSourceText(null)).toBe("your payment provider's dashboard (Paystack or Payaza)");
+        expect(refundSourceText(undefined)).toBe("your payment provider's dashboard (Paystack or Payaza)");
     });
 });

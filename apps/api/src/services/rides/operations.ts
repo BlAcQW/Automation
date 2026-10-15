@@ -14,7 +14,7 @@ import {
 import { emitRideAssigned, emitRideCompleted, emitRideRequested } from './events.js';
 import { notifyRideCustomer, smsDriver, type NotifyDeps } from './notify.js';
 import {
-    driverAssignedText, driverSmsText, money, packageActivatedText, rideCancelledText, rideCompletedText,
+    driverAssignedText, driverSmsText, money, packageActivatedText, refundSourceText, rideCancelledText, rideCompletedText,
 } from './texts.js';
 import { createNotification } from '../notifications.js';
 import { raiseAlert } from '../alerts.js';
@@ -125,7 +125,7 @@ export async function changeRideStatus(
             const what = isTopup ? `A package ride (${ride.ref}) whose top-up was paid` : `A paid PAYG ride (${ride.ref})`;
             await raiseAlert(deps.prisma, {
                 kind, severity: 'warning', tenantId: ride.tenantId,
-                message: `${what} was cancelled. Refund ${amount} from your Paystack dashboard.`,
+                message: `${what} was cancelled. Refund ${amount} from ${refundSourceText(ride.paymentProvider)}.`,
                 context: { rideId: ride.id, reference: ride.paymentReference, refundMinor, by: args.by ?? 'ops' },
                 dedupeKey: `${kind}:${ride.tenantId}:${ride.id}`,
             });

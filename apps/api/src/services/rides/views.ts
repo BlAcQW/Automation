@@ -155,6 +155,13 @@ export function paygPaymentStatus(r: Pick<Ride, 'paidAt' | 'status' | 'paymentEx
     return 'FAILED';
 }
 
+export type ConsolePaymentProvider = 'PAYSTACK' | 'PAYAZA';
+
+/** The gateway recorded on the row; null before payment, on rows from before it was recorded, or for anything unrecognised. */
+export function paymentProviderOf(raw: string | null | undefined): ConsolePaymentProvider | null {
+    return raw === 'PAYSTACK' || raw === 'PAYAZA' ? raw : null;
+}
+
 type PassWithCustomer = RidePass & { customer: { id: string; name: string | null; phone: string } };
 type RideWithCustomer = Ride & { customer: { id: string; name: string | null; phone: string } };
 
@@ -169,6 +176,7 @@ export function packagePaymentView(p: PassWithCustomer, mask: boolean, now: Date
         reference: p.paymentReference ?? '',
         providerReference: p.providerTransactionId ?? null,
         channel: p.paymentChannel ?? null,
+        provider: paymentProviderOf(p.paymentProvider),
         customer: personRef(p.customer, mask),
         rideRef: null,
         passId: p.id,
@@ -190,6 +198,7 @@ export function paygPaymentView(r: RideWithCustomer, mask: boolean, now: Date) {
         reference: r.paymentReference ?? '',
         providerReference: r.providerTransactionId ?? null,
         channel: r.paymentChannel ?? null,
+        provider: paymentProviderOf(r.paymentProvider),
         customer: personRef(r.customer, mask),
         rideRef: r.ref,
         passId: topup ? r.passId : null,

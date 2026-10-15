@@ -53,6 +53,35 @@ describe('whatsappReturnUrl', () => {
     });
 });
 
+describe('createPaymentLink: the tenant\'s payment provider', () => {
+    const payazaTenant = { ...tenant, paymentProvider: 'PAYAZA', payazaPublicKey: 'encpub', payazaSecretKey: 'encsec', payazaMode: 'LIVE' };
+
+    it('passes the tenant\'s provider settings so a Payaza tenant gets a Payaza link (flow_payment path)', async () => {
+        const ports = createFlowPorts({ prisma: prismaWith(null), tenant: payazaTenant, log });
+        await ports.createPaymentLink(payReq());
+        expect((createFulfillmentPaymentLink.mock.calls[0] as any)[0].paymentSettings).toMatchObject({
+            paymentProvider: 'PAYAZA', payazaPublicKey: 'encpub', payazaSecretKey: 'encsec', payazaMode: 'LIVE',
+        });
+    });
+
+    it('passes them on the preparer path too (rides kinds)', async () => {
+        resetFlowPaymentPreparersForTests();
+        registerFlowPaymentPreparer('ride_package', async () => ({ ok: true, entityId: 'pass1', onCreated: vi.fn() }));
+        const ports = createFlowPorts({ prisma: prismaWith(null), tenant: payazaTenant, log });
+        await ports.createPaymentLink(payReq({ kind: 'ride_package' }));
+        const args = (createFulfillmentPaymentLink.mock.calls[0] as any)[0];
+        expect(args.entityId).toBe('pass1');
+        expect(args.paymentSettings).toMatchObject({ paymentProvider: 'PAYAZA', payazaMode: 'LIVE' });
+        resetFlowPaymentPreparersForTests();
+    });
+
+    it('a tenant row without provider fields still works (Paystack path)', async () => {
+        const ports = createFlowPorts({ prisma: prismaWith(null), tenant, log });
+        await ports.createPaymentLink(payReq());
+        expect((createFulfillmentPaymentLink.mock.calls[0] as any)[0].paymentSettings).toMatchObject({ paymentProvider: null });
+    });
+});
+
 describe('createPaymentLink', () => {
     it('creates an own-gateway fulfillment link for the step and returns url + reference', async () => {
         const ports = createFlowPorts({ prisma: prismaWith(null), tenant, log });

@@ -201,7 +201,7 @@ function passPaymentWhere(tenantId: string, status: ConsolePaymentStatus | undef
         case 'SUCCEEDED': return { tenantId, paidAt: { not: null } };
         case 'PENDING': return { tenantId, paidAt: null, status: 'HELD', holdExpiresAt: { gt: now } };
         case 'FAILED': return { tenantId, paidAt: null, OR: [{ status: 'CANCELLED' }, { status: 'HELD', holdExpiresAt: { lte: now } }, { status: 'HELD', holdExpiresAt: null }] };
-        case 'REFUNDED': return null; // refunds are made in the tenant's own Paystack and not tracked here
+        case 'REFUNDED': return null; // refunds are made in the tenant's own gateway (Paystack or Payaza) and not tracked here
     }
 }
 

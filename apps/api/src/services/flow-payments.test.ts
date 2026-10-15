@@ -414,3 +414,17 @@ describe('advanceFlowOnPackPayment (pack kinds, e.g. ride_package)', () => {
         expect(kit.outbound()).toHaveLength(0);
     });
 });
+
+describe('flow_payment owner (the Payaza webhook picks the verifying key from it)', () => {
+    it('resolves the tenant from the conversation the entity id names; null for junk ids or unknown conversations', async () => {
+        resetPaymentFulfillersForTests();
+        registerFlowPaymentFulfiller();
+        const { resolveFulfillmentTenant } = await import('./payment-fulfillers.js');
+        const prisma: any = { conversation: { findUnique: vi.fn(async ({ where }: any) => (where.id === 'conv1' ? { tenantId: 'tX' } : null)) } };
+        expect(await resolveFulfillmentTenant(prisma, 'flow_payment', 'conv1.pay.2500.GHS')).toBe('tX');
+        expect(await resolveFulfillmentTenant(prisma, 'flow_payment', 'conv2.pay.2500.GHS')).toBeNull();
+        expect(await resolveFulfillmentTenant(prisma, 'flow_payment', 'not-an-entity')).toBeNull();
+        expect(prisma.conversation.findUnique).toHaveBeenCalledTimes(2);
+        registerFlowPaymentFulfiller(); // still safe to call twice
+    });
+});

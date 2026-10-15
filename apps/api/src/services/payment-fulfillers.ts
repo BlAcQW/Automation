@@ -28,6 +28,14 @@
  *  5. OWN_GATEWAY ONLY. These payments are verified with the tenant's own
  *     Paystack key and never touch the platform ledger. A fulfiller must not
  *     credit a wallet.
+ *
+ * PAYAZA. A tenant whose provider is Payaza gets a Payaza payment page for the
+ * same kinds, with the same reference (`bf_f_{kind}_{entityId}_{ts}`). Payaza
+ * echoes no metadata, so its webhook (routes/payments/payaza.ts) derives kind
+ * and entity from OUR reference, finds the tenant from the stored row through
+ * the owner resolver registered for the kind (registerFulfillmentOwner), and
+ * passes `trustedMetadata`. `input.provider` tells a fulfiller which gateway
+ * took the money (for the record, and refund wording).
  */
 
 import type { ExtendedPrismaClient } from '../plugins/prisma.js';
@@ -45,6 +53,8 @@ export interface FulfillerLogger {
     error: (obj: object, msg: string) => void;
 }
 
+export type PaymentProviderName = 'PAYSTACK' | 'PAYAZA';
+
 export interface FulfillmentInput {
     prisma: ExtendedPrismaClient;
     tenantId: string;
@@ -58,6 +68,8 @@ export interface FulfillmentInput {
     /** Paystack's transaction id and payment channel, for the record shown to the business. */
     transactionId?: string;
     channel?: string;
+    /** Which gateway took the money. Absent = unknown (older callers). */
+    provider?: PaymentProviderName;
 }
 
 export type FulfillmentOutcome =
@@ -68,6 +80,29 @@ export type FulfillmentOutcome =
 export type PaymentFulfiller = (input: FulfillmentInput) => Promise<FulfillmentOutcome>;
 
 const fulfillers = new Map<string, PaymentFulfiller>();
+
+/**
+ * Which tenant owns an entity of a kind, read from OUR row (never from a
+ * provider payload). Needed by providers whose webhook carries no trustworthy
+ * tenant id before the signature is checked (Payaza): the tenant chosen here
+ * decides which secret verifies the signature.
+ */
+export type FulfillmentOwnerResolver = (prisma: ExtendedPrismaClient, entityId: string) => Promise<string | null>;
+const owners = new Map<string, FulfillmentOwnerResolver>();
+
+export function registerFulfillmentOwner(kind: string, resolver: FulfillmentOwnerResolver): void {
+    if (owners.has(kind)) throw new Error(`An owner resolver is already registered for kind "${kind}"`);
+    owners.set(kind, resolver);
+}
+
+export function hasFulfillmentOwner(kind: string): boolean {
+    return owners.has(kind);
+}
+
+export async function resolveFulfillmentTenant(prisma: ExtendedPrismaClient, kind: string, entityId: string): Promise<string | null> {
+    const resolver = owners.get(kind);
+    return resolver ? resolver(prisma, entityId) : null;
+}
 
 export function isReservedFulfillmentKind(kind: string): boolean {
     return (RESERVED_FULFILLMENT_KINDS as readonly string[]).includes(kind);
@@ -83,6 +118,12 @@ export function registerPaymentFulfiller(kind: string, fulfiller: PaymentFulfill
     if (fulfillers.has(kind)) {
         throw new Error(`A fulfiller is already registered for kind "${kind}"`);
     }
+    // References are bf_f_{kind}_{entityId}_{ts} and parsed back by kind (parseFulfillmentReference):
+    // kinds 'a' and 'a_b' would make 'bf_f_a_b_x_1' mean two things.
+    const clash = [...fulfillers.keys()].find((k) => kind.startsWith(`${k}_`) || k.startsWith(`${kind}_`));
+    if (clash) {
+        throw new Error(`Fulfillment kind "${kind}" would make references ambiguous with "${clash}"`);
+    }
     fulfillers.set(kind, fulfiller);
 }
 
@@ -97,6 +138,38 @@ export function isRegisteredFulfillmentKind(kind: string): boolean {
 
 export function resetPaymentFulfillersForTests(): void {
     fulfillers.clear();
+    owners.clear();
+}
+
+// ------------------------------------------------------------ references
+
+const REFERENCE_PREFIX = 'bf_f_';
+const REFERENCE_TAIL = /_([0-9]{1,16})$/;
+
+/** `bf_f_{kind}_{entityId}_{ts}`: f = fulfillment, distinct from order (bf_o_) references. */
+export function buildFulfillmentReference(kind: string, entityId: string, now: number = Date.now()): string {
+    return `${REFERENCE_PREFIX}${kind}_${entityId}_${now}`;
+}
+
+/**
+ * Kind + entity id back out of one of our fulfillment references. Both may
+ * contain underscores, so the kind is matched against the REGISTERED kinds
+ * (longest first) rather than split on a separator. Null for anything that is
+ * not ours (another product on the same gateway account, a malformed value).
+ */
+export function parseFulfillmentReference(reference: string): { kind: string; entityId: string } | null {
+    if (!reference.startsWith(REFERENCE_PREFIX)) return null;
+    const tail = REFERENCE_TAIL.exec(reference);
+    if (!tail) return null;
+    const middle = reference.slice(REFERENCE_PREFIX.length, reference.length - tail[0].length);
+    const kinds = [...fulfillers.keys()].sort((a, b) => b.length - a.length);
+    for (const kind of kinds) {
+        if (!middle.startsWith(`${kind}_`)) continue;
+        const entityId = middle.slice(kind.length + 1);
+        if (entityId.length === 0 || entityId.length > MAX_ENTITY_ID_LENGTH) return null;
+        return { kind, entityId };
+    }
+    return null;
 }
 
 export type FulfillmentMetadata =
@@ -129,6 +202,27 @@ export interface DispatchArgs {
     /** Re-verify with Paystack (only called once a fulfiller is found). */
     verify: () => Promise<VerifyResult>;
     log: FulfillerLogger;
+    /**
+     * For providers that do not echo metadata on their verify call (Payaza):
+     * the kind / entity / tenant derived from OUR reference and stored row,
+     * never from the webhook body. Used for the cross-check only when the
+     * provider returned no metadata, and only if the provider's answer is about
+     * this very reference (the query was keyed on it).
+     *
+     * WEAKER THAN PAYSTACK'S CHECK. With Payaza the reference itself rides on a
+     * customer-visible page URL, and anyone holding the (public) key can start a
+     * payment for any reference. So for Payaza this check only proves the kind
+     * and entity named by the reference; it does NOT prove we issued them. A
+     * fulfiller must therefore compare the amount with a stored row or stored
+     * state, never with anything encoded in the entity id. Rides check their
+     * row; flow_payment is protected because the flow engine re-checks the
+     * reference and amount against the conversation's CURRENT step
+     * (flows/engine.ts eventIsForThisPayment); a forged cheap reference only
+     * reaches the unmatched-money alert.
+     */
+    trustedMetadata?: Record<string, unknown>;
+    /** Which gateway took the money; handed to the fulfiller. */
+    provider?: PaymentProviderName;
 }
 
 export interface DispatchResult {
@@ -172,7 +266,7 @@ export async function dispatchFulfillment(args: DispatchArgs): Promise<DispatchR
     // pass: a tenant holding its own key can sign any webhook, so without this
     // one cheap real charge made with no metadata could be paired with a
     // forged webhook naming a pricier entity.
-    const vm = verified.metadata;
+    const vm = verified.metadata ?? (args.trustedMetadata && verified.reference === args.reference ? args.trustedMetadata : null);
     if (
         !vm ||
         vm.fulfillmentKind !== parsed.kind ||
@@ -197,6 +291,7 @@ export async function dispatchFulfillment(args: DispatchArgs): Promise<DispatchR
         log: args.log,
         transactionId: verified.transactionId,
         channel: verified.channel,
+        ...(args.provider ? { provider: args.provider } : {}),
     });
 
     switch (outcome?.status) {

@@ -158,7 +158,8 @@ Setup for a tenant (the owner, in Bookly **Settings**):
 3. Copy the **Payaza webhook URL** shown on the card
    (`https://<bookly-api>/payments/payaza/webhook`, built from `API_PUBLIC_URL`)
    into Payaza **Settings → Developers → Webhooks** for collections, Live and
-   Test. Without it nothing activates.
+   Test. Payments are still recovered without it (the reconciler below), but
+   only within about a minute instead of instantly.
 4. **Settings → Payments (Paystack) → Payment provider → Payaza** (only
    possible once Payaza is connected; audited as `payments.provider_changed`).
    New ride / flow payment links are Payaza payment pages from then on; links
@@ -172,7 +173,62 @@ the tenant from its own row for that entity, verifies `x-payaza-signature`
 (base64 HMAC-SHA512 of the body with that tenant's secret), and only for a
 `Completed` notification asks Payaza's status query for the real status and
 amount; the ride fulfillers check that amount as for Paystack. Disconnecting
-Payaza switches the organisation back to Paystack.
+Payaza switches the organisation back to Paystack. The page link carries
+`connection_mode=live|test` (lowercase, as in Payaza's docs example) and the
+thank-you URL as `redirect_url`, always the last parameter.
+
+**Missed webhooks: the reconciler.** Payaza does not reliably call the webhook
+(TURBO's first LIVE sale on 2026-10-15 was paid, `Completed` at Payaza, and no
+notification ever came; the hold lapsed and the customer was told it failed).
+So Bookly also asks Payaza itself. The webhook's "confirm this reference" step
+is one function, `confirmPayazaReference` (`services/payaza-confirm.ts`), used
+by three callers:
+
+- the **webhook**, after the signature check;
+- the background task **`payaza-reconcile`** (`services/payaza-reconcile.ts`,
+  every 60 s, same process rules as `ride-sweeper`): for every tenant with
+  `paymentProvider = PAYAZA` and both keys stored, it queries Payaza about each
+  reference still awaiting payment: `RidePass` HELD with a `paymentReference`,
+  `Ride` PENDING_PAYMENT with a `paymentReference`, and the **late window**:
+  a pass cancelled `hold_expired` / a ride cancelled `payment_timeout`, unpaid,
+  cancelled less than **2 hours** ago. At most 25 queries per tenant per tick;
+  a reference is not asked again within 60 s, and one that was applied or
+  refused not for 3 hours (in memory, per process). `Completed` -> the same
+  fulfiller path as the webhook; Initialized / Failed -> nothing; errors ->
+  warn and continue;
+- the **ride sweeper**: before it cancels an expired hold / unpaid ride of a
+  PAYAZA tenant that has a reference, it asks Payaza once and confirms instead
+  of cancelling if it was paid. Paystack tenants are unchanged. If Payaza is
+  down the sweeper cancels as before and the late window recovers the payment.
+
+Webhook, reconciler and sweeper can race on one reference: the fulfillers
+apply once per reference (advisory lock / guarded claim), the others see
+`already_applied` and send nothing. A payment confirmed after a hold was
+cancelled re-activates the pass if a Founding slot is still free (cap and
+"already has a package" re-checked under the cap lock); otherwise it is
+recorded on the pass, not activated, and raises the critical refund alert +
+staff notice (same rules as a late PAYG / top-up). Payaza's own transaction
+reference (`P-C-…`) is stored as `providerTransactionId` (console
+`providerReference`) and its `transaction_type` as a readable channel
+(`GH_MOBILEMONEY` -> `mobile_money`). Known gap: when a customer asks for a
+second link during one hold, only the newest reference is tracked.
+
+**What the customer hears.** Every confirmed ride payment starts with
+"✅ Payment confirmed, thank you!" followed by the outcome (package activated,
+ride confirmed and driver being assigned, top-up booked). If the flow is still
+waiting on that payment, its success state says it (`activated`, `payg_paid`,
+`book_topup_paid`); if the chat has moved on (e.g. it already said `pay_failed`)
+the same text is sent directly (WhatsApp within the 24 h window, else SMS /
+email, same quota rules as other ride notices), and for a package the stale
+flow is ended so the next message opens the member menu. Flow text changes
+reach a tenant only after the flow is republished (seed-turbo).
+
+**Thank-you pages.** `RideSettings.packageThanksUrl` and
+`RideSettings.rideThanksUrl` (migration `20261016090000_ride_thanks_urls`,
+nullable, https only, max 500 chars) are where the payment page sends the
+customer after paying: package -> `packageThanksUrl`; PAYG and top-up ->
+`rideThanksUrl`; for Payaza (`redirect_url`) and Paystack (`callback_url`)
+alike. Unset (null) keeps the wa.me link back into the chat.
 
 ## Console API contract (R6)
 
@@ -192,19 +248,19 @@ All under `/rides`, authenticated as a TURBO staff user (cookie session,
 | GET | `/rides/payments?kind=&status=&page=` | Package purchases, PAYG rides and package top-ups (kind PACKAGE, purpose PACKAGE_TOPUP) with references |
 | GET/POST/PATCH | `/rides/drivers[/:id]` | name, phone, vehicle, plate, active |
 | GET/POST/PATCH | `/rides/destinations[/:id]` | label, latitude, longitude, active, sort |
-| GET/PATCH | `/rides/settings` | fareRef, package (price, days, cap, holdMinutes, fares, overFare), PAYG (open, dailyLimit, fares, overFare), roadFactor, driverSms, timezone |
+| GET/PATCH | `/rides/settings` | fareRef, package (price, days, cap, holdMinutes, fares, overFare, thanksUrl), PAYG (open, dailyLimit, fares, overFare, thanksUrl), roadFactor, driverSms, timezone |
 
 Money values are unsigned GHS strings like `"16.00"`, negatives `"-16.00"` (no `+`).
 
 Settings (GET, and the PATCH response):
-`{ currency, fareRef: {label, lat, lng} | null, package: { price, days, cap, holdMinutes, fares: [{upToKm, amount}], overFare: string | null, rides, maxKm }, payg: { open, dailyLimit, fares: [{upToKm, amount}], overFare: string | null }, roadFactor, driverSms, timezone }`
+`{ currency, fareRef: {label, lat, lng} | null, package: { price, days, cap, holdMinutes, fares: [{upToKm, amount}], overFare: string | null, rides, maxKm, thanksUrl: string | null }, payg: { open, dailyLimit, fares: [{upToKm, amount}], overFare: string | null, thanksUrl: string | null }, roadFactor, driverSms, timezone }`
 (`package.rides` / `package.maxKm` are legacy, kept one release for the console still deployed.)
 
-PATCH body, all optional: `{ fareRef?: {label, lat, lng} | null, package?: { price?, days?, cap?, holdMinutes?, fares?: [{upToKm, amount}], overFare?: number | string | null }, payg?: { open?, dailyLimit?, fares?, overFare? }, roadFactor?, driverSms?, timezone? }`. Amounts in GHS (number or string, at most 2 decimals). `package.rides` / `package.maxKm` are accepted and ignored for one release. An over fare below the last tier's fare is a 400 and nothing is saved.
+PATCH body, all optional: `{ fareRef?: {label, lat, lng} | null, package?: { price?, days?, cap?, holdMinutes?, fares?: [{upToKm, amount}], overFare?: number | string | null, thanksUrl?: string | null }, payg?: { open?, dailyLimit?, fares?, overFare?, thanksUrl?: string | null }, roadFactor?, driverSms?, timezone? }`. `thanksUrl`: an `https://` URL of at most 500 chars, or null to go back to the WhatsApp link (`package.thanksUrl` = after a package payment, `payg.thanksUrl` = after a PAYG or top-up payment). Amounts in GHS (number or string, at most 2 decimals). `package.rides` / `package.maxKm` are accepted and ignored for one release. An over fare below the last tier's fare is a 400 and nothing is saved.
 
 Ride: `{ id, ref, kind: PACKAGE|PAYG, status, customer: {id, name, phone}, pickup: {label, lat, lng}, destination: {label, lat, lng}, distanceKm, fare, paid, topup, waived, balanceApplied, deducted, balanceAfter, priceDistanceKm, priceBasis: REFERENCE|PICKUP|null, fareBand, driver: {id, name, vehicle, plate} | null, requestedAt, assignedAt, completedAt, cancelledAt, cancelReason }` (money fields string | null; `fare` is the band fare for both kinds, null on package rides from before the change; `fareBand` e.g. "0–6 km", "6–10 km", "Over 10 km").
 
-Pass: `{ id, name, status, customer?, price, credit, used, remaining, ridesTaken, activatedAt, expiresAt, createdAt }` (ridesTotal/ridesUsed/ridesRemaining removed). Customer summary `balance`: GHS string | null. Balance log entry: `{ id, passId, delta (legacy, null on new rows), amount (signed), reason, rideId, rideRef, balanceAfter, createdAt }`. Payment: `{ id, kind: PACKAGE|PAYG, purpose: PACKAGE_PURCHASE|PAYG_RIDE|PACKAGE_TOPUP, status, amount, currency, reference, providerReference, channel, customer, rideRef, passId, createdAt, paidAt }`.
+Pass: `{ id, name, status, customer?, price, credit, used, remaining, ridesTaken, activatedAt, expiresAt, createdAt }` (ridesTotal/ridesUsed/ridesRemaining removed). Customer summary `balance`: GHS string | null. Balance log entry: `{ id, passId, delta (legacy, null on new rows), amount (signed), reason, rideId, rideRef, balanceAfter, createdAt }`. Payment: `{ id, kind: PACKAGE|PAYG, purpose: PACKAGE_PURCHASE|PAYG_RIDE|PACKAGE_TOPUP, status, amount, currency, reference, providerReference, channel, provider: PAYSTACK|PAYAZA|null, customer, rideRef, passId, createdAt, paidAt }`.
 
 ## The user flow TURBO sent
 
@@ -225,3 +281,4 @@ switched off; the same account and balance carry into the app later.
 | 2026-10-14 | Fares & credit | feat/turbo-fare-credit | Fare reference point, distance bands with flat over fare, package = GHS credit (deducted at completion), ride_topup + GHS 2 waiver, destination-first flow, GHS copy; migration 20261014090000_rides_credit_pricing |
 | 2026-10-06 | Channels | 22bd7df, 4f10b35, turbo f27cef7 | Connect WhatsApp from the console (own Meta account, prefilled; code backup), Instagram & Messenger; admin Channels panel; Embedded Signup v4 |
 | 2026-10-15 | Payaza | feat/payaza-provider | Per-organisation provider (Paystack / Payaza) for ride + flow payment links; Payaza payment page, signed webhook + status query, settings UI; migration 20261015090000_payaza_provider |
+| 2026-10-16 | Payaza reconcile | fix/payaza-reconcile | Missed-webhook reconciler (`payaza-reconcile` task, 2h late window), sweeper asks Payaza before expiring, "Payment confirmed, thank you!" on every confirmed ride payment, package/ride thank-you URLs, `connection_mode` lowercase; migration 20261016090000_ride_thanks_urls |

@@ -14,7 +14,7 @@ import { race } from './helpers/concurrency.js';
 import { silentLogger } from './helpers/fake-fastify.js';
 import { tenantContext } from '../../src/lib/tenant-context.js';
 import { activatePassOnPayment, customerBalance, foundingAvailability, holdFoundingSlot, passBalance } from '../../src/services/rides/passes.js';
-import { reservePaygRide, requestPackageRide, setRideStatus, assignDriver, confirmPaygOnPayment, paygStatus, reserveTopupRide, confirmTopupOnPayment } from '../../src/services/rides/rides.js';
+import { reservePaygRide, requestPackageRide, setRideStatus, assignDriver, confirmPaygOnPayment, paygStatus, reserveTopupRide, confirmTopupOnPayment, lockCustomer } from '../../src/services/rides/rides.js';
 import { paygDayKey } from '../../src/services/rides/capacity.js';
 import { sweepRides } from '../../src/services/rides/sweeper.js';
 import { fulfillRidePackage, fulfillRidePayg, fulfillRideTopup } from '../../src/services/rides/payments.js';
@@ -202,6 +202,38 @@ describe('ride lifecycle: deduct only on COMPLETED, exactly once', () => {
         });
     });
 
+    it('completion never takes the balance below zero: the deduction is clamped and a shortfall alert is raised', async () => {
+        const prisma = await db();
+        const c = await customer();
+        const pass = await activePass(c.id);
+        const req = await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY });
+        if (!req.ok) throw new Error(req.reason);
+        // Something (a manual adjustment) took the credit below what the ride holds.
+        await rawPrisma().ridePassEntry.create({ data: { tenantId, passId: pass.id, type: 'ADJUSTMENT', amountMinor: -95000 } });
+        const driver = await rawPrisma().driver.create({ data: { tenantId, name: 'K', phone: '+233200000007', vehicle: 'V', plate: 'P' } });
+        await assignDriver(prisma, { tenantId, rideId: req.ride.id, driverId: driver.id });
+        expect(await setRideStatus(prisma, { tenantId, rideId: req.ride.id, status: 'COMPLETED' })).toMatchObject({ ok: true, deducted: true, deductedMinor: 1000, balanceAfterMinor: 0 });
+        expect((await passBalance(prisma, tenantId, pass.id)).remainingMinor).toBe(0);
+        expect(await rawPrisma().ride.findUniqueOrThrow({ where: { id: req.ride.id } })).toMatchObject({ deductedMinor: 1000, balanceAfterMinor: 0 });
+        const alert = await rawPrisma().platformAlert.findFirstOrThrow({ where: { tenantId, kind: 'ride_pass.deduction_shortfall' } });
+        expect(alert.severity).toBe('critical');
+        expect(alert.message).toMatch(/GHS 6/);
+    });
+
+    it('a package ride from before the change (topupMinor and paidAt null) is a booked ride, not hidden as an unpaid top-up', async () => {
+        const prisma = await db();
+        const c = await customer();
+        await rawPrisma().ride.create({
+            data: {
+                tenantId, ref: 'TR-LEGACY', kind: 'PACKAGE', status: 'COMPLETED', customerId: c.id,
+                pickupLabel: 'Gate', pickupLat: GATE.lat, pickupLng: GATE.lng, destinationLabel: 'Library', destinationLat: LIBRARY.lat, destinationLng: LIBRARY.lng,
+                distanceKm: 0.5, fareMinor: 0, currency: 'GHS',
+            },
+        });
+        const hist = await inTenant(() => rideHistory(prisma, tenantId, { page: 1, limit: 20 }, false));
+        expect(hist.data.map((r) => r.ref)).toEqual(['TR-LEGACY']);
+    });
+
     it('a ride booked under the old ride-count package (no balanceAppliedMinor) deducts the average price per ride', async () => {
         const prisma = await db();
         const c = await customer();
@@ -350,6 +382,43 @@ describe('package top-up (ride_topup)', () => {
         expect(await rawPrisma().ride.findUniqueOrThrow({ where: { id: r2.ride.id } })).toMatchObject({ status: 'CANCELLED', cancelReason: 'paid_pass_inactive', paidAmountMinor: 600 });
         const alert = await rawPrisma().platformAlert.findFirstOrThrow({ where: { tenantId, kind: 'ride_topup.not_applied' } });
         expect(alert.message).toMatch(/GHS 6/);
+    });
+
+    it('a cancel that waits on the customer lock while a payment confirms the ride still sees the payment (refund due)', async () => {
+        const prisma = await db();
+        const { c } = await shortCustomer(1000);
+        const r = await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600 });
+        if (!r.ok) throw new Error(r.reason);
+        let release!: () => void;
+        const gate = new Promise<void>((res) => { release = res; });
+        // Same shape as confirmTopupOnPayment: under the customer lock, the ride becomes paid and REQUESTED.
+        const payer = rawPrisma().$transaction(async (tx) => {
+            await lockCustomer(tx as never, c.id);
+            await tx.ride.update({ where: { id: r.ride.id }, data: { status: 'REQUESTED', paidAt: new Date(), paidAmountMinor: 600, paymentReference: 'race_pay', paymentExpiresAt: null } });
+            await gate;
+        }, { timeout: 20_000 });
+        await new Promise((res) => setTimeout(res, 150));
+        const cancelling = setRideStatus(prisma, { tenantId, rideId: r.ride.id, status: 'CANCELLED', by: 'ops' });
+        await new Promise((res) => setTimeout(res, 400)); // the cancel has read the unpaid row and waits on the lock
+        release();
+        await payer;
+        expect(await cancelling).toMatchObject({ ok: true, changed: true, refundDue: true, refundMinor: 600 });
+    });
+
+    it('an overpaid top-up (e.g. an older link after the difference shrank) is confirmed and the excess is flagged for refund', async () => {
+        const prisma = await db();
+        const { c } = await shortCustomer(1000);
+        const r = await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600 });
+        if (!r.ok) throw new Error(r.reason);
+        const base = { prisma, tenantId, entityId: r.ride.id, amountMinor: 1000, currency: 'GHS', log: silentLogger };
+        expect(await fulfillRideTopup({ ...base, reference: 'over1' })).toEqual({ status: 'applied' });
+        expect((await rawPrisma().ride.findUniqueOrThrow({ where: { id: r.ride.id } })).status).toBe('REQUESTED');
+        const alert = await rawPrisma().platformAlert.findFirstOrThrow({ where: { tenantId, kind: 'ride_topup.overpaid' } });
+        expect(alert.severity).toBe('critical');
+        expect(alert.message).toMatch(/GHS 4/);
+        // Redelivery: still one alert.
+        expect(await fulfillRideTopup({ ...base, reference: 'over1' })).toEqual({ status: 'already_applied' });
+        expect(await rawPrisma().platformAlert.count({ where: { tenantId, kind: 'ride_topup.overpaid' } })).toBe(1);
     });
 
     it('the sweeper does not expire a pass while a top-up link is live', async () => {

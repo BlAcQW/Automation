@@ -10,6 +10,14 @@
  *  4. reminders, once each    "expires soon" 10 days before expiry (day 50 of 60), and
  *                             "GHS 80 or less left"
  *
+ * PAYAZA GUARD. Payaza may never call the webhook. So before cancelling an
+ * expired hold / unpaid ride that has a payment reference, `opts.beforeExpire`
+ * (the Payaza expiry guard, payaza-reconcile.ts; installed by startRideSweeper)
+ * asks Payaza once for PAYAZA tenants and confirms what was paid; a confirmed
+ * row no longer matches the cancel below. Paystack tenants are untouched, and
+ * a Payaza outage only means the row is cancelled as before (the reconciler's
+ * 2-hour late window still recovers a payment).
+ *
  * MULTI-PROCESS SAFE. Every change is a guarded updateMany claim (WHERE the old
  * state still holds); only the caller that sees count 1 does the follow-up
  * (seat release, EXPIRY entry, reminder), inside the same transaction where it
@@ -41,7 +49,22 @@ export interface SweepResult {
     lowBalanceReminders: number;
 }
 
-export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = new Date()): Promise<SweepResult> {
+export interface SweepOptions {
+    /** Called with the expired rows about to be cancelled; may confirm paid ones first. Must not throw. */
+    beforeExpire?: (rows: Array<{ tenantId: string; paymentReference: string | null }>) => Promise<unknown>;
+}
+
+async function guardExpiry(opts: SweepOptions, log: RidesLogger, rows: Array<{ tenantId: string; paymentReference: string | null }>): Promise<void> {
+    const withRef = rows.filter((r) => r.paymentReference);
+    if (!opts.beforeExpire || withRef.length === 0) return;
+    try {
+        await opts.beforeExpire(withRef);
+    } catch (err) {
+        log.warn({ err }, 'Payment check before expiry failed; expiring as usual');
+    }
+}
+
+export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = new Date(), opts: SweepOptions = {}): Promise<SweepResult> {
     const out: SweepResult = { cancelledHolds: 0, expiredPayg: 0, expiredPasses: 0, expiryReminders: 0, lowBalanceReminders: 0 };
     const zones = new Map<string, string>();
     const zone = async (tenantId: string) => {
@@ -49,7 +72,15 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
         return zones.get(tenantId)!;
     };
 
-    // 1. Lapsed holds (the cap already ignores them; this tidies the status).
+    // 1. Lapsed holds (the cap already ignores them; this tidies the status). Paid-but-unnotified ones are confirmed first.
+    if (opts.beforeExpire) {
+        const lapsing = await prisma.ridePass.findMany({
+            where: { status: 'HELD', paidAt: null, holdExpiresAt: { lte: now }, paymentReference: { not: null } },
+            select: { tenantId: true, paymentReference: true },
+            take: BATCH,
+        });
+        await guardExpiry(opts, log, lapsing);
+    }
     const holds = await prisma.ridePass.updateMany({
         where: { status: 'HELD', paidAt: null, holdExpiresAt: { lte: now } },
         data: { status: 'CANCELLED', cancelledAt: now, cancelReason: 'hold_expired' },
@@ -59,9 +90,10 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
     // 2. Unpaid rides (PAYG and package top-ups) stop holding a seat / the balance.
     const pending = await prisma.ride.findMany({
         where: { status: 'PENDING_PAYMENT', paidAt: null, paymentExpiresAt: { lte: now } },
-        select: { id: true, tenantId: true, paygDay: true },
+        select: { id: true, tenantId: true, paygDay: true, paymentReference: true },
         take: BATCH,
     });
+    await guardExpiry(opts, log, pending);
     for (const r of pending) {
         try {
             const done = await prisma.$transaction(async (tx) => {
@@ -155,12 +187,12 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
     return out;
 }
 
-export function startRideSweeper(prisma: RidesClient, log: RidesLogger): () => void {
+export function startRideSweeper(prisma: RidesClient, log: RidesLogger, opts: SweepOptions = {}): () => void {
     let running = false;
     const timer = setInterval(() => {
         if (running) return;
         running = true;
-        sweepRides(prisma, log)
+        sweepRides(prisma, log, new Date(), opts)
             .catch((err) => log.error({ err }, 'Rides sweep failed'))
             .finally(() => { running = false; });
     }, SWEEP_EVERY_MS);

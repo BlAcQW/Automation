@@ -54,7 +54,7 @@ describe('BACKGROUND_TASKS registry', () => {
         const names = BACKGROUND_TASKS.map((t) => t.name);
         expect(new Set(names).size).toBe(names.length);
         expect(names).toEqual(expect.arrayContaining([
-            'notification-workers', 'hold-expiry-sweeper', 'order-expiry-sweeper', 'inbound-worker', 'inbound-sweeper', 'webhook-worker', 'webhook-sweeper', 'ride-sweeper', 'whatsapp-health-sweeper', 'hosted-number-sweeper',
+            'notification-workers', 'hold-expiry-sweeper', 'order-expiry-sweeper', 'inbound-worker', 'inbound-sweeper', 'webhook-worker', 'webhook-sweeper', 'ride-sweeper', 'payaza-reconcile', 'whatsapp-health-sweeper', 'hosted-number-sweeper',
         ]));
     });
 });

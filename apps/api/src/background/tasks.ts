@@ -29,6 +29,7 @@ import { startDeliverySweeper, dispatchDelivery } from '../services/events/deliv
 import { startWebhookWorker, stopWebhookWorker } from '../services/events/worker.js';
 import { setDeliveryDispatcher } from '../services/events/dispatcher.js';
 import { startRideSweeper } from '../services/rides/sweeper.js';
+import { createPayazaExpiryGuard, startPayazaReconciler } from '../services/payaza-reconcile.js';
 import { startWhatsappHealthSweeper } from '../services/whatsapp-health.js';
 import { startHostedNumberSweeper } from '../services/hosted-number-sweeper.js';
 
@@ -124,7 +125,15 @@ export const BACKGROUND_TASKS: BackgroundTask[] = [
         // RIDES pack: lapsed holds, unpaid PAYG seats, package expiry, reminders. Safe in many processes: every change
         // is a guarded updateMany claim and the follow-up (seat release, EXPIRY entry, reminder) runs only on count 1.
         name: 'ride-sweeper',
-        start: (ctx) => startRideSweeper(ctx.prisma, ctx.log),
+        // Asks Payaza once before expiring a PAYAZA tenant's hold / unpaid ride (a missed webhook is confirmed, not cancelled).
+        start: (ctx) => startRideSweeper(ctx.prisma, ctx.log, { beforeExpire: createPayazaExpiryGuard({ prisma: ctx.prisma, log: ctx.log }) }),
+    },
+    {
+        // Payaza missed-webhook recovery: every minute, asks Payaza about each reference still awaiting payment (and the
+        // 2h late window after a timeout) and confirms paid ones through the webhook's own path. Safe in many processes:
+        // read-only except through the fulfillers, which claim once per reference. See services/payaza-reconcile.ts.
+        name: 'payaza-reconcile',
+        start: (ctx) => startPayazaReconciler(ctx.prisma, ctx.log),
     },
     {
         // Every ~6h per connected number: quality, limit, status, token, app subscription -> deduped alerts. Safe in

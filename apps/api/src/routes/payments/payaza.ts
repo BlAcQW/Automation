@@ -19,15 +19,19 @@
  *     currency. The fulfiller checks the amount against its own row.
  *  4. Retries are not documented by Payaza, so everything is idempotent per
  *     reference (fulfiller contract) and a transient failure answers 5xx.
+ *  5. Payaza does not always call (TURBO, 2026-10: a paid Founding Package
+ *     never produced a webhook). The reconciler (services/payaza-reconcile.ts)
+ *     asks Payaza about every reference still awaiting payment and confirms it
+ *     through the same confirmPayazaReference path.
  */
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { config } from '../../config/index.js';
 import { encrypt, decrypt } from '../../services/crypto.js';
 import { audit } from '../../services/audit.js';
-import { dispatchFulfillment, parseFulfillmentReference, resolveFulfillmentTenant } from '../../services/payment-fulfillers.js';
-import { probeKeys, queryTransaction, verifyPayazaSignature, type PayazaMode } from '../../services/payaza.js';
-import { reportUnattributedCharge } from './unattributed.js';
+import { parseFulfillmentReference, resolveFulfillmentTenant } from '../../services/payment-fulfillers.js';
+import { probeKeys, verifyPayazaSignature, type PayazaMode } from '../../services/payaza.js';
+import { confirmPayazaReference, PayazaQueryFailed } from '../../services/payaza-confirm.js';
 
 const MAX_REFERENCE_LENGTH = 200;
 const WEBHOOK_BODY_LIMIT = 64 * 1024;
@@ -196,35 +200,18 @@ const payazaRoutes: FastifyPluginAsync = async (fastify) => {
             request.log.warn({ tenantId, reference, amountValidation: validation.slice(0, 20) }, 'Payaza reports a non-exact amount');
         }
 
-        const publicKey = decrypt(tenant.payazaPublicKey);
-        const mode: PayazaMode = tenant.payazaMode === 'LIVE' ? 'LIVE' : 'TEST';
-        const metadata = { fulfillmentKind: parsed.kind, entityId: parsed.entityId };
-        const result = await dispatchFulfillment({
-            prisma: fastify.prisma,
-            tenantId,
-            reference,
-            metadata,
-            // Derived from our reference + our row (the status query below is keyed on this reference).
-            trustedMetadata: { ...metadata, tenantId },
-            provider: 'PAYAZA',
-            log: request.log,
-            verify: async () => {
-                try {
-                    return await queryTransaction(publicKey, mode, reference);
-                } catch (err) {
-                    request.log.error({ err, tenantId }, 'Payaza status query failed during webhook');
-                    throw fastify.httpErrors.badGateway('Payaza status query failed');
-                }
-            },
-        });
-        if (result.unattributedReason) {
-            await reportUnattributedCharge(fastify.prisma, request.log, 'Payaza', result.unattributedReason, {
-                reference,
-                tenantId,
-                amount: result.amountMinor ?? null,
-                currency: result.currency ?? null,
-            });
+        // 4. Same path as the reconciler (services/payaza-confirm.ts): status query, fulfiller, unattributed report.
+        let result;
+        try {
+            result = await confirmPayazaReference(
+                { prisma: fastify.prisma, log: request.log },
+                { tenant, reference, source: 'webhook', owned: parsed },
+            );
+        } catch (err) {
+            if (err instanceof PayazaQueryFailed) throw fastify.httpErrors.badGateway('Payaza status query failed');
+            throw err;
         }
+        if (result.outcome !== 'dispatched') return reply.code(200).send({ ignored: result.outcome });
         return reply.code(200).send(result.body);
     });
 };

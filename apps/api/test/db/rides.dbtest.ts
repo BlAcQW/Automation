@@ -14,10 +14,10 @@ import { race } from './helpers/concurrency.js';
 import { silentLogger } from './helpers/fake-fastify.js';
 import { tenantContext } from '../../src/lib/tenant-context.js';
 import { activatePassOnPayment, customerBalance, foundingAvailability, holdFoundingSlot, passBalance } from '../../src/services/rides/passes.js';
-import { reservePaygRide, requestPackageRide, setRideStatus, assignDriver, confirmPaygOnPayment, paygStatus } from '../../src/services/rides/rides.js';
+import { reservePaygRide, requestPackageRide, setRideStatus, assignDriver, confirmPaygOnPayment, paygStatus, reserveTopupRide, confirmTopupOnPayment } from '../../src/services/rides/rides.js';
 import { paygDayKey } from '../../src/services/rides/capacity.js';
 import { sweepRides } from '../../src/services/rides/sweeper.js';
-import { fulfillRidePackage, fulfillRidePayg } from '../../src/services/rides/payments.js';
+import { fulfillRidePackage, fulfillRidePayg, fulfillRideTopup } from '../../src/services/rides/payments.js';
 import { customerDetail, customerList, liveRides, overview, passList, paymentList, rideHistory } from '../../src/services/rides/console.js';
 import { updateRideSettings, getRideSettings } from '../../src/services/rides/settings.js';
 
@@ -124,7 +124,7 @@ describe('activation (only on verified money, idempotent)', () => {
         expect(ok.filter((r) => r.outcome === 'activated')).toHaveLength(1);
         expect(ok.filter((r) => r.outcome === 'already_activated')).toHaveLength(7);
         expect(await rawPrisma().ridePassEntry.count({ where: { passId: hold.pass.id } })).toBe(1);
-        expect(await passBalance(prisma, tenantId, hold.pass.id)).toEqual({ purchased: 60, used: 0, remaining: 60 });
+        expect(await passBalance(prisma, tenantId, hold.pass.id)).toEqual({ purchasedMinor: 96000, usedMinor: 0, remainingMinor: 96000, ridesTaken: 0 });
         const pass = await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: hold.pass.id } });
         expect(pass.status).toBe('ACTIVE');
         expect(pass.expiresAt!.getTime() - pass.activatedAt!.getTime()).toBe(60 * 86400_000);
@@ -182,7 +182,7 @@ describe('activation (only on verified money, idempotent)', () => {
 });
 
 describe('ride lifecycle: deduct only on COMPLETED, exactly once', () => {
-    it('a double (octuple) COMPLETED click deducts once: 60 -> 59', async () => {
+    it('a double (octuple) COMPLETED click deducts the band fare once: GHS 960 -> 944', async () => {
         const prisma = await db();
         const c = await customer();
         const pass = await activePass(c.id);
@@ -196,7 +196,23 @@ describe('ride lifecycle: deduct only on COMPLETED, exactly once', () => {
         expect(changed).toHaveLength(1);
         expect(ok.filter((r) => r.ok && !r.changed)).toHaveLength(7);
         expect(await rawPrisma().ridePassEntry.count({ where: { passId: pass.id, type: 'RIDE' } })).toBe(1);
-        expect((await passBalance(prisma, tenantId, pass.id)).remaining).toBe(59);
+        expect((await passBalance(prisma, tenantId, pass.id)).remainingMinor).toBe(94400);
+        expect(await rawPrisma().ride.findUniqueOrThrow({ where: { id: req.ride.id } })).toMatchObject({
+            fareMinor: 1600, balanceAppliedMinor: 1600, deductedMinor: 1600, balanceAfterMinor: 94400, priceBasis: 'PICKUP', fareBand: '0–6 km',
+        });
+    });
+
+    it('a ride booked under the old ride-count package (no balanceAppliedMinor) deducts the average price per ride', async () => {
+        const prisma = await db();
+        const c = await customer();
+        const pass = await activePass(c.id);
+        const req = await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY });
+        if (!req.ok) throw new Error(req.reason);
+        await rawPrisma().ride.update({ where: { id: req.ride.id }, data: { balanceAppliedMinor: null, fareMinor: 0, priceBasis: null } });
+        const driver = await rawPrisma().driver.create({ data: { tenantId, name: 'K', phone: '+233200000009', vehicle: 'V', plate: 'P' } });
+        await assignDriver(prisma, { tenantId, rideId: req.ride.id, driverId: driver.id });
+        expect(await setRideStatus(prisma, { tenantId, rideId: req.ride.id, status: 'COMPLETED' })).toMatchObject({ ok: true, deducted: true, deductedMinor: 1600, balanceAfterMinor: 94400 });
+        expect((await passBalance(prisma, tenantId, pass.id)).ridesTaken).toBe(1);
     });
 
     it('eight concurrent assigns of the same driver: one change (one customer notice), the rest no-ops', async () => {
@@ -212,27 +228,137 @@ describe('ride lifecycle: deduct only on COMPLETED, exactly once', () => {
         expect(ok.filter((r) => r.ok && !r.changed)).toHaveLength(7);
     });
 
-    it('cancelling never deducts; one open ride at a time; too far is refused', async () => {
+    it('cancelling never deducts; one open ride at a time; package rides of any distance are allowed', async () => {
         const prisma = await db();
         const c = await customer();
         const pass = await activePass(c.id);
-        expect(await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: FAR })).toMatchObject({ ok: false, reason: 'too_far' });
+        const far = await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: FAR });
+        expect(far.ok && far.ride.fareMinor).toBe(2500);
+        if (far.ok) await setRideStatus(prisma, { tenantId, rideId: far.ride.id, status: 'CANCELLED', by: 'customer' });
         const a = await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY });
         expect(a.ok).toBe(true);
         expect(await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY })).toMatchObject({ ok: false, reason: 'open_ride' });
         if (!a.ok) return;
         const cancelled = await setRideStatus(prisma, { tenantId, rideId: a.ride.id, status: 'CANCELLED', by: 'customer' });
-        expect(cancelled).toMatchObject({ ok: true, changed: true, deducted: false });
-        expect((await passBalance(prisma, tenantId, pass.id)).remaining).toBe(60);
+        expect(cancelled).toMatchObject({ ok: true, changed: true, deducted: false, refundDue: false });
+        expect((await passBalance(prisma, tenantId, pass.id)).remainingMinor).toBe(96000);
         expect(await setRideStatus(prisma, { tenantId, rideId: a.ride.id, status: 'COMPLETED' })).toMatchObject({ ok: false, error: 'invalid_state' });
     });
 
-    it('no rides left: refused before a ride is created', async () => {
+    it('no balance: refused before a ride is created', async () => {
         const prisma = await db();
         const c = await customer();
         const pass = await activePass(c.id);
-        await rawPrisma().ridePassEntry.create({ data: { tenantId, passId: pass.id, type: 'ADJUSTMENT', delta: -60 } });
-        expect(await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY })).toMatchObject({ ok: false, reason: 'no_rides_left' });
+        await rawPrisma().ridePassEntry.create({ data: { tenantId, passId: pass.id, type: 'ADJUSTMENT', amountMinor: -96000 } });
+        expect(await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY })).toMatchObject({ ok: false, reason: 'no_balance' });
+        expect(await rawPrisma().ride.count({ where: { tenantId, customerId: c.id } })).toBe(0);
+    });
+
+    it('a shortfall under GHS 2 is waived: booked from the balance alone, recorded on the ride', async () => {
+        const prisma = await db();
+        const c = await customer();
+        const pass = await activePass(c.id);
+        await rawPrisma().ridePassEntry.create({ data: { tenantId, passId: pass.id, type: 'ADJUSTMENT', amountMinor: -(96000 - 1450) } });
+        const r = await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY });
+        expect(r).toMatchObject({ ok: true, settlement: { mode: 'waive', waivedMinor: 150 } });
+        if (!r.ok) return;
+        expect(await rawPrisma().ride.findUniqueOrThrow({ where: { id: r.ride.id } })).toMatchObject({ fareMinor: 1600, balanceAppliedMinor: 1450, waivedMinor: 150, topupMinor: 0 });
+    });
+
+    it('fare_changed when the fare shown is not the fare now', async () => {
+        const prisma = await db();
+        const c = await customer();
+        await activePass(c.id);
+        expect(await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedFareMinor: 2500 })).toMatchObject({ ok: false, reason: 'fare_changed', fareMinor: 1600 });
+    });
+
+    it('fares run from the reference point when one is set (pickup ignored for the price)', async () => {
+        const prisma = await db();
+        const c = await customer();
+        await activePass(c.id);
+        // Reference at the Airport: Library is ~8.6 km away from it, so band 2 even though the pickup is next door.
+        expect((await updateRideSettings(prisma, tenantId, { fareRef: { label: 'Plaza', lat: FAR.lat, lng: FAR.lng } })).ok).toBe(true);
+        const r = await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY });
+        expect(r.ok && [r.ride.fareMinor, r.ride.priceBasis, r.ride.fareBand]).toEqual([2500, 'REFERENCE', '6–10 km']);
+        expect(r.ok && r.ride.distanceKm < 1).toBe(true); // the trip itself is short
+    });
+});
+
+describe('package top-up (ride_topup)', () => {
+    async function shortCustomer(leftMinor: number) {
+        const c = await customer();
+        const pass = await activePass(c.id);
+        await rawPrisma().ridePassEntry.create({ data: { tenantId, passId: pass.id, type: 'ADJUSTMENT', amountMinor: -(96000 - leftMinor) } });
+        return { c, pass };
+    }
+
+    it('needs_topup from the balance path; the reserve holds the whole balance and charges the difference; payment confirms; completion deducts the balance share', async () => {
+        const prisma = await db();
+        const { c, pass } = await shortCustomer(1000);
+        expect(await requestPackageRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY })).toMatchObject({ ok: false, reason: 'needs_topup', topupMinor: 600 });
+        expect(await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 500 })).toEqual({ ok: false, reason: 'fare_changed' });
+        const r = await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600, expectedFareMinor: 1600 });
+        if (!r.ok) throw new Error(r.reason);
+        expect(r.ride).toMatchObject({ kind: 'PACKAGE', status: 'PENDING_PAYMENT', passId: pass.id, fareMinor: 1600, balanceAppliedMinor: 1000, topupMinor: 600 });
+        // Asking again re-uses it; a PAYG booking beside it is refused (a ride in flight).
+        const again = await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600 });
+        expect(again.ok && again.reused && again.ride.id === r.ride.id).toBe(true);
+        expect(await reservePaygRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY })).toEqual({ ok: false, reason: 'open_ride' });
+        // Unpaid, it is not a ride in the lists.
+        expect((await inTenant(() => rideHistory(prisma, tenantId, { page: 1, limit: 20 }, false))).pagination.total).toBe(0);
+        const pays = await inTenant(() => paymentList(prisma, tenantId, { page: 1, limit: 20, kind: 'PACKAGE', status: 'PENDING' }, false));
+        expect(pays.data).toEqual([expect.objectContaining({ kind: 'PACKAGE', purpose: 'PACKAGE_TOPUP', amount: '6.00', rideRef: r.ride.ref, passId: pass.id })]);
+
+        expect((await confirmTopupOnPayment(prisma, { tenantId, rideId: r.ride.id, reference: 'tp1', amountMinor: 500, currency: 'GHS' })).outcome).toBe('underpaid');
+        const base = { prisma, tenantId, entityId: r.ride.id, amountMinor: 600, currency: 'GHS', log: silentLogger };
+        expect(await fulfillRideTopup({ ...base, reference: 'tp1' })).toEqual({ status: 'applied' });
+        expect(await fulfillRideTopup({ ...base, reference: 'tp1' })).toEqual({ status: 'already_applied' });
+        expect((await rawPrisma().ride.findUniqueOrThrow({ where: { id: r.ride.id } })).status).toBe('REQUESTED');
+
+        const driver = await rawPrisma().driver.create({ data: { tenantId, name: 'K', phone: '+233200000008', vehicle: 'V', plate: 'P' } });
+        await assignDriver(prisma, { tenantId, rideId: r.ride.id, driverId: driver.id });
+        expect(await setRideStatus(prisma, { tenantId, rideId: r.ride.id, status: 'COMPLETED' })).toMatchObject({ deductedMinor: 1000, balanceAfterMinor: 0 });
+    });
+
+    it('cancelling a paid top-up ride: refund due naming the GHS amount, nothing deducted', async () => {
+        const prisma = await db();
+        const { c, pass } = await shortCustomer(1000);
+        const r = await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600 });
+        if (!r.ok) throw new Error(r.reason);
+        await confirmTopupOnPayment(prisma, { tenantId, rideId: r.ride.id, reference: 'tp2', amountMinor: 600, currency: 'GHS' });
+        const out = await setRideStatus(prisma, { tenantId, rideId: r.ride.id, status: 'CANCELLED', by: 'customer' });
+        expect(out).toMatchObject({ ok: true, refundDue: true, refundMinor: 600, deducted: false });
+        expect((await passBalance(prisma, tenantId, pass.id)).remainingMinor).toBe(1000);
+    });
+
+    it('paid after the hold lapsed: revived when everything still holds, refused loudly when the pass expired', async () => {
+        const prisma = await db();
+        const { c } = await shortCustomer(1000);
+        const r = await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600 });
+        if (!r.ok) throw new Error(r.reason);
+        await sweepRides(prisma, silentLogger, new Date(Date.now() + 31 * 60_000));
+        expect((await rawPrisma().ride.findUniqueOrThrow({ where: { id: r.ride.id } })).cancelReason).toBe('payment_timeout');
+        expect((await confirmTopupOnPayment(prisma, { tenantId, rideId: r.ride.id, reference: 'tp3', amountMinor: 600, currency: 'GHS' })).outcome).toBe('confirmed');
+
+        const other = await shortCustomer(1000);
+        const r2 = await reserveTopupRide(prisma, { tenantId, customerId: other.c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600 });
+        if (!r2.ok) throw new Error(r2.reason);
+        await sweepRides(prisma, silentLogger, new Date(Date.now() + 31 * 60_000));
+        await rawPrisma().ridePass.update({ where: { id: other.pass.id }, data: { status: 'EXPIRED' } });
+        const out = await fulfillRideTopup({ prisma, tenantId, entityId: r2.ride.id, reference: 'tp4', amountMinor: 600, currency: 'GHS', log: silentLogger });
+        expect(out).toEqual({ status: 'rejected', reason: 'not_confirmed:pass_inactive' });
+        expect(await rawPrisma().ride.findUniqueOrThrow({ where: { id: r2.ride.id } })).toMatchObject({ status: 'CANCELLED', cancelReason: 'paid_pass_inactive', paidAmountMinor: 600 });
+        const alert = await rawPrisma().platformAlert.findFirstOrThrow({ where: { tenantId, kind: 'ride_topup.not_applied' } });
+        expect(alert.message).toMatch(/GHS 6/);
+    });
+
+    it('the sweeper does not expire a pass while a top-up link is live', async () => {
+        const prisma = await db();
+        const { c, pass } = await shortCustomer(1000);
+        await reserveTopupRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, expectedTopupMinor: 600 });
+        await rawPrisma().ridePass.update({ where: { id: pass.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+        expect((await sweepRides(prisma, silentLogger, new Date(Date.now() + 60_000))).expiredPasses).toBe(0);
+        expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).status).toBe('ACTIVE');
     });
 });
 
@@ -311,14 +437,23 @@ describe('PAYG capacity', () => {
         expect(await reservePaygRide(prisma, { tenantId, customerId: c.id, pickup: GATE, destination: LIBRARY, now: new Date(t) })).toEqual({ ok: false, reason: 'hold_limit' });
     });
 
-    it('fare tiers: 0-6 km GHS 25, 6-10 km GHS 35, further not offered', async () => {
+    it('fare tiers: 0-6 km GHS 25, 6-10 km GHS 35, over 10 km a flat GHS 50 (none when the over fare is unset)', async () => {
         const prisma = await db();
+        const TEMA = { label: 'Tema', lat: 5.67, lng: -0.0166 };
         const near = await reservePaygRide(prisma, { tenantId, customerId: (await customer()).id, pickup: GATE, destination: LIBRARY });
         const mid = await reservePaygRide(prisma, { tenantId, customerId: (await customer()).id, pickup: GATE, destination: FAR });
-        const tooFar = await reservePaygRide(prisma, { tenantId, customerId: (await customer()).id, pickup: GATE, destination: { label: 'Tema', lat: 5.67, lng: -0.0166 } });
+        const over = await reservePaygRide(prisma, { tenantId, customerId: (await customer()).id, pickup: GATE, destination: TEMA });
         expect(near.ok && near.ride.fareMinor).toBe(2500);
         expect(mid.ok && mid.ride.fareMinor).toBe(3500);
-        expect(tooFar).toEqual({ ok: false, reason: 'not_offered' });
+        expect(over.ok && [over.ride.fareMinor, over.ride.fareBand]).toEqual([5000, 'Over 10 km']);
+        await updateRideSettings(prisma, tenantId, { payg: { overFare: null } });
+        expect(await reservePaygRide(prisma, { tenantId, customerId: (await customer()).id, pickup: GATE, destination: TEMA })).toEqual({ ok: false, reason: 'not_offered' });
+    });
+
+    it('settings: an over fare below the last tier is refused and nothing is saved', async () => {
+        const prisma = await db();
+        expect(await updateRideSettings(prisma, tenantId, { payg: { overFare: 3000 }, driverSms: true })).toMatchObject({ ok: false });
+        expect((await getRideSettings(prisma, tenantId))).toMatchObject({ paygOverFareMinor: 5000, driverSms: false });
     });
 
     it('PAYG fulfiller: confirms once, a paid-after-expiry with no seat left is recorded for refund', async () => {
@@ -342,11 +477,11 @@ describe('PAYG capacity', () => {
 });
 
 describe('sweeper: expiry and reminders', () => {
-    it('expires a package (unused rides leave the balance), reminds once each', async () => {
+    it('expires a package (unused credit leaves the balance), reminds once each', async () => {
         const prisma = await db();
         const c = await customer();
         const pass = await activePass(c.id);
-        await rawPrisma().ridePassEntry.create({ data: { tenantId, passId: pass.id, type: 'ADJUSTMENT', delta: -55 } }); // 5 left
+        await rawPrisma().ridePassEntry.create({ data: { tenantId, passId: pass.id, type: 'ADJUSTMENT', amountMinor: -(96000 - 8000) } }); // GHS 80 left
 
         const day51 = new Date(pass.activatedAt!.getTime() + 51 * 86400_000);
         const first = await sweepRides(prisma, silentLogger, day51);
@@ -357,8 +492,8 @@ describe('sweeper: expiry and reminders', () => {
         const day61 = new Date(pass.activatedAt!.getTime() + 61 * 86400_000);
         expect((await sweepRides(prisma, silentLogger, day61)).expiredPasses).toBe(1);
         expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: pass.id } })).status).toBe('EXPIRED');
-        expect(await rawPrisma().ridePassEntry.findMany({ where: { passId: pass.id, type: 'EXPIRY' }, select: { delta: true } })).toEqual([{ delta: -5 }]);
-        expect((await passBalance(prisma, tenantId, pass.id)).remaining).toBe(0);
+        expect(await rawPrisma().ridePassEntry.findMany({ where: { passId: pass.id, type: 'EXPIRY' }, select: { amountMinor: true, delta: true } })).toEqual([{ amountMinor: -8000, delta: null }]);
+        expect((await passBalance(prisma, tenantId, pass.id)).remainingMinor).toBe(0);
         expect((await customerBalance(prisma, tenantId, c.id, day61)).active).toBe(false);
     });
 
@@ -388,7 +523,8 @@ describe('console queries on the real schema, with the tenant guard live', () =>
         const o = await inTenant(() => overview(prisma, tenantId));
         expect(o).toMatchObject({
             packages: { sold: 1, activated: 1, cap: 50, slotsLeft: 49, held: 0 },
-            rides: { used: 1, remaining: 59 },
+            credit: { used: '16.00', remaining: '944.00' },
+            rides: { completed: 1 },
             live: { REQUESTED: 0, ASSIGNED: 0, EN_ROUTE: 0 },
             payg: { open: true, dailyLimit: 10, used: 1, available: 9 },
             payments: { SUCCEEDED: 1, PENDING: 1, FAILED: 0 },
@@ -397,19 +533,19 @@ describe('console queries on the real schema, with the tenant guard live', () =>
         expect((await inTenant(() => liveRides(prisma, tenantId, undefined, false))).data).toHaveLength(0);
         const hist = await inTenant(() => rideHistory(prisma, tenantId, { page: 1, limit: 20 }, true));
         expect(hist.data).toHaveLength(1);
-        expect(hist.data[0]).toMatchObject({ ref: req.ride.ref, status: 'COMPLETED', fare: null, driver: { name: 'Kofi', plate: 'GR 1' } });
+        expect(hist.data[0]).toMatchObject({ ref: req.ride.ref, status: 'COMPLETED', fare: '16.00', deducted: '16.00', balanceAfter: '944.00', fareBand: '0–6 km', driver: { name: 'Kofi', plate: 'GR 1' } });
         expect(hist.data[0].customer.phone).not.toBe(c.phone); // masked
 
         const list = await inTenant(() => customerList(prisma, tenantId, { page: 1, limit: 20, search: '2021' }, true));
-        expect(list.data).toEqual([expect.objectContaining({ id: c.id, studentId: '20211234', university: 'Central University', balance: 59, package: { id: pass.id, name: 'Pioneer 50', status: 'ACTIVE' } })]);
+        expect(list.data).toEqual([expect.objectContaining({ id: c.id, studentId: '20211234', university: 'Central University', balance: '944.00', package: { id: pass.id, name: 'Pioneer 50', status: 'ACTIVE' } })]);
         const detail = await inTenant(() => customerDetail(prisma, tenantId, c.id, false));
-        expect(detail?.balanceLog.map((e) => [e.reason, e.delta, e.balanceAfter, e.rideRef])).toEqual([['RIDE', -1, 59, req.ride.ref], ['ACTIVATION', 60, 60, null]]);
-        expect(detail?.passes[0]).toMatchObject({ status: 'ACTIVE', ridesTotal: 60, ridesUsed: 1, ridesRemaining: 59, price: '960.00' });
+        expect(detail?.balanceLog.map((e) => [e.reason, e.amount, e.balanceAfter, e.rideRef])).toEqual([['RIDE', '-16.00', '944.00', req.ride.ref], ['ACTIVATION', '960.00', '960.00', null]]);
+        expect(detail?.passes[0]).toMatchObject({ status: 'ACTIVE', credit: '960.00', used: '16.00', remaining: '944.00', ridesTaken: 1, price: '960.00' });
 
         expect((await inTenant(() => passList(prisma, tenantId, { page: 1, limit: 20, status: 'ACTIVE' }, false))).pagination.total).toBe(1);
         expect((await inTenant(() => passList(prisma, tenantId, { page: 1, limit: 20, status: 'EXHAUSTED' }, false))).pagination.total).toBe(0);
         const pays = await inTenant(() => paymentList(prisma, tenantId, { page: 1, limit: 20 }, false));
-        expect(pays.data.map((p) => [p.kind, p.status, p.amount])).toEqual([['PAYG', 'PENDING', '25.00'], ['PACKAGE', 'SUCCEEDED', '960.00']]);
+        expect(pays.data.map((p) => [p.kind, p.purpose, p.status, p.amount])).toEqual([['PAYG', 'PAYG_RIDE', 'PENDING', '25.00'], ['PACKAGE', 'PACKAGE_PURCHASE', 'SUCCEEDED', '960.00']]);
         expect((await inTenant(() => paymentList(prisma, tenantId, { page: 1, limit: 20, kind: 'PAYG', status: 'SUCCEEDED' }, false))).pagination.total).toBe(0);
     });
 });

@@ -82,7 +82,7 @@ async function seedBusyTenant(opts: { isActive?: boolean } = {}) {
     const pass = await db.ridePass.create({
         data: { tenantId: id, customerId: customer.id, ridesTotal: 60, validityDays: 30, maxKm: 15, priceMinor: 60000, currency: 'GHS', status: 'CANCELLED', cancelReason: 'hold_expired', holdExpiresAt: new Date(Date.now() - 600_000) },
     });
-    await db.ridePassEntry.create({ data: { tenantId: id, passId: pass.id, type: 'ADJUSTMENT', delta: 0, note: 'test' } });
+    await db.ridePassEntry.create({ data: { tenantId: id, passId: pass.id, type: 'ADJUSTMENT', amountMinor: 0, note: 'test' } });
     await db.ride.create({
         data: {
             tenantId: id, ref: `TR-${uid()}`, kind: 'PACKAGE', status: 'REQUESTED', customerId: customer.id, passId: pass.id, driverId: driver.id,

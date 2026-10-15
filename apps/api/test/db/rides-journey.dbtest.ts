@@ -6,7 +6,7 @@
  *   (real auth plugin + /rides routes) -> customer messages (channel send mocked)
  *   -> app API (/v1/rides with a real API key).
  *
- *   Hi -> buy -> pay -> activated -> book -> assign -> complete -> balance 59
+ *   Hi -> buy -> pay -> activated -> book -> assign -> complete -> balance GHS 944
  *   -> history -> PAYG paid -> PAYG capacity limit -> app balance + booking.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -119,7 +119,7 @@ describe('TURBO journey on a real database', () => {
         staffToken = app.jwt.sign({ userId: staff.id, tenantId, role: 'STAFF', type: 'access' });
     });
 
-    it('discover -> buy -> pay -> activate -> book -> assign -> complete -> balance 59 -> history -> PAYG -> capacity -> app', async () => {
+    it('discover -> buy -> pay -> activate -> book -> assign -> complete -> balance GHS 944 -> history -> PAYG -> capacity -> app', async () => {
         // ---- TURBO sets up places and a driver in the console (owner only)
         expect((await api(staffToken, 'POST', '/rides/drivers', { name: 'X', phone: '0240000000', vehicle: 'V', plate: 'P' })).statusCode).toBe(403);
         for (const d of [{ label: 'Main Gate', latitude: 5.6505, longitude: -0.1873, sort: 1 }, { label: 'Library', latitude: 5.6537, longitude: -0.1861, sort: 2 }]) {
@@ -134,7 +134,7 @@ describe('TURBO journey on a real database', () => {
         const conv = await seedConversation(tenantId, { externalId: '233241234567', customerPhone: PHONE, lastInboundAt: new Date() });
         const hi = await say(conv.id, { text: 'Hi' });
         expect(hi).toMatch(/^Heyya, Turber!!\nWe are currently onboarding our first 50 Founding Members\./);
-        expect(hi).toMatch(/• GHS 960\n• That's just GHS 16 per ride\n\n🔥 Only 50 Founding Packages available\.\n\n1\. Get Pioneer Package\n2\. PAYG Ride\n3\. Learn More\n4\. Contact Support$/);
+        expect(hi).toMatch(/• GHS 960 ride credit\n• Valid for 60 days\n\nFare per ride:\n• 0–6 km: GHS 16 \(PAYG 25\)\n• 6–10 km: GHS 25 \(PAYG 35\)\n• Over 10 km: GHS 40 \(PAYG 50\)\n\n🔥 Only 50 Founding Packages available\.\n\n1\. Get Pioneer Package\n2\. PAYG Ride\n3\. Learn More\n4\. Contact Support$/);
 
         // ---- Buy
         await say(conv.id, { text: '1' });
@@ -142,7 +142,7 @@ describe('TURBO journey on a real database', () => {
         await say(conv.id, { text: 'CU2021/1234' });
         await say(conv.id, { text: 'Central University' });
         const confirm = await say(conv.id, { text: 'ama@example.com' });
-        expect(confirm).toBe("You're almost in! 🚗\n\nFounding Package — GHS 960\n\n60 rides\n60 days validity\n0–6 km\n\nProceed to payment?\n\n1. Pay GHS 960\n2. Cancel");
+        expect(confirm).toMatch(/^You're almost in! 🚗\n\nFounding Package — GHS 960\n\nGHS 960 ride credit\n60 days validity\n\nFare per ride:\n[\s\S]*\n\nProceed to payment\?\n\n1\. Pay GHS 960\n2\. Cancel$/);
         const customer = await rawPrisma().customer.findFirstOrThrow({ where: { tenantId, phone: PHONE } });
         expect(customer).toMatchObject({ name: 'Ama Mensah', email: 'ama@example.com', attributes: { studentId: 'CU2021/1234', university: 'Central University' } });
 
@@ -151,7 +151,7 @@ describe('TURBO journey on a real database', () => {
         expect(inits).toHaveLength(1);
         expect(inits[0]).toMatchObject({ amountKobo: 96000, metadata: { fulfillmentKind: 'ride_package', tenantId, collectionRoute: 'OWN_GATEWAY' } });
         const held = await rawPrisma().ridePass.findFirstOrThrow({ where: { tenantId, customerId: customer.id } });
-        expect(held).toMatchObject({ id: inits[0].metadata.entityId, status: 'HELD', paymentReference: inits[0].reference, priceMinor: 96000 });
+        expect(held).toMatchObject({ id: inits[0].metadata.entityId, status: 'HELD', paymentReference: inits[0].reference, priceMinor: 96000, creditMinor: 96000 });
 
         // Clicking Pay activated nothing.
         expect(await say(conv.id, { text: 'paid?' })).toMatch(/^⏳ We're waiting for your payment to be confirmed/);
@@ -160,7 +160,7 @@ describe('TURBO journey on a real database', () => {
         // ---- Pay (verified webhook) -> activated
         const paid = await pay(inits[0]);
         expect(paid.result.body).toEqual({ ok: true, entity: 'ride_package' });
-        expect(paid.reply).toBe("🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50.\n\n🎟️ Your Package\n\n60 rides\nValid for 60 days\n0–6 km\n\nBalance: 60 rides\n\nYou now have priority access to TURBO rides.\n\nWhat would you like to do?\n\n1. Book a Ride\n2. PAYG Ride\n3. Check Balance\n4. Ride History\n5. My Account\n6. Support");
+        expect(paid.reply).toBe("🎉 WELCOME TO TURBO, AMA MENSAH!\n\nYou're officially one of our Founding 50.\n\n🎟️ Your Package\n\nGHS 960 ride credit\nValid for 60 days\n\nBalance: GHS 960\n\nYou now have priority access to TURBO rides.\n\nWhat would you like to do?\n\n1. Book a Ride\n2. PAYG Ride\n3. Check Balance\n4. Ride History\n5. My Account\n6. Support");
         expect((await rawPrisma().ridePass.findUniqueOrThrow({ where: { id: held.id } })).status).toBe('ACTIVE');
         // Redelivered webhook: nothing new.
         const again = await pay(inits[0]);
@@ -172,17 +172,17 @@ describe('TURBO journey on a real database', () => {
         // ---- Book
         expect(await say(conv.id, { text: '1' })).toBe('📍 Where should we pick you up?\n\nPlease share your WhatsApp location.');
         expect(await say(conv.id, { location: GATE })).toBe("📍 Pickup received.\n\nWhere are you going?\n\nReply with a number:\n1. Main Gate\n2. Library\n\nOr share the destination's location pin.");
-        expect(await say(conv.id, { text: '2' })).toBe('🚗 Your TURBO Ride\n\nPickup: Main Gate\nDestination: Library\n\nPackage ride: 1 ride\n\nYour current balance: 60\n\nConfirm?\n\n1. Confirm Ride\n2. Cancel');
+        expect(await say(conv.id, { text: '2' })).toBe('🚗 Your TURBO Ride\n\nPickup: Main Gate\nDestination: Library\nAbout 0.5 km (0–6 km)\n\nFare: GHS 16\nBalance: GHS 960 → GHS 944\n\nThe fare is taken from your balance when the ride is completed.\n\nConfirm?\n\n1. Confirm Ride\n2. Cancel');
         expect(await say(conv.id, { text: '1' })).toBe("✅ Ride Request Received\n\nWe're finding your TURBO driver.\n\nPlease stay available.");
         const ride = await rawPrisma().ride.findFirstOrThrow({ where: { tenantId, customerId: customer.id } });
-        expect(ride).toMatchObject({ kind: 'PACKAGE', status: 'REQUESTED', passId: held.id, destinationLabel: 'Library', fareMinor: 0 });
+        expect(ride).toMatchObject({ kind: 'PACKAGE', status: 'REQUESTED', passId: held.id, destinationLabel: 'Library', fareMinor: 1600, balanceAppliedMinor: 1600, priceBasis: 'PICKUP' });
         expect(await rawPrisma().domainEvent.count({ where: { tenantId, type: 'ride.requested' } })).toBe(1);
 
         // ---- Console: live, assign (customer told), en route, complete (deducts once), second complete 409
         const live = await api(staffToken, 'GET', '/rides/live');
         expect(live.statusCode).toBe(200);
         expect(live.json().data).toEqual([expect.objectContaining({
-            id: ride.id, ref: ride.ref, kind: 'PACKAGE', status: 'REQUESTED', fare: null, driver: null,
+            id: ride.id, ref: ride.ref, kind: 'PACKAGE', status: 'REQUESTED', fare: '16.00', balanceApplied: '16.00', deducted: null, driver: null,
             pickup: { label: 'Main Gate', lat: 5.6505, lng: -0.1873 }, destination: { label: 'Library', lat: 5.6537, lng: -0.1861 },
             customer: { id: customer.id, name: 'Ama Mensah', phone: expect.not.stringMatching(/^\+233241234567$/) },
         })]);
@@ -196,14 +196,15 @@ describe('TURBO journey on a real database', () => {
         const done = await api(staffToken, 'POST', `/rides/${ride.id}/status`, { status: 'COMPLETED' });
         expect(done.statusCode).toBe(200);
         expect(done.json()).toMatchObject({ status: 'COMPLETED', completedAt: expect.any(String) });
-        expect(sent.slice(before).map((m) => m.text)).toEqual(['✅ Ride Completed\n\nThanks for riding with TURBO.\n\n1 ride used\n\n🎟️ Remaining balance: 59 rides\n\nNeed another ride?\nReply BOOK.']);
+        expect(sent.slice(before).map((m) => m.text)).toEqual(['✅ Ride Completed\n\nThanks for riding with TURBO.\n\nGHS 16 deducted\n\n🎟️ Remaining balance: GHS 944\n\nNeed another ride?\nReply BOOK.']);
+        expect(done.json()).toMatchObject({ deducted: '16.00', balanceAfter: '944.00' });
         expect((await api(staffToken, 'POST', `/rides/${ride.id}/status`, { status: 'COMPLETED' })).statusCode).toBe(409);
         expect(await rawPrisma().ridePassEntry.count({ where: { passId: held.id, type: 'RIDE' } })).toBe(1);
 
-        // ---- Balance 59 and history, in WhatsApp
+        // ---- Balance GHS 944 and history, in WhatsApp
         await say(conv.id, { text: 'Hi' });
-        expect(await say(conv.id, { text: '3' })).toMatch(/^🎟️ Your TURBO Package\n\nPioneer 50\nRides purchased: 60\nRides used: 1\nRides remaining: 59\n\nExpiry: /);
-        expect(await say(conv.id, { text: '4' })).toMatch(/^🧾 Your recent rides\n\n1\. .+ · Main Gate → Library · Package · completed/);
+        expect(await say(conv.id, { text: '3' })).toMatch(/^🎟️ Your TURBO Package\n\nPioneer 50\nRide credit: GHS 960\nUsed: GHS 16 \(1 rides\)\nBalance: GHS 944\n\nExpiry: /);
+        expect(await say(conv.id, { text: '4' })).toMatch(/^🧾 Your recent rides\n\n1\. .+ · Main Gate → Library · Package GHS 16 · completed/);
 
         // "Reply BOOK" after the ride: straight into booking.
         await say(conv.id, { text: 'Hi' });
@@ -212,11 +213,11 @@ describe('TURBO journey on a real database', () => {
         // ---- PAYG with a capacity of 1
         const s = await api(ownerToken, 'PATCH', '/rides/settings', { payg: { dailyLimit: 1 } });
         expect(s.statusCode).toBe(200);
-        expect(s.json().payg).toEqual({ open: true, dailyLimit: 1, fares: [{ upToKm: 6, amount: '25.00' }, { upToKm: 10, amount: '35.00' }] });
+        expect(s.json().payg).toEqual({ open: true, dailyLimit: 1, fares: [{ upToKm: 6, amount: '25.00' }, { upToKm: 10, amount: '35.00' }], overFare: '50.00' });
         expect((await api(staffToken, 'PATCH', '/rides/settings', { payg: { open: false } })).statusCode).toBe(403);
 
         await say(conv.id, { text: 'menu' });
-        expect(await say(conv.id, { text: '2' })).toBe('🚗 PAY-AS-YOU-GO\n\nFare: GHS 25\n\nEnter your pickup location.\n\nShare your WhatsApp location.');
+        expect(await say(conv.id, { text: '2' })).toBe('🚗 PAY-AS-YOU-GO\n\nFares from GHS 25\n\nEnter your pickup location.\n\nShare your WhatsApp location.');
         await say(conv.id, { location: GATE });
         expect(await say(conv.id, { text: 'library' })).toBe('Your ride is GHS 25.\n\n1. Pay & Book\n2. Cancel');
         expect(await say(conv.id, { text: '1' })).toMatch(/^💳 Pay GHS 25 here/);
@@ -237,7 +238,8 @@ describe('TURBO journey on a real database', () => {
         const ov = (await api(ownerToken, 'GET', '/rides/overview')).json();
         expect(ov).toMatchObject({
             packages: { sold: 1, activated: 1, cap: 50, slotsLeft: 49, held: 0 },
-            rides: { used: 1, remaining: 59 },
+            credit: { used: '16.00', remaining: '944.00' },
+            rides: { completed: 1 },
             live: { REQUESTED: 1, ASSIGNED: 0, EN_ROUTE: 0 },
             payg: { open: true, dailyLimit: 1, used: 1, available: 0 },
             payments: { SUCCEEDED: 2, PENDING: 0, FAILED: 0 },
@@ -246,14 +248,14 @@ describe('TURBO journey on a real database', () => {
         const detail = (await api(ownerToken, 'GET', `/rides/customers/${customer.id}`)).json();
         expect(detail).toMatchObject({
             id: customer.id, name: 'Ama Mensah', phone: PHONE, studentId: 'CU2021/1234', university: 'Central University',
-            package: { id: held.id, name: 'Pioneer 50', status: 'ACTIVE' }, balance: 59,
+            package: { id: held.id, name: 'Pioneer 50', status: 'ACTIVE' }, balance: '944.00',
         });
-        expect(detail.balanceLog.map((e: any) => [e.reason, e.delta, e.balanceAfter])).toEqual([['RIDE', -1, 59], ['ACTIVATION', 60, 60]]);
+        expect(detail.balanceLog.map((e: any) => [e.reason, e.amount, e.balanceAfter])).toEqual([['RIDE', '-16.00', '944.00'], ['ACTIVATION', '960.00', '960.00']]);
         expect(detail.rides).toHaveLength(2);
         const staffList = (await api(staffToken, 'GET', '/rides/customers?search=Ama')).json();
         expect(staffList.data[0].phone).not.toBe(PHONE);
         const payments = (await api(ownerToken, 'GET', '/rides/payments?status=SUCCEEDED')).json();
-        expect(payments.data.map((p: any) => [p.kind, p.amount, p.reference])).toEqual([['PAYG', '25.00', inits[1].reference], ['PACKAGE', '960.00', inits[0].reference]]);
+        expect(payments.data.map((p: any) => [p.kind, p.purpose, p.amount, p.reference])).toEqual([['PAYG', 'PAYG_RIDE', '25.00', inits[1].reference], ['PACKAGE', 'PACKAGE_PURCHASE', '960.00', inits[0].reference]]);
         expect(payments.pagination).toEqual({ page: 1, limit: 20, total: 2, totalPages: 1 });
 
         // ---- The app sees the same account and balance (v1, API key)
@@ -261,7 +263,7 @@ describe('TURBO journey on a real database', () => {
         const v1 = (method: 'GET' | 'POST', url: string, payload?: object) => app.inject({ method, url, headers: { authorization: `Bearer ${key}` }, ...(payload ? { payload } : {}) });
         const bal = await v1('GET', `/v1/rides/customers/${customer.id}/balance`);
         expect(bal.statusCode).toBe(200);
-        expect(bal.json().data).toMatchObject({ customerId: customer.id, active: true, purchased: 60, used: 1, remaining: 59 });
+        expect(bal.json().data).toMatchObject({ customerId: customer.id, active: true, credit: '960.00', used: '16.00', remaining: '944.00', ridesTaken: 1 });
         expect((await v1('GET', `/v1/rides/customers/${customer.id}/rides`)).json().data).toHaveLength(2);
         // Booking from the app: the PAYG ride is still open, so it is refused like in WhatsApp...
         const lib = await rawPrisma().rideDestination.findFirstOrThrow({ where: { tenantId, label: 'Library' } });

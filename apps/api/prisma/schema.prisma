@@ -1345,29 +1345,42 @@ model BillingTerms {
 
 /// One per tenant. Absent = the defaults below (services/rides/settings.ts).
 model RideSettings {
-  id                String   @id @default(cuid())
-  tenantId          String   @unique
-  currency          String   @default("GHS")
+  id                   String   @id @default(cuid())
+  tenantId             String   @unique
+  currency             String   @default("GHS")
   /// Founding package
-  packagePriceMinor Int      @default(96000)
-  packageRides      Int      @default(60)
-  validityDays      Int      @default(60)
-  maxKm             Float    @default(6)
-  foundingCap       Int      @default(50)
+  packagePriceMinor    Int      @default(96000)
+  /// Legacy (ride-count packages): kept, unused since the GHS credit change.
+  packageRides         Int      @default(60)
+  validityDays         Int      @default(60)
+  /// Legacy: package rides of any distance are allowed now.
+  maxKm                Float    @default(6)
+  foundingCap          Int      @default(50)
   /// A slot is held this long while the customer pays.
-  holdMinutes       Int      @default(30)
+  holdMinutes          Int      @default(30)
   /// Pay-as-you-go
-  paygOpen          Boolean  @default(true)
-  paygDailyLimit    Int      @default(10)
+  paygOpen             Boolean  @default(true)
+  paygDailyLimit       Int      @default(10)
   /// [{ "upToKm": 6, "fareMinor": 2500 }, ...] ascending; further is not offered.
-  paygFares         Json     @default("[{\"upToKm\":6,\"fareMinor\":2500},{\"upToKm\":10,\"fareMinor\":3500}]")
+  paygFares            Json     @default("[{\"upToKm\":6,\"fareMinor\":2500},{\"upToKm\":10,\"fareMinor\":3500}]")
+  /// PAYG fare beyond the last tier (flat, no maximum distance). Null = not offered.
+  paygOverFareMinor    Int?     @default(5000)
+  /// Founding Package (GHS credit) fares, same shape as paygFares; the band fare is deducted at completion.
+  packageFares         Json     @default("[{\"upToKm\":6,\"fareMinor\":1600},{\"upToKm\":10,\"fareMinor\":2500}]")
+  /// Package fare beyond the last tier (flat, no maximum distance). Null = not offered.
+  packageOverFareMinor Int?     @default(4000)
+  /// Fare reference point (e.g. Central University Student Plaza). Set: fares are priced from here
+  /// to the destination. Unset (null): from the pickup to the destination.
+  fareRefLabel         String?
+  fareRefLat           Float?
+  fareRefLng           Float?
   /// Straight-line distance x this = the estimated road distance.
-  roadFactor        Float    @default(1.3)
+  roadFactor           Float    @default(1.3)
   /// Tell the driver by SMS when assigned.
-  driverSms         Boolean  @default(false)
-  timezone          String   @default("Africa/Accra")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  driverSms            Boolean  @default(false)
+  timezone             String   @default("Africa/Accra")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
@@ -1428,6 +1441,8 @@ model RidePass {
   validityDays             Int
   maxKm                    Float
   priceMinor               Int
+  /// GHS credit bought (pesewas). Null on rows from before the credit change: use priceMinor.
+  creditMinor              Int?
   currency                 String
   holdExpiresAt            DateTime?
   activatedAt              DateTime?
@@ -1460,25 +1475,28 @@ model RidePass {
 }
 
 enum RidePassEntryType {
-  PURCHASE // +ridesTotal on activation
-  RIDE // -1 when a ride is COMPLETED (rideId unique: at most once per ride)
+  PURCHASE // +credit (GHS) on activation
+  RIDE // -fare when a ride is COMPLETED (rideId unique: at most once per ride)
   EXPIRY // -remaining when the pass expires
   ADJUSTMENT
 }
 
 /// Append-only balance log, like the money ledger. Never updated or deleted.
 model RidePassEntry {
-  id        String            @id @default(cuid())
-  tenantId  String
-  passId    String
-  type      RidePassEntryType
-  delta     Int
+  id          String            @id @default(cuid())
+  tenantId    String
+  passId      String
+  type        RidePassEntryType
+  /// Signed pesewas: +credit on PURCHASE, -fare on RIDE, -rest on EXPIRY. The balance is SUM(amountMinor).
+  amountMinor Int
+  /// Legacy ride count (ride-count packages). Null on rows written since the GHS credit change.
+  delta       Int?
   /// RIDE entries only. UNIQUE: a ride deducts at most once.
-  rideId    String?           @unique
+  rideId      String?           @unique
   /// PURCHASE entries: the payment reference.
-  reference String?
-  note      String?
-  createdAt DateTime          @default(now())
+  reference   String?
+  note        String?
+  createdAt   DateTime          @default(now())
 
   tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   pass   RidePass @relation(fields: [passId], references: [id], onDelete: Cascade)
@@ -1492,7 +1510,7 @@ enum RideKind {
 }
 
 enum RideStatus {
-  PENDING_PAYMENT // PAYG: link sent, capacity reserved, not paid yet
+  PENDING_PAYMENT // PAYG: link sent, capacity reserved; PACKAGE top-up: link sent, balance reserved. Not paid yet.
   REQUESTED
   ASSIGNED
   EN_ROUTE
@@ -1501,49 +1519,64 @@ enum RideStatus {
 }
 
 model Ride {
-  id               String     @id @default(cuid())
-  tenantId         String
+  id                    String     @id @default(cuid())
+  tenantId              String
   /// Short customer-facing reference, e.g. TR-7K2Q9M.
-  ref              String
-  kind             RideKind
-  status           RideStatus
-  customerId       String
-  conversationId   String?
-  passId           String?
-  driverId         String?
-  pickupLabel      String
-  pickupLat        Float
-  pickupLng        Float
-  destinationLabel String
-  destinationLat   Float
-  destinationLng   Float
-  destinationId    String?
+  ref                   String
+  kind                  RideKind
+  status                RideStatus
+  customerId            String
+  conversationId        String?
+  passId                String?
+  driverId              String?
+  pickupLabel           String
+  pickupLat             Float
+  pickupLng             Float
+  destinationLabel      String
+  destinationLat        Float
+  destinationLng        Float
+  destinationId         String?
   /// Estimated road distance (straight line x roadFactor).
-  distanceKm       Float
-  /// PAYG fare; 0 for package rides (paid with a ride credit).
-  fareMinor        Int        @default(0)
-  currency         String
+  distanceKm            Float
+  /// The band fare (PAYG and package). 0 on package rides from before the GHS credit change.
+  fareMinor             Int        @default(0)
+  /// The distance the fare was priced on, and from where: REFERENCE (the fare reference point) or PICKUP.
+  priceDistanceKm       Float?
+  priceBasis            String?
+  /// e.g. "0–6 km", "6–10 km", "Over 10 km".
+  fareBand              String?
+  /// PACKAGE: credit reserved at booking and deducted at completion (the whole fare, or the
+  /// remaining balance when a top-up or a waiver covers the rest).
+  balanceAppliedMinor   Int?
+  /// PACKAGE: the difference paid by Paystack (ride_topup); 0 when none.
+  topupMinor            Int?
+  /// PACKAGE: a difference under GHS 2 that was waived instead of charged.
+  waivedMinor           Int?
+  /// PACKAGE: written at completion: what was deducted, and the balance right after.
+  deductedMinor         Int?
+  balanceAfterMinor     Int?
+  currency              String
   /// PAYG: latest link reference while unpaid, the PAID reference once paid.
-  paymentReference String?    @unique
+  paymentReference      String?    @unique
   /// PAYG: unpaid by then = cancelled and the capacity released.
-  paymentExpiresAt DateTime?
-  paidAt           DateTime?
-  paidAmountMinor  Int?
+  paymentExpiresAt      DateTime?
+  paidAt                DateTime?
+  paidAmountMinor       Int?
   /// Paystack's transaction id and channel (mobile_money, card) for the paid charge.
   providerTransactionId String?
-  paymentChannel   String?
+  paymentChannel        String?
   /// PAYG: the YYYY-MM-DD (tenant timezone) whose capacity this ride holds.
-  paygDay          String?
+  paygDay               String?
   /// WHATSAPP | APP | CONSOLE
-  source           String     @default("WHATSAPP")
-  requestedAt      DateTime   @default(now())
-  assignedAt       DateTime?
-  enRouteAt        DateTime?
-  completedAt      DateTime?
-  cancelledAt      DateTime?
-  cancelReason     String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  source                String     @default("WHATSAPP")
+  requestedAt           DateTime   @default(now())
+  assignedAt            DateTime?
+  enRouteAt             DateTime?
+  completedAt           DateTime?
+  cancelledAt           DateTime?
+  cancelReason          String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
 
   tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)

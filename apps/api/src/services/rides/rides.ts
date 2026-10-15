@@ -629,10 +629,16 @@ export async function setRideStatus(
     // A customer can only cancel, and only before a driver is assigned.
     if (by === 'customer' && args.status !== 'CANCELLED') return { ok: false, error: 'invalid_state' };
     const result = await prisma.$transaction(async (tx) => {
+        const owner = await tx.ride.findFirst({ where: { id: args.rideId, tenantId: args.tenantId }, select: { customerId: true } });
+        if (!owner) return { ok: false as const, error: 'not_found' as const };
+        // Same lock as booking and the payment confirmations: a completion never races a booking's balance
+        // check, and a cancel never races a payment confirming this ride.
+        await lockCustomer(tx, owner.customerId);
+        await tx.$queryRaw`SELECT id FROM "Ride" WHERE id = ${args.rideId} AND "tenantId" = ${args.tenantId} FOR UPDATE`;
+        // Read AFTER the lock: a payment that committed while we waited (paidAt, REQUESTED) must decide
+        // refundDue / refundMinor below; a row read before the lock would say "unpaid" and lose the refund.
         const before = await tx.ride.findFirst({ where: { id: args.rideId, tenantId: args.tenantId } });
         if (!before) return { ok: false as const, error: 'not_found' as const };
-        // Same lock as booking: a completion never races a booking's balance check for this customer.
-        await lockCustomer(tx, before.customerId);
         const from = by === 'customer' ? (['REQUESTED'] as RideStatus[]) : FROM[args.status];
         const data: Prisma.RideUncheckedUpdateManyInput =
             args.status === 'EN_ROUTE' ? { status: 'EN_ROUTE', enRouteAt: now }

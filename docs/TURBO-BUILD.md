@@ -42,6 +42,21 @@ TURBO mobile app (later) ──────────────> Bookly /v1/
 | 8 | Wording | Their copy is used verbatim. Their draft mixes "Founding" and "Pioneer"; the product is named **Founding 50** with "Pioneer" as the button label, as in their draft. Menu numbering in the draft skips 5 and gives 4 twice; fixed to 1 Book · 2 PAYG · 3 Balance · 4 History · 5 Account · 6 Support. |
 | 9 | Console domain | Their choice (e.g. `console.turboghana.app`); needs `CROSS_SITE_AUTH=true` and HTTPS. |
 
+### Fares and GHS credit (2026-10-14, client brief "TURBO Developer App Flow & Fare Calculation"; these supersede 1, 2 and 5 where they differ)
+
+| # | Question | Decision |
+|---|---|---|
+| 11 | Where is the fare measured from? | A **fare reference point** (Central University Student Plaza), a console setting `fareRef {label, lat, lng}`, nullable. Set: price distance = reference -> destination. Unset: pickup -> destination (as before). Same method (straight line x road factor). Coordinates are never guessed: TURBO enters them. |
+| 12 | Bands | Inclusive upper bounds (6.00 km is band 1, 10.00 km band 2). 0–6 km: PAYG GHS 25 / package GHS 16; 6–10 km: GHS 35 / GHS 25; over 10 km a **flat** fare, PAYG GHS 50 / package GHS 40, **no maximum distance**. Settings: `paygFares` + `paygOverFareMinor` (5000), `packageFares` + `packageOverFareMinor` (4000). An over fare of null = not offered beyond the last tier (legacy). An over fare below the last tier's fare is refused. |
+| 13 | What is the Founding Package? | **GHS credit** = the package price (GHS 960). The band's package fare is deducted at ride **completion**, once (UNIQUE(rideId)); cancelling never deducts. Package rides of any distance. Balance shown in GHS everywhere. `packageRides` / `maxKm` are legacy, unused. |
+| 14 | Balance short of the fare | Balance <= 0: no package ride (`no_balance`), PAYG offered. 0 < balance < fare: the whole remaining balance + a Paystack link for the difference (payment kind **`ride_topup`**); the ride is booked only when paid. A difference **under GHS 2 is waived** (booked from the balance alone; `waivedMinor` recorded). |
+| 15 | Booking order | Destination first -> fare shown -> pickup pin (for the driver) -> confirm, when `fareRef` is set. Unset: pickup first (old order). The flow branches on its `fare_ref` variable, never on which pickup variables exist. |
+| 16 | Unknown typed destination | "I couldn't find that place. 📍 Please send it as a location pin: tap 📎 (or +) → Location → search for the place → tap it to send. Or reply with a number from the list." Three misses: hand-off (as before). |
+| 17 | Ride records | `priceDistanceKm`, `priceBasis` (REFERENCE/PICKUP), `fareBand`, `fareMinor` (band fare, both kinds), `balanceAppliedMinor`, `topupMinor`, `waivedMinor`, `deductedMinor`, `balanceAfterMinor`. |
+| 18 | Pickup distance limit | None for now. |
+
+Money rules behind 13/14: the balance log (`RidePassEntry.amountMinor`, pesewas) is append-only; a booking reserves its `balanceAppliedMinor` (available balance = remaining - what open rides and live top-up links hold); rides booked before the change deduct round(price / rides). A top-up is confirmed only by a verified payment whose amount covers `topupMinor`, idempotent per reference; a payment for a lapsed top-up is re-booked only if the pass is still active, the balance still covers its share and no other ride is open, otherwise it is recorded on the ride and a **critical refund alert names the GHS amount**. Cancelling a ride whose top-up was paid raises a refund alert with the amount. The sweeper never expires a pass under a live top-up; low-balance reminder at GHS 80.
+
 ## Bookly side (Automation repo)
 
 - [x] **R1. Schema.** RideSettings, RideDestination, Driver, RidePass,
@@ -130,20 +145,30 @@ All under `/rides`, authenticated as a TURBO staff user (cookie session,
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/rides/overview` | Cards: packages sold/activated/remaining slots, rides used/remaining, live rides by status, PAYG today (used/limit/open), payments today by status |
+| GET | `/rides/overview` | Cards: packages sold/activated/remaining slots, `credit {used, remaining}` (GHS), `rides {completed}` (completed package rides), live rides by status, PAYG today (used/limit/open), payments today by status |
 | GET | `/rides/live?status=` | Rides not finished (REQUESTED, ASSIGNED, EN_ROUTE), newest first |
 | GET | `/rides?from=&to=&status=&kind=&page=` | Ride history |
 | POST | `/rides/:id/assign` `{driverId}` | Assign; customer gets driver name, vehicle, plate |
-| POST | `/rides/:id/status` `{status: EN_ROUTE\|COMPLETED\|CANCELLED, reason?}` | COMPLETED deducts one package ride exactly once |
+| POST | `/rides/:id/status` `{status: EN_ROUTE\|COMPLETED\|CANCELLED, reason?}` | COMPLETED deducts the package ride's fare (its balanceApplied) exactly once |
 | GET | `/rides/customers?search=&page=` | Name, phone, student ID, university, package, balance, expiry |
 | GET | `/rides/customers/:id` | Customer with passes, balance log, rides |
 | GET | `/rides/passes?status=&page=` | Packages |
-| GET | `/rides/payments?kind=&status=&page=` | Package and PAYG payments with references |
+| GET | `/rides/payments?kind=&status=&page=` | Package purchases, PAYG rides and package top-ups (kind PACKAGE, purpose PACKAGE_TOPUP) with references |
 | GET/POST/PATCH | `/rides/drivers[/:id]` | name, phone, vehicle, plate, active |
 | GET/POST/PATCH | `/rides/destinations[/:id]` | label, latitude, longitude, active, sort |
-| GET/PATCH | `/rides/settings` | package (price, rides, days, maxKm, cap), PAYG (open, dailyLimit, fares), roadFactor, driverSms |
+| GET/PATCH | `/rides/settings` | fareRef, package (price, days, cap, holdMinutes, fares, overFare), PAYG (open, dailyLimit, fares, overFare), roadFactor, driverSms, timezone |
 
-Ride: `{ id, ref, kind: PACKAGE|PAYG, status, customer: {id, name, phone}, pickup: {label, lat, lng}, destination: {label, lat, lng}, distanceKm, fare, driver: {id, name, vehicle, plate} | null, requestedAt, assignedAt, completedAt }`
+Money values are unsigned GHS strings like `"16.00"`, negatives `"-16.00"` (no `+`).
+
+Settings (GET, and the PATCH response):
+`{ currency, fareRef: {label, lat, lng} | null, package: { price, days, cap, holdMinutes, fares: [{upToKm, amount}], overFare: string | null, rides, maxKm }, payg: { open, dailyLimit, fares: [{upToKm, amount}], overFare: string | null }, roadFactor, driverSms, timezone }`
+(`package.rides` / `package.maxKm` are legacy, kept one release for the console still deployed.)
+
+PATCH body, all optional: `{ fareRef?: {label, lat, lng} | null, package?: { price?, days?, cap?, holdMinutes?, fares?: [{upToKm, amount}], overFare?: number | string | null }, payg?: { open?, dailyLimit?, fares?, overFare? }, roadFactor?, driverSms?, timezone? }`. Amounts in GHS (number or string, at most 2 decimals). `package.rides` / `package.maxKm` are accepted and ignored for one release. An over fare below the last tier's fare is a 400 and nothing is saved.
+
+Ride: `{ id, ref, kind: PACKAGE|PAYG, status, customer: {id, name, phone}, pickup: {label, lat, lng}, destination: {label, lat, lng}, distanceKm, fare, paid, topup, waived, balanceApplied, deducted, balanceAfter, priceDistanceKm, priceBasis: REFERENCE|PICKUP|null, fareBand, driver: {id, name, vehicle, plate} | null, requestedAt, assignedAt, completedAt, cancelledAt, cancelReason }` (money fields string | null; `fare` is the band fare for both kinds, null on package rides from before the change; `fareBand` e.g. "0–6 km", "6–10 km", "Over 10 km").
+
+Pass: `{ id, name, status, customer?, price, credit, used, remaining, ridesTaken, activatedAt, expiresAt, createdAt }` (ridesTotal/ridesUsed/ridesRemaining removed). Customer summary `balance`: GHS string | null. Balance log entry: `{ id, passId, delta (legacy, null on new rows), amount (signed), reason, rideId, rideRef, balanceAfter, createdAt }`. Payment: `{ id, kind: PACKAGE|PAYG, purpose: PACKAGE_PURCHASE|PAYG_RIDE|PACKAGE_TOPUP, status, amount, currency, reference, providerReference, channel, customer, rideRef, passId, createdAt, paidAt }`.
 
 ## The user flow TURBO sent
 
@@ -161,4 +186,5 @@ switched off; the same account and balance carry into the app later.
 | 2026-10-06 | R6, R7 | bd03bbc | Console API + app API; live smoke test 85/85 against the real console client |
 | 2026-10-06 | C1-C5 | turbo a80a108 | Console in /root/home/turbo; safe redirects, CSP/HSTS, demo-build guard |
 | 2026-10-06 | Inbox | turbo ad96e94, d26a4cf | Customer chats + takeover in the console; hand back to the bot restarts at the menu |
+| 2026-10-14 | Fares & credit | feat/turbo-fare-credit | Fare reference point, distance bands with flat over fare, package = GHS credit (deducted at completion), ride_topup + GHS 2 waiver, destination-first flow, GHS copy; migration 20261014090000_rides_credit_pricing |
 | 2026-10-06 | Channels | 22bd7df, 4f10b35, turbo f27cef7 | Connect WhatsApp from the console (own Meta account, prefilled; code backup), Instagram & Messenger; admin Channels panel; Embedded Signup v4 |

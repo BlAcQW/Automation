@@ -2,6 +2,19 @@
 
 Verbatim copy of the client's user flow. The bot's wording comes from here.
 
+> **Superseded in part (2026-10-14, "TURBO Developer App Flow & Fare Calculation").**
+> The package is now **GHS 960 of ride credit**, not 60 rides: each ride costs its
+> distance band's package fare (0–6 km GHS 16, 6–10 km GHS 25, over 10 km GHS 40;
+> PAYG 25 / 35 / 50), deducted when the ride is **completed**; any distance is
+> allowed. When TURBO sets the fare reference point (Student Plaza) the bot asks
+> the **destination first**, shows the fare, then asks for the pickup pin; without
+> it, pickup first as below. A balance that does not cover the fare: the remaining
+> balance plus a payment link for the difference (waived when under GHS 2); no
+> balance: PAYG is offered. Balances, completions and reminders read in GHS. The
+> ride-count copy below ("60 rides", "Balance: 59 rides", "0–6 km rides") is the
+> original and no longer what the bot says; decisions 11-18 in
+> [../TURBO-BUILD.md](../TURBO-BUILD.md) are authoritative.
+
 ## 1. Customer starts WhatsApp
 
 Customer sends: `Hi`

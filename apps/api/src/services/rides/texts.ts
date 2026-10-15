@@ -21,13 +21,13 @@ export function rides(n: number): string {
     return `${n} ${n === 1 ? 'ride' : 'rides'}`;
 }
 
-export function packageActivatedText(a: { name: string | null; rides: number; days: number; maxKm: number; balance: number }): string {
+export function packageActivatedText(a: { name: string | null; creditMinor: number; days: number; balanceMinor: number; currency: string }): string {
     const name = (a.name ?? '').trim().toUpperCase() || 'TURBER';
     return [
         `🎉 WELCOME TO TURBO, ${name}!`,
         "You're officially one of our Founding 50.",
-        `🎟️ Your Package\n\n${rides(a.rides)}\nValid for ${a.days} days\n0–${a.maxKm} km`,
-        `Balance: ${rides(a.balance)}`,
+        `🎟️ Your Package\n\n${money(a.creditMinor, a.currency)} ride credit\nValid for ${a.days} days`,
+        `Balance: ${money(Math.max(0, a.balanceMinor), a.currency)}`,
         'You now have priority access to TURBO rides.',
         'Reply BOOK to book a ride, or MENU for all options.',
     ].join('\n\n');
@@ -37,8 +37,11 @@ export function driverAssignedText(d: { name: string; vehicle: string; plate: st
     return `🚗 Driver Assigned\n\nDriver: ${d.name}\nVehicle: ${d.vehicle}\nPlate: ${d.plate}\n\nYour driver is on the way.`;
 }
 
-export function rideCompletedText(remaining: number | null): string {
-    const balance = remaining === null ? '' : `1 ride used\n\n🎟️ Remaining balance: ${rides(Math.max(0, remaining))}\n\n`;
+/** Package rides say what was deducted and what is left; PAYG rides (null) just thank. */
+export function rideCompletedText(pkg: { deductedMinor: number; balanceAfterMinor: number; currency: string } | null): string {
+    const balance = pkg === null
+        ? ''
+        : `${money(pkg.deductedMinor, pkg.currency)} deducted\n\n🎟️ Remaining balance: ${money(Math.max(0, pkg.balanceAfterMinor), pkg.currency)}\n\n`;
     return `✅ Ride Completed\n\nThanks for riding with TURBO.\n\n${balance}Need another ride?\nReply BOOK.`;
 }
 
@@ -46,9 +49,15 @@ export const PAYG_PAYMENT_RECEIVED_TEXT = "✅ Payment Received\n\nYour ride is 
 
 export const RIDE_REQUEST_RECEIVED_TEXT = "✅ Ride Request Received\n\nWe're finding your TURBO driver.\n\nPlease stay available.";
 
-export function rideCancelledText(a: { ref: string; paidPayg: boolean }): string {
-    const refund = a.paidPayg ? '\n\nYour payment will be refunded by the TURBO team.' : '';
-    return `❌ Your TURBO ride ${a.ref} was cancelled.${refund}\n\nNeed another ride?\nReply BOOK.`;
+/** A package ride whose top-up was paid (when the chat had moved on). */
+export function topupReceivedText(balanceUseMinor: number, currency: string): string {
+    return `✅ Payment received. Your ride is confirmed.\n\n${money(balanceUseMinor, currency)} from your balance is deducted when the ride is completed.\n\nWe're finding your TURBO driver.`;
+}
+
+/** `refundMinor`: a paid amount the customer gets back (PAYG fare or top-up), else null. */
+export function rideCancelledText(a: { ref: string; refundMinor: number | null; currency: string }): string {
+    const refund = a.refundMinor ? `\n\nYour payment of ${money(a.refundMinor, a.currency)} will be refunded by the TURBO team.` : '';
+    return `❌ Your TURBO ride ${a.ref} was cancelled. Nothing was deducted from your balance.${refund}\n\nNeed another ride?\nReply BOOK.`;
 }
 
 export function packageNotActivatedText(reason: string): string {
@@ -62,13 +71,17 @@ export function paygNotConfirmedText(): string {
     return "⚠️ We received your payment, but today's PAYG slots were already filled, so your ride is not booked.\n\nThe TURBO team will contact you about a refund.";
 }
 
-export function expiryReminderText(a: { expiresAt: Date; remaining: number; timeZone: string }): string {
-    return `⏳ Your TURBO package expires on ${formatDate(a.expiresAt, a.timeZone)}.\n\nYou have ${rides(a.remaining)} left. Unused rides expire with the package.\n\nReply BOOK to book a ride.`;
+export function topupNotConfirmedText(paidMinor: number, currency: string): string {
+    return `⚠️ We received your payment of ${money(paidMinor, currency)}, but your ride could not be booked (your booking had expired and your balance or package changed).\n\nThe TURBO team will contact you about a refund.`;
 }
 
-export function lowBalanceText(a: { remaining: number; expiresAt: Date | null; timeZone: string }): string {
+export function expiryReminderText(a: { expiresAt: Date; remainingMinor: number; currency: string; timeZone: string }): string {
+    return `⏳ Your TURBO package expires on ${formatDate(a.expiresAt, a.timeZone)}.\n\nYou have ${money(a.remainingMinor, a.currency)} ride credit left. Unused credit expires with the package.\n\nReply BOOK to book a ride.`;
+}
+
+export function lowBalanceText(a: { remainingMinor: number; currency: string; expiresAt: Date | null; timeZone: string }): string {
     const exp = a.expiresAt ? `\nExpiry: ${formatDate(a.expiresAt, a.timeZone)}` : '';
-    return `🎟️ Only ${rides(a.remaining)} left on your TURBO package.${exp}\n\nReply BOOK to book a ride.`;
+    return `🎟️ Only ${money(a.remainingMinor, a.currency)} ride credit left on your TURBO package.${exp}\n\nReply BOOK to book a ride.`;
 }
 
 /**

@@ -1,14 +1,18 @@
 /**
- * Payments for the rides pack: the two payment kinds and their two halves.
+ * Payments for the rides pack: the three payment kinds and their two halves.
  *
  *  PREPARERS (run when the flow asks for a link, before Paystack):
  *    ride_package  hold a Founding slot (HELD pass)   -> entity id = pass id
  *    ride_payg     reserve today's PAYG seat + a PENDING_PAYMENT ride -> entity id = ride id
+ *    ride_topup    a package ride the balance does not cover: hold the whole remaining
+ *                  balance on a PENDING_PAYMENT package ride; the link charges the
+ *                  difference (topupMinor) -> entity id = ride id
  *
  *  FULFILLERS (run after the Paystack webhook verified the charge with the
  *  tenant's own key and cross-checked kind + entity + tenant):
  *    ride_package  activate the pass (only here, only on verified money)
  *    ride_payg     confirm the ride
+ *    ride_topup    confirm the package ride (amount checked against topupMinor)
  *  then move the conversation's flow off its payment step (success or failure
  *  branch), or message the customer directly when the chat has moved on.
  *
@@ -29,15 +33,17 @@ import { createNotification } from '../notifications.js';
 import type { RidesClient } from './db.js';
 import { getRideSettings } from './settings.js';
 import { activatePassOnPayment, holdFoundingSlot, recordPassLink } from './passes.js';
-import { confirmPaygOnPayment, recordRideLink, reservePaygRide, setRideStatus } from './rides.js';
+import { confirmPaygOnPayment, confirmTopupOnPayment, recordRideLink, reservePaygRide, reserveTopupRide, setRideStatus } from './rides.js';
 import { afterRideRequested, resolveConversationCustomer, sendActivationWelcome } from './operations.js';
 import { emitPassActivated, emitRideRequested } from './events.js';
 import { notifyRideCustomer } from './notify.js';
-import { PAYG_PAYMENT_RECEIVED_TEXT, packageNotActivatedText, paygNotConfirmedText } from './texts.js';
+import { PAYG_PAYMENT_RECEIVED_TEXT, money, packageNotActivatedText, paygNotConfirmedText, topupNotConfirmedText, topupReceivedText } from './texts.js';
+import { toMinor } from './geo.js';
 import { tripFromVars } from './trip-vars.js';
 
 export const RIDE_PACKAGE_KIND = 'ride_package';
 export const RIDE_PAYG_KIND = 'ride_payg';
+export const RIDE_TOPUP_KIND = 'ride_topup';
 
 const MAX_REFERENCE_LENGTH = 200;
 
@@ -92,6 +98,33 @@ export async function prepareRidePayg(input: FlowPaymentPrepareInput): Promise<F
     };
 }
 
+export async function prepareRideTopup(input: FlowPaymentPrepareInput): Promise<FlowPaymentPrepared> {
+    const prisma = input.prisma as RidesClient;
+    const trip = tripFromVars(input.vars);
+    if (!trip) return { ok: false, reason: 'no_trip' };
+    const customer = await resolveConversationCustomer(prisma, input);
+    if (!customer) return { ok: false, reason: 'no_customer' };
+    const s = await getRideSettings(prisma, input.tenantId);
+    if (input.currency.toUpperCase() !== s.currency.toUpperCase()) return { ok: false, reason: 'amount_mismatch' };
+    const shownFare = input.vars.pkg_fare ? toMinor(input.vars.pkg_fare) : null;
+    const reserved = await reserveTopupRide(prisma, {
+        tenantId: input.tenantId, customerId: customer.id, conversationId: input.conversationId,
+        pickup: trip.pickup, destination: trip.destination,
+        expectedTopupMinor: Math.round(input.amount * 100), expectedFareMinor: shownFare ?? undefined,
+    });
+    if (!reserved.ok) return { ok: false, reason: reserved.reason };
+    const rideId = reserved.ride.id;
+    return {
+        ok: true,
+        entityId: rideId,
+        onCreated: ({ reference }) => recordRideLink(prisma, input.tenantId, rideId, reference),
+        onFailed: async () => {
+            if (reserved.reused) return;
+            await setRideStatus(prisma, { tenantId: input.tenantId, rideId, status: 'CANCELLED', reason: 'payment_link_failed', by: 'system' });
+        },
+    };
+}
+
 // ---------------------------------------------------------------- fulfillers
 
 function invalid(input: FulfillmentInput): FulfillmentOutcome | null {
@@ -127,7 +160,7 @@ async function refuseLoudly(
         kind: `${args.kind}.not_applied`,
         severity: 'critical',
         tenantId: input.tenantId,
-        message: `A ${args.what} payment arrived but was not applied (${args.reason}). Refund it from your Paystack dashboard.`,
+        message: `A ${args.what} payment of ${money(input.amountMinor, input.currency.toUpperCase())} arrived but was not applied (${args.reason}). Refund it from your Paystack dashboard.`,
         context: { reference: input.reference, amount: input.amountMinor, currency: input.currency, reason: args.reason, ...args.context },
         dedupeKey: `${args.kind}.not_applied:${input.tenantId}:${input.reference}`,
     });
@@ -136,7 +169,7 @@ async function refuseLoudly(
         tenantId: input.tenantId,
         type: 'SYSTEM',
         title: 'Payment needs a refund',
-        message: `A ${args.what} payment (${input.reference}) could not be honoured: ${args.reason}. Please refund it.`,
+        message: `A ${args.what} payment of ${money(input.amountMinor, input.currency.toUpperCase())} (${input.reference}) could not be honoured: ${args.reason}. Please refund ${money(input.amountMinor, input.currency.toUpperCase())}.`,
         metadata: { kind: `${args.kind}.refund_due`, reference: input.reference },
     }).catch((err: unknown) => input.log.warn({ err }, 'Refund notification not created'));
 }
@@ -151,7 +184,7 @@ export async function fulfillRidePackage(input: FulfillmentInput): Promise<Fulfi
     });
     if (res.outcome === 'not_found') return { status: 'rejected', reason: 'pass_not_found' };
     const { pass } = res;
-    const facts = { passId: pass.id, conversationId: pass.conversationId };
+    const facts = { passId: pass.id, conversationId: pass.conversationId, purpose: 'PACKAGE_PURCHASE' };
 
     switch (res.outcome) {
         case 'underpaid':
@@ -197,7 +230,7 @@ export async function fulfillRidePayg(input: FulfillmentInput): Promise<Fulfillm
     });
     if (res.outcome === 'not_found') return { status: 'rejected', reason: 'ride_not_found' };
     const { ride } = res;
-    const facts = { rideId: ride.id, conversationId: ride.conversationId };
+    const facts = { rideId: ride.id, conversationId: ride.conversationId, purpose: 'PAYG_RIDE' };
 
     switch (res.outcome) {
         case 'underpaid':
@@ -239,10 +272,63 @@ export async function fulfillRidePayg(input: FulfillmentInput): Promise<Fulfillm
     }
 }
 
+export async function fulfillRideTopup(input: FulfillmentInput): Promise<FulfillmentOutcome> {
+    const bad = invalid(input);
+    if (bad) return bad;
+    const prisma = input.prisma as RidesClient;
+    const deps = { prisma, log: input.log };
+    const res = await confirmTopupOnPayment(prisma, {
+        tenantId: input.tenantId, rideId: input.entityId, reference: input.reference, amountMinor: input.amountMinor, currency: input.currency, transactionId: input.transactionId, channel: input.channel,
+    });
+    if (res.outcome === 'not_found') return { status: 'rejected', reason: 'ride_not_found' };
+    const { ride } = res;
+    const facts = { rideId: ride.id, conversationId: ride.conversationId, purpose: 'PACKAGE_TOPUP' };
+    const what = `package ride top-up (${ride.ref}, ${money(input.amountMinor, input.currency.toUpperCase())})`;
+
+    switch (res.outcome) {
+        case 'underpaid':
+            await recordPayment(input, 'payment.failed', { ...facts, reason: 'underpaid' });
+            await refuseLoudly(input, { kind: RIDE_TOPUP_KIND, what, reason: 'underpaid', context: { rideId: ride.id, customerId: ride.customerId, owedMinor: ride.topupMinor }, fresh: true });
+            await flowOutcome(input, ride.conversationId, RIDE_TOPUP_KIND, false);
+            return { status: 'rejected', reason: 'amount_insufficient' };
+        case 'confirmed':
+        case 'already_confirmed': {
+            await recordPayment(input, 'payment.succeeded', facts);
+            if (res.outcome === 'confirmed') await afterRideRequested(deps, ride);
+            else await emitRideRequested(prisma, ride);
+            const flow = await flowOutcome(input, ride.conversationId, RIDE_TOPUP_KIND, true);
+            if (res.outcome === 'already_confirmed') return { status: 'already_applied' };
+            if (flow === 'not_waiting') {
+                await notifyRideCustomer(deps, {
+                    tenantId: input.tenantId, customerId: ride.customerId, conversationId: ride.conversationId,
+                    kind: 'ride_topup.paid', text: topupReceivedText(ride.balanceAppliedMinor ?? 0, ride.currency), emailSubject: 'Your TURBO ride is confirmed',
+                });
+            }
+            return { status: 'applied' };
+        }
+        case 'refused':
+        case 'already_refused': {
+            await recordPayment(input, 'payment.succeeded', facts);
+            const fresh = res.outcome === 'refused';
+            await refuseLoudly(input, { kind: RIDE_TOPUP_KIND, what, reason: res.reason, context: { rideId: ride.id, customerId: ride.customerId, refundMinor: input.amountMinor }, fresh });
+            const flow = await flowOutcome(input, ride.conversationId, RIDE_TOPUP_KIND, false);
+            if (fresh && flow === 'not_waiting') {
+                await notifyRideCustomer(deps, {
+                    tenantId: input.tenantId, customerId: ride.customerId, conversationId: ride.conversationId,
+                    kind: 'ride_topup.not_confirmed', text: topupNotConfirmedText(input.amountMinor, input.currency.toUpperCase()), emailSubject: 'About your TURBO payment',
+                });
+            }
+            return { status: 'rejected', reason: `not_confirmed:${res.reason}` };
+        }
+    }
+}
+
 /** Safe to call more than once. */
 export function registerRidePayments(): void {
     if (!isRegisteredFulfillmentKind(RIDE_PACKAGE_KIND)) registerPaymentFulfiller(RIDE_PACKAGE_KIND, fulfillRidePackage);
     if (!isRegisteredFulfillmentKind(RIDE_PAYG_KIND)) registerPaymentFulfiller(RIDE_PAYG_KIND, fulfillRidePayg);
+    if (!isRegisteredFulfillmentKind(RIDE_TOPUP_KIND)) registerPaymentFulfiller(RIDE_TOPUP_KIND, fulfillRideTopup);
     if (!hasFlowPaymentPreparer(RIDE_PACKAGE_KIND)) registerFlowPaymentPreparer(RIDE_PACKAGE_KIND, prepareRidePackage);
     if (!hasFlowPaymentPreparer(RIDE_PAYG_KIND)) registerFlowPaymentPreparer(RIDE_PAYG_KIND, prepareRidePayg);
+    if (!hasFlowPaymentPreparer(RIDE_TOPUP_KIND)) registerFlowPaymentPreparer(RIDE_TOPUP_KIND, prepareRideTopup);
 }

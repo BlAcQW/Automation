@@ -2,12 +2,13 @@
  * Rides sweeper (background task 'ride-sweeper', every minute):
  *
  *  1. lapsed Founding holds   HELD past holdExpiresAt, unpaid       -> CANCELLED (hold_expired)
- *  2. unpaid PAYG rides       PENDING_PAYMENT past paymentExpiresAt -> CANCELLED (payment_timeout),
- *                             and that day's PAYG seat is given back, in the same transaction
- *  3. expired packages        ACTIVE past expiresAt (and no ride in progress) -> EXPIRED, with an
- *                             EXPIRY entry taking the unused rides off the balance
+ *  2. unpaid rides           PENDING_PAYMENT past paymentExpiresAt -> CANCELLED (payment_timeout):
+ *                             PAYG gives that day's seat back in the same transaction; a package
+ *                             top-up simply stops holding the balance
+ *  3. expired packages        ACTIVE past expiresAt (no ride in progress, no live top-up) -> EXPIRED,
+ *                             with an EXPIRY entry taking the unused GHS credit off the balance
  *  4. reminders, once each    "expires soon" 10 days before expiry (day 50 of 60), and
- *                             "5 rides left"
+ *                             "GHS 80 or less left"
  *
  * MULTI-PROCESS SAFE. Every change is a guarded updateMany claim (WHERE the old
  * state still holds); only the caller that sees count 1 does the follow-up
@@ -21,6 +22,7 @@ import { getRideSettings } from './settings.js';
 import { passBalance, passBalances } from './passes.js';
 import { releasePaygSlot } from './capacity.js';
 import { OPEN_STATUSES, lockCustomer } from './rides.js';
+import type { Prisma } from '@prisma/client';
 import { notifyRideCustomer, type RidesLogger } from './notify.js';
 import { expiryReminderText, lowBalanceText } from './texts.js';
 
@@ -28,7 +30,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const SWEEP_EVERY_MS = 60_000;
 const BATCH = 100;
 export const EXPIRY_REMINDER_DAYS_BEFORE = 10;
-export const LOW_BALANCE_AT = 5;
+/** "Running low" once the GHS credit left is at most this (pesewas): GHS 80. */
+export const LOW_BALANCE_AT_MINOR = 8000;
 
 export interface SweepResult {
     cancelledHolds: number;
@@ -53,7 +56,7 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
     });
     out.cancelledHolds = holds.count;
 
-    // 2. Unpaid PAYG rides give their seat back.
+    // 2. Unpaid rides (PAYG and package top-ups) stop holding a seat / the balance.
     const pending = await prisma.ride.findMany({
         where: { status: 'PENDING_PAYMENT', paidAt: null, paymentExpiresAt: { lte: now } },
         select: { id: true, tenantId: true, paygDay: true },
@@ -75,9 +78,11 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
         }
     }
 
-    // 3. Expired packages: unused rides expire with them. A ride in progress finishes first.
+    // 3. Expired packages: unused credit expires with them. A ride in progress, or a top-up whose
+    //    link is still live (its payment must find the pass active), finishes first.
+    const holdsPass = (): Prisma.RideWhereInput => ({ OR: [{ status: { in: OPEN_STATUSES } }, { status: 'PENDING_PAYMENT', paymentExpiresAt: { gt: now } }] });
     const expiring = await prisma.ridePass.findMany({
-        where: { status: 'ACTIVE', expiresAt: { lte: now }, rides: { none: { status: { in: OPEN_STATUSES } } } },
+        where: { status: 'ACTIVE', expiresAt: { lte: now }, rides: { none: holdsPass() } },
         select: { id: true, tenantId: true, customerId: true },
         take: BATCH,
     });
@@ -88,13 +93,13 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
                 // customer lock) must finish first: expiring under it would let its
                 // completion deduct below zero.
                 await lockCustomer(tx, p.customerId);
-                const open = await tx.ride.count({ where: { tenantId: p.tenantId, passId: p.id, status: { in: OPEN_STATUSES } } });
+                const open = await tx.ride.count({ where: { tenantId: p.tenantId, passId: p.id, ...holdsPass() } });
                 if (open > 0) return false;
                 const claim = await tx.ridePass.updateMany({ where: { id: p.id, tenantId: p.tenantId, status: 'ACTIVE' }, data: { status: 'EXPIRED' } });
                 if (claim.count !== 1) return false;
-                const { remaining } = await passBalance(tx, p.tenantId, p.id);
-                if (remaining > 0) {
-                    await tx.ridePassEntry.create({ data: { tenantId: p.tenantId, passId: p.id, type: 'EXPIRY', delta: -remaining, note: 'Package expired' } });
+                const { remainingMinor } = await passBalance(tx, p.tenantId, p.id);
+                if (remainingMinor > 0) {
+                    await tx.ridePassEntry.create({ data: { tenantId: p.tenantId, passId: p.id, type: 'EXPIRY', amountMinor: -remainingMinor, note: 'Package expired' } });
                 }
                 return true;
             });
@@ -107,25 +112,25 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
     // 4a. "Expires soon", once.
     const soon = await prisma.ridePass.findMany({
         where: { status: 'ACTIVE', expiryReminderSentAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + EXPIRY_REMINDER_DAYS_BEFORE * DAY_MS) } },
-        select: { id: true, tenantId: true, customerId: true, conversationId: true, expiresAt: true },
+        select: { id: true, tenantId: true, customerId: true, conversationId: true, expiresAt: true, currency: true },
         take: BATCH,
     });
     for (const p of soon) {
         const claim = await prisma.ridePass.updateMany({ where: { id: p.id, tenantId: p.tenantId, expiryReminderSentAt: null }, data: { expiryReminderSentAt: now } });
         if (claim.count !== 1) continue;
-        const { remaining } = await passBalance(prisma, p.tenantId, p.id);
-        if (remaining <= 0) continue;
+        const { remainingMinor } = await passBalance(prisma, p.tenantId, p.id);
+        if (remainingMinor <= 0) continue;
         await notifyRideCustomer({ prisma, log }, {
             tenantId: p.tenantId, customerId: p.customerId, conversationId: p.conversationId, kind: 'ride_pass.expiry_reminder',
-            text: expiryReminderText({ expiresAt: p.expiresAt!, remaining, timeZone: await zone(p.tenantId) }), emailSubject: 'Your TURBO package expires soon',
+            text: expiryReminderText({ expiresAt: p.expiresAt!, remainingMinor, currency: p.currency, timeZone: await zone(p.tenantId) }), emailSubject: 'Your TURBO package expires soon',
         });
         out.expiryReminders++;
     }
 
-    // 4b. "5 rides left", once.
+    // 4b. "Running low" (GHS 80 or less), once.
     const active = await prisma.ridePass.findMany({
         where: { status: 'ACTIVE', lowBalanceReminderSentAt: null },
-        select: { id: true, tenantId: true, customerId: true, conversationId: true, expiresAt: true },
+        select: { id: true, tenantId: true, customerId: true, conversationId: true, expiresAt: true, currency: true },
         take: 500,
     });
     const byTenant = new Map<string, typeof active>();
@@ -133,13 +138,13 @@ export async function sweepRides(prisma: RidesClient, log: RidesLogger, now = ne
     for (const [tenantId, passes] of byTenant) {
         const balances = await passBalances(prisma, tenantId, passes.map((p) => p.id));
         for (const p of passes) {
-            const remaining = balances.get(p.id)?.remaining ?? 0;
-            if (remaining <= 0 || remaining > LOW_BALANCE_AT) continue;
+            const remainingMinor = balances.get(p.id)?.remainingMinor ?? 0;
+            if (remainingMinor <= 0 || remainingMinor > LOW_BALANCE_AT_MINOR) continue;
             const claim = await prisma.ridePass.updateMany({ where: { id: p.id, tenantId, lowBalanceReminderSentAt: null }, data: { lowBalanceReminderSentAt: now } });
             if (claim.count !== 1) continue;
             await notifyRideCustomer({ prisma, log }, {
                 tenantId, customerId: p.customerId, conversationId: p.conversationId, kind: 'ride_pass.low_balance',
-                text: lowBalanceText({ remaining, expiresAt: p.expiresAt, timeZone: await zone(tenantId) }), emailSubject: 'Your TURBO rides are running low',
+                text: lowBalanceText({ remainingMinor, currency: p.currency, expiresAt: p.expiresAt, timeZone: await zone(tenantId) }), emailSubject: 'Your TURBO ride credit is running low',
             });
             out.lowBalanceReminders++;
         }

@@ -11,6 +11,11 @@
  *
  * ACTIVATION happens ONLY here, ONLY from a verified payment (the ride_package
  * fulfiller), and is idempotent per payment reference.
+ *
+ * GHS CREDIT. A package is ride credit (creditMinor, = the price paid). The
+ * log is in signed pesewas (amountMinor): +credit on activation, -fare when a
+ * ride completes, -rest on expiry. What a new booking may use (availableMinor)
+ * is the remaining balance less the credit open bookings already hold.
  */
 import type { RidePass } from '@prisma/client';
 import type { RidesClient, RidesDb } from './db.js';
@@ -102,7 +107,7 @@ export async function holdFoundingSlot(
                     holdExpiresAt: extended,
                     conversationId: args.conversationId ?? held.conversationId,
                     ridesTotal: s.packageRides, validityDays: s.validityDays, maxKm: s.maxKm,
-                    priceMinor: s.packagePriceMinor, currency: s.currency,
+                    priceMinor: s.packagePriceMinor, creditMinor: s.packagePriceMinor, currency: s.currency,
                 },
             });
             return { ok: true, pass, reused: true } as const;
@@ -134,6 +139,7 @@ export async function holdFoundingSlot(
                 validityDays: s.validityDays,
                 maxKm: s.maxKm,
                 priceMinor: s.packagePriceMinor,
+                creditMinor: s.packagePriceMinor,
                 currency: s.currency,
                 holdExpiresAt,
                 createdAt: now,
@@ -216,10 +222,11 @@ export async function activatePassOnPayment(
                 holdExpiresAt: null,
                 cancelledAt: null,
                 cancelReason: null,
+                creditMinor: passCreditMinor(pass),
             },
         });
         await tx.ridePassEntry.create({
-            data: { tenantId: args.tenantId, passId: pass.id, type: 'PURCHASE', delta: pass.ridesTotal, reference: args.reference },
+            data: { tenantId: args.tenantId, passId: pass.id, type: 'PURCHASE', amountMinor: passCreditMinor(pass), reference: args.reference },
         });
         return { outcome: 'activated', pass: activated };
     });
@@ -227,11 +234,31 @@ export async function activatePassOnPayment(
 
 // ---------------------------------------------------------------- balance
 
-export interface PassBalance {
-    purchased: number;
-    used: number;
-    remaining: number;
+/** The GHS credit a pass carries (pesewas). Rows from before the credit change: the price paid. */
+export function passCreditMinor(p: Pick<RidePass, 'creditMinor' | 'priceMinor'>): number {
+    return p.creditMinor ?? p.priceMinor;
 }
+
+/**
+ * What a ride booked under the old ride-count packages (no balanceAppliedMinor)
+ * costs from the credit: the package's average price per ride.
+ */
+export function legacyRideFareMinor(p: Pick<RidePass, 'priceMinor' | 'ridesTotal'>): number {
+    return Math.round(p.priceMinor / Math.max(1, p.ridesTotal));
+}
+
+export interface PassBalance {
+    /** Credit added (PURCHASE + positive adjustments), pesewas. */
+    purchasedMinor: number;
+    /** Deducted by completed rides, pesewas (positive). */
+    usedMinor: number;
+    /** SUM of every entry (pesewas): what is left on the pass. */
+    remainingMinor: number;
+    /** Completed rides that deducted (count of RIDE entries). */
+    ridesTaken: number;
+}
+
+const EMPTY_BALANCE: PassBalance = { purchasedMinor: 0, usedMinor: 0, remainingMinor: 0, ridesTaken: 0 };
 
 export async function passBalances(db: RidesDb, tenantId: string, passIds: string[]): Promise<Map<string, PassBalance>> {
     const out = new Map<string, PassBalance>();
@@ -239,15 +266,20 @@ export async function passBalances(db: RidesDb, tenantId: string, passIds: strin
     const rows = await db.ridePassEntry.groupBy({
         by: ['passId', 'type'],
         where: { tenantId, passId: { in: passIds } },
-        _sum: { delta: true },
+        _sum: { amountMinor: true },
+        _count: { _all: true },
     });
-    for (const id of passIds) out.set(id, { purchased: 0, used: 0, remaining: 0 });
+    for (const id of passIds) out.set(id, { ...EMPTY_BALANCE });
     for (const r of rows) {
         const b = out.get(r.passId)!;
-        const sum = r._sum.delta ?? 0;
-        if (r.type === 'PURCHASE') b.purchased += sum;
-        if (r.type === 'RIDE') b.used += -sum;
-        b.remaining += sum;
+        const sum = r._sum.amountMinor ?? 0;
+        const next: PassBalance = {
+            purchasedMinor: b.purchasedMinor + (r.type === 'PURCHASE' || (r.type === 'ADJUSTMENT' && sum > 0) ? sum : 0),
+            usedMinor: b.usedMinor + (r.type === 'RIDE' ? -sum : 0),
+            remainingMinor: b.remainingMinor + sum,
+            ridesTaken: b.ridesTaken + (r.type === 'RIDE' ? r._count._all : 0),
+        };
+        out.set(r.passId, next);
     }
     return out;
 }
@@ -256,13 +288,44 @@ export async function passBalance(db: RidesDb, tenantId: string, passId: string)
     return (await passBalances(db, tenantId, [passId])).get(passId)!;
 }
 
-export interface CustomerBalance {
+/** Ride states that hold credit until they complete or are cancelled. */
+const OPEN_RIDE_STATUSES = ['REQUESTED', 'ASSIGNED', 'EN_ROUTE'] as const;
+
+/**
+ * Credit reserved by the pass's rides that will deduct when they complete: open
+ * rides, and a top-up ride whose payment link is still live. A ride that is
+ * excluded (the one being re-quoted or confirmed) does not count.
+ */
+export async function reservedMinor(
+    db: RidesDb,
+    pass: Pick<RidePass, 'id' | 'tenantId' | 'priceMinor' | 'ridesTotal'>,
+    now: Date,
+    excludeRideId?: string,
+): Promise<number> {
+    const rides = await db.ride.findMany({
+        where: {
+            tenantId: pass.tenantId, passId: pass.id, kind: 'PACKAGE',
+            ...(excludeRideId ? { id: { not: excludeRideId } } : {}),
+            OR: [{ status: { in: [...OPEN_RIDE_STATUSES] } }, { status: 'PENDING_PAYMENT', paymentExpiresAt: { gt: now } }],
+        },
+        select: { balanceAppliedMinor: true },
+        take: 50,
+    });
+    return rides.reduce((sum, r) => sum + (r.balanceAppliedMinor ?? legacyRideFareMinor(pass)), 0);
+}
+
+/** Balance a new booking may use: what is left minus what open bookings already hold. */
+export async function availableMinor(db: RidesDb, pass: RidePass, now: Date, excludeRideId?: string): Promise<number> {
+    const [b, reserved] = await Promise.all([passBalance(db, pass.tenantId, pass.id), reservedMinor(db, pass, now, excludeRideId)]);
+    return b.remainingMinor - reserved;
+}
+
+export interface CustomerBalance extends PassBalance {
     pass: RidePass | null;
     /** True when the customer holds an ACTIVE, unexpired package. */
     active: boolean;
-    purchased: number;
-    used: number;
-    remaining: number;
+    /** remainingMinor less what open bookings hold (0 when not active). */
+    availableMinor: number;
     expiresAt: Date | null;
 }
 
@@ -273,7 +336,8 @@ export async function customerBalance(db: RidesDb, tenantId: string, customerId:
         where: { tenantId, customerId, activatedAt: { not: null } },
         orderBy: { activatedAt: 'desc' },
     }));
-    if (!pass) return { pass: null, active: false, purchased: 0, used: 0, remaining: 0, expiresAt: null };
+    if (!pass) return { pass: null, active: false, ...EMPTY_BALANCE, availableMinor: 0, expiresAt: null };
     const b = await passBalance(db, tenantId, pass.id);
-    return { pass, active: !!active, ...b, expiresAt: pass.expiresAt };
+    const available = active ? b.remainingMinor - (await reservedMinor(db, pass, now)) : 0;
+    return { pass, active: !!active, ...b, availableMinor: available, expiresAt: pass.expiresAt };
 }

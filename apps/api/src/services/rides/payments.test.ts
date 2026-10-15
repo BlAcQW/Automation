@@ -2,13 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const m = vi.hoisted(() => ({
     activatePassOnPayment: vi.fn(), holdFoundingSlot: vi.fn(), recordPassLink: vi.fn(),
-    confirmPaygOnPayment: vi.fn(), reservePaygRide: vi.fn(), recordRideLink: vi.fn(), setRideStatus: vi.fn(),
+    confirmPaygOnPayment: vi.fn(), reservePaygRide: vi.fn(), recordRideLink: vi.fn(), setRideStatus: vi.fn(), reserveTopupRide: vi.fn(), confirmTopupOnPayment: vi.fn(),
     sendActivationWelcome: vi.fn(), afterRideRequested: vi.fn(), resolveConversationCustomer: vi.fn(), emitPassActivated: vi.fn(), emitRideRequested: vi.fn(),
     advanceFlowOnPackPayment: vi.fn(), publishEventOnce: vi.fn(), raiseAlert: vi.fn(), createNotification: vi.fn(),
     notifyRideCustomer: vi.fn(), getRideSettings: vi.fn(),
 }));
 vi.mock('./passes.js', () => ({ activatePassOnPayment: m.activatePassOnPayment, holdFoundingSlot: m.holdFoundingSlot, recordPassLink: m.recordPassLink }));
-vi.mock('./rides.js', () => ({ confirmPaygOnPayment: m.confirmPaygOnPayment, reservePaygRide: m.reservePaygRide, recordRideLink: m.recordRideLink, setRideStatus: m.setRideStatus }));
+vi.mock('./rides.js', () => ({
+    confirmPaygOnPayment: m.confirmPaygOnPayment, reservePaygRide: m.reservePaygRide, recordRideLink: m.recordRideLink, setRideStatus: m.setRideStatus,
+    reserveTopupRide: m.reserveTopupRide, confirmTopupOnPayment: m.confirmTopupOnPayment,
+}));
 vi.mock('./operations.js', () => ({ sendActivationWelcome: m.sendActivationWelcome, afterRideRequested: m.afterRideRequested, resolveConversationCustomer: m.resolveConversationCustomer }));
 vi.mock('./events.js', () => ({ emitPassActivated: m.emitPassActivated, emitRideRequested: m.emitRideRequested }));
 vi.mock('./settings.js', () => ({ getRideSettings: m.getRideSettings }));
@@ -18,7 +21,7 @@ vi.mock('../alerts.js', () => ({ raiseAlert: m.raiseAlert }));
 vi.mock('../notifications.js', () => ({ createNotification: m.createNotification }));
 vi.mock('./notify.js', () => ({ notifyRideCustomer: m.notifyRideCustomer }));
 
-import { fulfillRidePackage, fulfillRidePayg, prepareRidePackage, prepareRidePayg, registerRidePayments } from './payments.js';
+import { fulfillRidePackage, fulfillRidePayg, fulfillRideTopup, prepareRidePackage, prepareRidePayg, prepareRideTopup, registerRidePayments } from './payments.js';
 import { getPaymentFulfiller, resetPaymentFulfillersForTests } from '../payment-fulfillers.js';
 import { hasFlowPaymentPreparer, resetFlowPaymentPreparersForTests } from '../flow-ports.js';
 
@@ -136,6 +139,38 @@ describe('ride_payg fulfiller', () => {
     });
 });
 
+describe('ride_topup fulfiller (a package ride the balance did not cover)', () => {
+    const topRide = { id: 'r2', ref: 'TR-2', customerId: 'c1', conversationId: 'conv1', balanceAppliedMinor: 1000, topupMinor: 600, currency: 'GHS' };
+    it('confirmed: ride requested, flow success; when the chat moved on the customer is told what the balance pays', async () => {
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'confirmed', ride: topRide });
+        m.advanceFlowOnPackPayment.mockResolvedValue('not_waiting');
+        expect(await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 600 }))).toEqual({ status: 'applied' });
+        expect(m.confirmTopupOnPayment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ rideId: 'r2', reference: 'ref1', amountMinor: 600 }));
+        expect(m.afterRideRequested).toHaveBeenCalledWith(expect.anything(), topRide);
+        expect(m.publishEventOnce).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ type: 'payment.succeeded', payload: expect.objectContaining({ purpose: 'PACKAGE_TOPUP' }) }), expect.anything());
+        expect(m.advanceFlowOnPackPayment).toHaveBeenCalledWith(expect.anything(), { conversationId: 'conv1', kind: 'ride_topup', success: true });
+        expect(m.notifyRideCustomer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'ride_topup.paid', text: expect.stringMatching(/GHS 10 from your balance is deducted when the ride is completed/) }));
+    });
+    it('refused after a lapsed hold (balance changed): loud alert naming the GHS amount to refund', async () => {
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'refused', ride: topRide, reason: 'balance_changed' });
+        m.advanceFlowOnPackPayment.mockResolvedValue('not_waiting');
+        expect(await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 600 }))).toEqual({ status: 'rejected', reason: 'not_confirmed:balance_changed' });
+        expect(m.raiseAlert).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+            kind: 'ride_topup.not_applied', severity: 'critical', message: expect.stringMatching(/GHS 6 arrived but was not applied \(balance_changed\)\. Refund it/),
+        }));
+        expect(m.createNotification).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ message: expect.stringMatching(/Please refund GHS 6\./) }));
+        expect(m.notifyRideCustomer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: 'ride_topup.not_confirmed' }));
+    });
+    it('underpaid and redelivery', async () => {
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'underpaid', ride: topRide });
+        expect(await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 100 }))).toEqual({ status: 'rejected', reason: 'amount_insufficient' });
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'already_confirmed', ride: topRide });
+        expect(await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 600 }))).toEqual({ status: 'already_applied' });
+        m.confirmTopupOnPayment.mockResolvedValue({ outcome: 'not_found' });
+        expect(await fulfillRideTopup(input({ entityId: 'r2', amountMinor: 600 }))).toEqual({ status: 'rejected', reason: 'ride_not_found' });
+    });
+});
+
 describe('preparers', () => {
     const prep = (over: Record<string, unknown> = {}) => ({
         prisma: {} as any, tenantId: 't1', conversationId: 'conv1', customerPhone: '233241234567', kind: 'ride_package',
@@ -174,6 +209,19 @@ describe('preparers', () => {
         if (r.ok) await r.onFailed?.();
         expect(m.setRideStatus).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ rideId: 'r9', status: 'CANCELLED' }));
     });
+
+    it('top-up: the link amount is the difference; the fare shown is checked too', async () => {
+        const vars = { pickup_lat: '5.65', pickup_lng: '-0.18', pickup_label: 'Gate', trip_dest: 'Library', trip_dest_lat: '5.66', trip_dest_lng: '-0.19', trip_dest_id: 'd2', pkg_fare: '16' };
+        m.reserveTopupRide.mockResolvedValue({ ok: true, ride: { id: 'r7' }, reused: false });
+        const r = await prepareRideTopup(prep({ kind: 'ride_topup', amount: 6, vars }));
+        expect(r).toMatchObject({ ok: true, entityId: 'r7' });
+        expect(m.reserveTopupRide).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ customerId: 'c1', expectedTopupMinor: 600, expectedFareMinor: 1600 }));
+        if (r.ok) await r.onCreated({ reference: 'ref7', authorizationUrl: 'u' });
+        expect(m.recordRideLink).toHaveBeenCalledWith(expect.anything(), 't1', 'r7', 'ref7');
+        m.reserveTopupRide.mockResolvedValue({ ok: false, reason: 'fare_changed' });
+        expect(await prepareRideTopup(prep({ kind: 'ride_topup', amount: 6, vars }))).toEqual({ ok: false, reason: 'fare_changed' });
+        expect(await prepareRideTopup(prep({ kind: 'ride_topup', amount: 6, vars: {} }))).toEqual({ ok: false, reason: 'no_trip' });
+    });
 });
 
 describe('registerRidePayments', () => {
@@ -184,6 +232,7 @@ describe('registerRidePayments', () => {
         registerRidePayments();
         expect(getPaymentFulfiller('ride_package')).toBe(fulfillRidePackage);
         expect(getPaymentFulfiller('ride_payg')).toBe(fulfillRidePayg);
-        expect(hasFlowPaymentPreparer('ride_package') && hasFlowPaymentPreparer('ride_payg')).toBe(true);
+        expect(getPaymentFulfiller('ride_topup')).toBe(fulfillRideTopup);
+        expect(hasFlowPaymentPreparer('ride_package') && hasFlowPaymentPreparer('ride_payg') && hasFlowPaymentPreparer('ride_topup')).toBe(true);
     });
 });

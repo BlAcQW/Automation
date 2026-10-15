@@ -61,20 +61,24 @@ export const EVENT_TYPES = Object.freeze({
         conversationId: 'string', customerId: 'string | null',
         vars: 'object (values the flow collected, from an allowlist derived from the definition: menu set values, choose value/label/attrs, declared produces; never free-text ask answers, locations, payment url/reference or phone)',
     }),
-    'ride.requested': doc('A ride was requested (a package ride booked, or a PAYG ride paid)', {
+    'ride.requested': doc('A ride was requested (a package ride booked, a package top-up paid, or a PAYG ride paid)', {
         rideId: 'string', ref: 'string (customer-facing, e.g. TR-7K2Q9M)', kind: "'PACKAGE' | 'PAYG'", customerId: 'string',
-        distanceKm: 'number (estimated road distance)', fare: 'number (minor units; 0 for package rides)', currency: 'string',
+        distanceKm: 'number (estimated road distance, pickup to destination)', fare: 'number (the band fare in GHS minor units (pesewas), both kinds)', currency: 'string',
         source: "'WHATSAPP' | 'APP' | 'CONSOLE'",
+        priceDistanceKm: 'number | null (the distance the fare was priced on)', priceBasis: "'REFERENCE' | 'PICKUP' | null", fareBand: 'string | null (e.g. "0–6 km")',
+        balanceApplied: 'number | null (package: credit reserved, minor units; deducted at completion)',
+        topup: 'number | null (package: paid by top-up, minor units)', waived: 'number | null (package: difference under GHS 2 waived, minor units)',
     }),
     'ride.assigned': doc('A driver was assigned to a ride', {
         rideId: 'string', ref: 'string', kind: "'PACKAGE' | 'PAYG'", customerId: 'string', driverId: 'string',
     }),
-    'ride.completed': doc('A ride was marked completed (a package ride deducts one ride here, once)', {
+    'ride.completed': doc('A ride was marked completed (a package ride deducts its fare from the GHS credit here, once)', {
         rideId: 'string', ref: 'string', kind: "'PACKAGE' | 'PAYG'", customerId: 'string', passId: 'string | null',
-        ridesRemaining: 'number | null (package balance after this ride; null for PAYG)',
+        deducted: 'number | null (package: GHS minor units taken off the credit; null for PAYG)',
+        balanceAfter: 'number | null (package: GHS credit left after this ride, minor units; null for PAYG)',
     }),
-    'ride_pass.activated': doc('A ride package was activated by a verified payment', {
-        passId: 'string', customerId: 'string', rides: 'number', expiresAt: 'ISO date', reference: 'string (payment reference)',
+    'ride_pass.activated': doc('A ride package (GHS ride credit) was activated by a verified payment', {
+        passId: 'string', customerId: 'string', credit: 'number (GHS minor units of ride credit)', currency: 'string', expiresAt: 'ISO date', reference: 'string (payment reference)',
     }),
 } as const satisfies Record<string, EventTypeDoc>);
 

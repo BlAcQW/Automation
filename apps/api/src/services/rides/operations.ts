@@ -6,7 +6,7 @@
 import type { Ride, RidePass } from '@prisma/client';
 import type { RidesClient } from './db.js';
 import { getRideSettings } from './settings.js';
-import { passBalance } from './passes.js';
+import { passBalance, passCreditMinor } from './passes.js';
 import {
     assignDriver, requestPackageRide, setRideStatus,
     type Place, type RequestRideResult, type RideWithRelations, type StatusChange,
@@ -14,7 +14,7 @@ import {
 import { emitRideAssigned, emitRideCompleted, emitRideRequested } from './events.js';
 import { notifyRideCustomer, smsDriver, type NotifyDeps } from './notify.js';
 import {
-    driverAssignedText, driverSmsText, packageActivatedText, rideCancelledText, rideCompletedText,
+    driverAssignedText, driverSmsText, money, packageActivatedText, rideCancelledText, rideCompletedText,
 } from './texts.js';
 import { createNotification } from '../notifications.js';
 import { raiseAlert } from '../alerts.js';
@@ -56,14 +56,18 @@ export async function resolveConversationCustomer(
 
 export async function afterRideRequested(deps: OpsDeps, ride: Ride): Promise<void> {
     await emitRideRequested(deps.prisma, ride);
-    await staffNotice(deps, ride.tenantId, 'New ride request', `${ride.ref}: ${ride.pickupLabel} → ${ride.destinationLabel} (${ride.kind === 'PAYG' ? 'PAYG' : 'Package'})`, {
+    const how = ride.kind === 'PAYG' ? 'PAYG' : `Package${(ride.topupMinor ?? 0) > 0 ? ' + top-up' : ''}`;
+    await staffNotice(deps, ride.tenantId, 'New ride request', `${ride.ref}: ${ride.pickupLabel} → ${ride.destinationLabel} (${how}, ${money(ride.fareMinor, ride.currency)})`, {
         kind: 'ride.requested', rideId: ride.id,
     });
 }
 
 export async function bookPackageRide(
     deps: OpsDeps,
-    args: { tenantId: string; customerId: string; conversationId?: string | null; pickup: Place; destination: Place; source?: 'WHATSAPP' | 'APP' | 'CONSOLE' },
+    args: {
+        tenantId: string; customerId: string; conversationId?: string | null; pickup: Place; destination: Place;
+        expectedFareMinor?: number; source?: 'WHATSAPP' | 'APP' | 'CONSOLE';
+    },
 ): Promise<RequestRideResult> {
     const result = await requestPackageRide(deps.prisma, args);
     if (result.ok) await afterRideRequested(deps, result.ride);
@@ -103,27 +107,35 @@ export async function changeRideStatus(
     if (!result.ok || !result.changed) return result;
     const ride: RideWithRelations = result.ride;
     if (args.status === 'COMPLETED') {
-        await emitRideCompleted(deps.prisma, ride, result.remaining);
+        await emitRideCompleted(deps.prisma, ride, result.deductedMinor, result.balanceAfterMinor);
+        const pkg = ride.kind === 'PACKAGE' && result.deductedMinor !== null && result.balanceAfterMinor !== null
+            ? { deductedMinor: result.deductedMinor, balanceAfterMinor: result.balanceAfterMinor, currency: ride.currency }
+            : null;
         await notifyRideCustomer(deps, {
             tenantId: ride.tenantId, customerId: ride.customerId, conversationId: ride.conversationId,
-            kind: 'ride.completed', text: rideCompletedText(result.remaining), emailSubject: 'Your TURBO ride is complete',
+            kind: 'ride.completed', text: rideCompletedText(pkg), emailSubject: 'Your TURBO ride is complete',
         });
     }
     if (args.status === 'CANCELLED') {
-        if (result.refundDue) {
+        const refundMinor = result.refundDue ? result.refundMinor ?? 0 : null;
+        if (refundMinor !== null) {
+            const amount = money(refundMinor, ride.currency);
+            const isTopup = ride.kind === 'PACKAGE';
+            const kind = isTopup ? 'ride_topup.refund_due' : 'ride_payg.refund_due';
+            const what = isTopup ? `A package ride (${ride.ref}) whose top-up was paid` : `A paid PAYG ride (${ride.ref})`;
             await raiseAlert(deps.prisma, {
-                kind: 'ride_payg.refund_due', severity: 'warning', tenantId: ride.tenantId,
-                message: `A paid PAYG ride (${ride.ref}) was cancelled. Refund it from your Paystack dashboard.`,
-                context: { rideId: ride.id, reference: ride.paymentReference, by: args.by ?? 'ops' },
-                dedupeKey: `ride_payg.refund_due:${ride.tenantId}:${ride.id}`,
+                kind, severity: 'warning', tenantId: ride.tenantId,
+                message: `${what} was cancelled. Refund ${amount} from your Paystack dashboard.`,
+                context: { rideId: ride.id, reference: ride.paymentReference, refundMinor, by: args.by ?? 'ops' },
+                dedupeKey: `${kind}:${ride.tenantId}:${ride.id}`,
             });
-            await staffNotice(deps, ride.tenantId, 'PAYG refund due', `Ride ${ride.ref} was paid and then cancelled. Refund reference ${ride.paymentReference ?? '-'}.`, { kind: 'ride.refund_due', rideId: ride.id });
+            await staffNotice(deps, ride.tenantId, `${isTopup ? 'Top-up' : 'PAYG'} refund due: ${amount}`, `Ride ${ride.ref} was paid and then cancelled. Refund ${amount}, reference ${ride.paymentReference ?? '-'}.`, { kind: 'ride.refund_due', rideId: ride.id });
         }
         // The customer cancelled in chat (the flow replies there); ops cancellations are announced.
         if (args.by !== 'customer' && result.previousStatus !== 'PENDING_PAYMENT') {
             await notifyRideCustomer(deps, {
                 tenantId: ride.tenantId, customerId: ride.customerId, conversationId: ride.conversationId,
-                kind: 'ride.cancelled', text: rideCancelledText({ ref: ride.ref, paidPayg: result.refundDue }), emailSubject: 'Your TURBO ride was cancelled',
+                kind: 'ride.cancelled', text: rideCancelledText({ ref: ride.ref, refundMinor, currency: ride.currency }), emailSubject: 'Your TURBO ride was cancelled',
             });
         }
     }
@@ -139,6 +151,6 @@ export async function sendActivationWelcome(deps: OpsDeps, pass: RidePass): Prom
     await notifyRideCustomer(deps, {
         tenantId: pass.tenantId, customerId: pass.customerId, conversationId: pass.conversationId,
         kind: 'ride_pass.activated', emailSubject: 'Welcome to TURBO',
-        text: packageActivatedText({ name: customer?.name ?? null, rides: pass.ridesTotal, days: pass.validityDays, maxKm: pass.maxKm, balance: balance.remaining }),
+        text: packageActivatedText({ name: customer?.name ?? null, creditMinor: passCreditMinor(pass), days: pass.validityDays, balanceMinor: balance.remainingMinor, currency: pass.currency }),
     });
 }

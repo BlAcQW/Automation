@@ -18,6 +18,20 @@ const securityHeaders = [
     { key: 'X-DNS-Prefetch-Control', value: 'on' },
 ];
 
+// Signed-in and transactional routes: never in search results. Mirrors
+// PRIVATE_ROUTES in src/lib/site.ts (which feeds robots.txt). robots.txt only
+// stops crawling; this header stops indexing of anything already linked.
+const NOINDEX_ROUTES = [
+    'dashboard', 'bookings', 'services', 'availability', 'conversations', 'customers',
+    'channels', 'whatsapp', 'templates', 'settings', 'orders', 'products', 'inventory',
+    'money', 'admin', 'design-system', 'pay', 'track', 'c', 'forgot-password',
+    'reset-password', 'verify-email', 'offline', 'api',
+];
+const noindexHeaders = NOINDEX_ROUTES.flatMap((r) => [
+    { source: `/${r}`, headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] },
+    { source: `/${r}/:path*`, headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }] },
+]);
+
 const nextConfig = {
     reactStrictMode: true,
     // The shared packages (packages/*) are source-only TypeScript, resolved
@@ -27,7 +41,7 @@ const nextConfig = {
     experimental: { externalDir: true },
     poweredByHeader: false,
     async headers() {
-        return [{ source: '/:path*', headers: securityHeaders }];
+        return [{ source: '/:path*', headers: securityHeaders }, ...noindexHeaders];
     },
     async rewrites() {
         return [

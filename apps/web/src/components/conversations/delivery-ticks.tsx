@@ -18,7 +18,7 @@ import type { MessageStatus } from './types';
  */
 export function DeliveryTicks({ status }: { status?: MessageStatus | null }) {
     if (status === 'FAILED') {
-        return <AlertCircle className="w-3.5 h-3.5 text-red-500" aria-label="Failed to send" />;
+        return <AlertCircle className="w-3.5 h-3.5 text-error-fg" aria-label="Failed to send" />;
     }
     if (!status) {
         return <Clock className="w-3 h-3 opacity-50" aria-label="Sending" />;
@@ -29,7 +29,7 @@ export function DeliveryTicks({ status }: { status?: MessageStatus | null }) {
     const read = status === 'READ';
     return (
         <CheckCheck
-            className={cn('w-3.5 h-3.5', read ? 'text-sky-400' : 'opacity-70')}
+            className={cn('w-3.5 h-3.5', read ? 'text-primary' : 'opacity-70')}
             aria-label={read ? 'Read' : 'Delivered'}
         />
     );

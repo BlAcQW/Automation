@@ -7,11 +7,13 @@ interface ChatComposerProps {
     onSend: (content: string) => Promise<void>;
     onSendMedia?: (file: File, caption: string) => Promise<void>;
     disabled?: boolean;
+    /** Lets the thread's "Take over" button put the cursor in the message box. */
+    inputRef?: React.Ref<HTMLInputElement>;
 }
 
 const ACTION_BTN =
-    'h-11 w-11 shrink-0 flex items-center justify-center rounded-full text-slate-500 ' +
-    'hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50';
+    'h-11 w-11 shrink-0 flex items-center justify-center rounded-full text-muted transition-colors duration-ui ' +
+    'hover:bg-surface-2 hover:text-text disabled:opacity-50';
 
 /** Matches the API's accepted types (api services/media.ts). */
 const ACCEPT = [
@@ -22,7 +24,7 @@ const ACCEPT = [
 ].join(',');
 
 /** Rounded message input + send button for the chat thread. */
-export function ChatComposer({ onSend, onSendMedia, disabled }: ChatComposerProps) {
+export function ChatComposer({ onSend, onSendMedia, disabled, inputRef }: ChatComposerProps) {
     const [value, setValue] = useState('');
     const [sending, setSending] = useState(false);
     const [pending, setPending] = useState<File | null>(null);
@@ -59,17 +61,17 @@ export function ChatComposer({ onSend, onSendMedia, disabled }: ChatComposerProp
     return (
         <form
             onSubmit={submit}
-            className="flex flex-col gap-2 p-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+            className="flex flex-col gap-2 border-t border-border bg-surface p-2 sm:p-3"
         >
             {pending ? (
-                <div className="flex items-center gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm">
-                    <Paperclip className="w-4 h-4 shrink-0 opacity-70" />
-                    <span className="truncate flex-1">{pending.name}</span>
+                <div className="flex items-center gap-2 rounded-control bg-surface-2 py-1 pl-3 pr-1 text-[15px] text-text">
+                    <Paperclip className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+                    <span className="flex-1 truncate">{pending.name}</span>
                     <button
                         type="button"
                         onClick={() => setPending(null)}
                         aria-label="Remove attachment"
-                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
+                        className="flex h-11 w-11 items-center justify-center rounded-control text-muted hover:bg-border/60 hover:text-text"
                     >
                         <X className="w-4 h-4" />
                     </button>
@@ -114,24 +116,27 @@ export function ChatComposer({ onSend, onSendMedia, disabled }: ChatComposerProp
                 <Home className="w-5 h-5" />
             </button>
             */}
+            <label htmlFor="chat-composer-input" className="sr-only">
+                {pending ? 'Caption' : 'Message'}
+            </label>
             <input
+                id="chat-composer-input"
+                ref={inputRef}
                 type="text"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={pending ? 'Add a caption…' : 'Type a message…'}
                 disabled={disabled}
-                className="flex-1 h-11 px-4 rounded-lg bg-slate-100 dark:bg-slate-800 border-0 text-sm
-                           text-slate-900 dark:text-white placeholder:text-slate-400
-                           focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50"
+                className="h-12 min-w-0 flex-1 rounded-full border border-border bg-bg px-4 text-base text-text placeholder:text-muted/80
+                           transition-[border-color,box-shadow] duration-ui focus:border-primary focus:outline-none focus:ring-[3px] focus:ring-primary/15 disabled:opacity-50"
             />
             <button
                 type="submit"
                 disabled={(!value.trim() && !pending) || sending || disabled}
                 aria-label="Send message"
-                className="h-11 w-11 shrink-0 flex items-center justify-center rounded-[3px]
-                           bg-bookly-emerald-600 hover:bg-bookly-emerald-700 text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,.14)]
-                           transition-[transform,background-color] active:scale-95
-                           disabled:opacity-40 disabled:pointer-events-none"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-fg shadow-soft
+                           transition-[transform,background-color] duration-ui hover:bg-primary-hover active:scale-[0.97]
+                           disabled:pointer-events-none disabled:opacity-40"
             >
                 {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
             </button>

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { ArrowLeft, Bot, Phone, Loader2, MessageCircle } from 'lucide-react';
-import { Avatar, cn } from '@bookingflow/ui';
+import { ArrowLeft, Bot, Hand, MessageCircle, Phone, UserRound } from 'lucide-react';
+import { Avatar, Button, EmptyState, Skeleton, cn } from '@bookingflow/ui';
 import type { Conversation, Message } from './types';
 import { MessageBubble } from './message-bubble';
 import { ChatComposer } from './chat-composer';
@@ -20,7 +20,7 @@ interface ChatThreadProps {
     onReact?: (messageId: string, emoji: string) => void;
 }
 
-/** The right-hand chat panel: header, message stream, composer. */
+/** The right-hand chat panel: header, who's replying, message stream, composer. */
 export function ChatThread({
     conversation,
     messages,
@@ -33,78 +33,122 @@ export function ChatThread({
     onReact,
 }: ChatThreadProps) {
     const endRef = useRef<HTMLDivElement>(null);
+    const composerRef = useRef<HTMLInputElement>(null);
+    // Messages already on screen when the thread opened don't animate; only
+    // ones that arrive while it's open slide in.
+    const seenRef = useRef<Set<string> | null>(null);
 
     useEffect(() => {
-        endRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+        seenRef.current = null;
+    }, [conversation.id]);
+
+    useEffect(() => {
+        endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        if (!loading) {
+            const seen = seenRef.current ?? new Set<string>();
+            messages.forEach((m) => seen.add(m.id));
+            seenRef.current = seen;
+        }
+    }, [messages, loading]);
 
     const title = conversationTitle(conversation);
     const channel = channelLabel(conversation);
     const isHuman = conversation.state === 'HUMAN_ACTIVE';
+    const seen = seenRef.current;
 
     return (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col">
             {/* Header */}
-            <div className="flex items-center gap-3 px-3 sm:px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                <button
-                    onClick={onBack}
-                    aria-label="Back to conversations"
-                    className="md:hidden -ml-1 p-2 rounded-[3px] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                    <ArrowLeft className="w-5 h-5" />
-                </button>
+            <div className="flex items-center gap-2 border-b border-border bg-surface px-2 py-2 sm:gap-3 sm:px-4">
+                <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back to conversations" className="md:hidden">
+                    <ArrowLeft className="h-5 w-5" />
+                </Button>
                 <Avatar name={conversation.customerName} size="md" status={isHuman ? 'busy' : 'online'} />
-                <div className="flex-1 min-w-0">
-                    <h2 className="font-medium tracking-[-0.02em] text-sm text-slate-900 dark:text-white truncate">{title}</h2>
-                    <p className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-[16px] font-bold text-text">{title}</h2>
+                    <p className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted">
                         {channel
-                            ? <span className="shrink-0 rounded-[3px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">{channel}</span>
-                            : <Phone className="w-3 h-3 shrink-0" />}
-                        <span className="truncate">{contactLine(conversation)}</span>
-                        <span
-                            className={cn(
-                                'ml-1 inline-flex items-center rounded-[3px] px-1.5 py-0.5 text-[11px] font-medium',
-                                isHuman
-                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-                            )}
-                        >
-                            {isHuman ? 'Human' : 'Bot'}
-                        </span>
+                            ? <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[12px] font-semibold">{channel}</span>
+                            : <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+                        <span className="truncate tabular-nums">{contactLine(conversation)}</span>
                     </p>
                 </div>
-                {isHuman && (
-                    <button
+                {isHuman ? (
+                    <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={onResumeBot}
-                        disabled={resuming}
-                        className="shrink-0 inline-flex items-center gap-1.5 rounded-[3px] px-3 py-1.5 text-xs font-medium
-                                   bg-bookly-emerald-600 hover:bg-bookly-emerald-700 text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,.14)]
-                                   disabled:opacity-50 transition-colors"
+                        isLoading={resuming}
+                        loadingText="Handing back…"
+                        className="shrink-0"
                     >
-                        {resuming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                        Resume Bot
-                    </button>
+                        <Bot className="h-4 w-4" aria-hidden />
+                        <span className="sm:hidden">Hand back</span>
+                        <span className="hidden sm:inline">Hand back to assistant</span>
+                    </Button>
+                ) : (
+                    <Button
+                        size="sm"
+                        onClick={() => composerRef.current?.focus()}
+                        className="shrink-0"
+                        title="Your next message pauses the assistant so you can reply yourself"
+                    >
+                        <Hand className="h-4 w-4" aria-hidden />
+                        Take over
+                    </Button>
                 )}
             </div>
 
+            {/* Who's replying: always words + icon, never colour alone. */}
+            <div
+                role="status"
+                className={cn(
+                    'flex items-center gap-2 px-4 py-2 text-[14px] font-medium',
+                    isHuman ? 'bg-warning-soft text-warning-fg' : 'bg-primary-soft text-primary',
+                )}
+            >
+                {isHuman ? <UserRound className="h-4 w-4 shrink-0" aria-hidden /> : <Bot className="h-4 w-4 shrink-0" aria-hidden />}
+                <span className="min-w-0">
+                    {isHuman
+                        ? 'You are replying. Your assistant is paused for this chat.'
+                        : 'Your assistant is replying. Send a message to take over.'}
+                </span>
+            </div>
+
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 bg-slate-50 dark:bg-slate-950">
+            <div className="flex-1 space-y-2.5 overflow-y-auto bg-bg p-3 sm:p-4" aria-busy={loading || undefined}>
                 {loading ? (
-                    <div className="flex justify-center py-10">
-                        <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
+                    <div className="space-y-3" aria-label="Loading messages">
+                        {[52, 68, 40, 60].map((w, i) => (
+                            <div key={i} className={cn('flex', i % 2 ? 'justify-end' : 'justify-start')}>
+                                <Skeleton className="h-12 rounded-card" style={{ width: `${w}%` }} />
+                            </div>
+                        ))}
                     </div>
                 ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center text-slate-400">
-                        <MessageCircle className="w-10 h-10 mb-2 text-slate-300 dark:text-slate-700" />
-                        <p className="text-sm">No messages yet</p>
+                    <div className="flex h-full items-center justify-center">
+                        <EmptyState
+                            icon={<MessageCircle />}
+                            title="No messages yet"
+                            description="Say hello. Your message goes straight to their WhatsApp."
+                        />
                     </div>
                 ) : (
-                    messages.map((m, i) => <MessageBubble key={m.id} message={m} index={i} conversationId={conversation.id} onReact={onReact} />)
+                    messages.map((m, i) => (
+                        <MessageBubble
+                            key={m.id}
+                            message={m}
+                            index={i}
+                            animate={seen !== null && !seen.has(m.id)}
+                            conversationId={conversation.id}
+                            onReact={onReact}
+                        />
+                    ))
                 )}
                 <div ref={endRef} />
             </div>
 
-            <ChatComposer onSend={onSend} onSendMedia={onSendMedia} />
+            <ChatComposer onSend={onSend} onSendMedia={onSendMedia} inputRef={composerRef} />
         </div>
     );
 }

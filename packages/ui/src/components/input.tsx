@@ -3,53 +3,54 @@
 import { forwardRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { cn } from '../cn';
+import { controlClasses, controlErrorClasses, describedBy, FieldLabel, FieldMessages, useFieldIds } from './field';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
     icon?: ReactNode;
     error?: string;
     label?: string;
+    /** Helper text under the field (hidden while an error shows). */
+    hint?: ReactNode;
+}
+
+/** Keeps the historic behaviour: an explicit id, else one derived from the label. */
+function useInputIds(id?: string, label?: string) {
+    return useFieldIds(id || label?.toLowerCase().replace(/\s+/g, '-'));
 }
 
 /**
- * Auth-screen input. Password fields get a show/hide toggle automatically:
- * typing a password blind on a phone keyboard is the single most common
- * reason a sign-up fails, and the eye button costs nothing.
+ * Text input with label, hint and inline error. Password fields get a
+ * show/hide toggle automatically: typing a password blind on a phone
+ * keyboard is the single most common reason a sign-up fails.
  */
 const Input = forwardRef<HTMLInputElement, InputProps>(
-    ({ className, icon, error, label, id, type, ...props }, ref) => {
-        const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
+    ({ className, icon, error, label, hint, id, type, required, ...props }, ref) => {
+        const ids = useInputIds(id, label);
         const isPassword = type === 'password';
         const [revealed, setRevealed] = useState(false);
         const resolvedType = isPassword && revealed ? 'text' : type;
 
         return (
             <div className="space-y-1.5">
-                {label && (
-                    <label
-                        htmlFor={inputId}
-                        className="block text-sm font-medium text-ink-100"
-                    >
-                        {label}
-                    </label>
-                )}
+                {label && <FieldLabel htmlFor={ids.inputId} required={required}>{label}</FieldLabel>}
                 <div className="relative group">
                     {icon && (
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 ui-field-icon text-ink-300 group-focus-within:text-accent-600 dark:group-focus-within:text-[#FFD98A] transition-colors">
+                        <div className="ui-field-icon pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted transition-colors group-focus-within:text-primary [&_svg]:h-5 [&_svg]:w-5">
                             {icon}
                         </div>
                     )}
                     <input
                         ref={ref}
-                        id={inputId}
+                        id={ids.inputId}
                         type={resolvedType}
+                        required={required}
+                        aria-invalid={error ? true : undefined}
+                        aria-describedby={describedBy(ids, hint, error)}
                         className={cn(
-                            'w-full rounded-lg border bg-white dark:bg-ink-1000 text-ink-50 placeholder:text-ink-400 transition-[border-color,box-shadow] duration-200',
-                            'focus:outline-none focus:ring-[3px] focus:ring-accent-600/15 focus:border-accent-600 dark:focus:ring-[#FFD98A]/20 dark:focus:border-[#FFD98A]/70',
-                            'border-ink-700 hover:border-ink-600',
-                            icon ? 'pl-12' : 'pl-4',
-                            isPassword ? 'pr-12' : 'pr-4',
-                            'py-3 text-base',
-                            error && 'border-[#B03A2E]/60 focus:ring-[#B03A2E]/15 focus:border-[#B03A2E] dark:focus:border-[#B03A2E] dark:focus:ring-[#B03A2E]/20',
+                            controlClasses,
+                            icon && 'pl-12',
+                            isPassword && 'pr-12',
+                            error && controlErrorClasses,
                             className
                         )}
                         {...props}
@@ -60,15 +61,13 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
                             onClick={() => setRevealed((v) => !v)}
                             aria-label={revealed ? 'Hide password' : 'Show password'}
                             aria-pressed={revealed}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded text-ink-300 hover:text-ink-50 hover:bg-ink-50/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] transition-colors"
+                            className="absolute right-1 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-control text-muted hover:text-text hover:bg-text/[0.06] transition-colors"
                         >
                             {revealed ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         </button>
                     )}
                 </div>
-                {error && (
-                    <p className="ui-field-error text-[13px] text-[#B03A2E] dark:text-[#F0B8B0]">{error}</p>
-                )}
+                <FieldMessages hintId={ids.hintId} errorId={ids.errorId} hint={hint} error={error} />
             </div>
         );
     }
@@ -76,49 +75,37 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
 
 Input.displayName = 'Input';
 
-// Dashboard form input (denser; used inside the app shell).
 interface DashboardInputProps extends InputHTMLAttributes<HTMLInputElement> {
     label?: string;
     icon?: ReactNode;
     error?: string;
+    hint?: ReactNode;
 }
 
+/** Dashboard form input. Same brand control; icon sits a little tighter. */
 const DashboardInput = forwardRef<HTMLInputElement, DashboardInputProps>(
-    ({ className, label, icon, error, id, ...props }, ref) => {
-        const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
+    ({ className, label, icon, error, hint, id, required, ...props }, ref) => {
+        const ids = useInputIds(id, label);
         return (
             <div className="space-y-1.5">
-                {label && (
-                    <label htmlFor={inputId} className="block text-[13px] font-medium text-ink-200">
-                        {label}
-                    </label>
-                )}
+                {label && <FieldLabel htmlFor={ids.inputId} required={required}>{label}</FieldLabel>}
                 <div className="relative group">
                     {icon && (
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 ui-field-icon text-ink-300 group-focus-within:text-accent-600 dark:group-focus-within:text-[#FFD98A] transition-colors">
+                        <div className="ui-field-icon pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted transition-colors group-focus-within:text-primary [&_svg]:h-[18px] [&_svg]:w-[18px]">
                             {icon}
                         </div>
                     )}
                     <input
                         ref={ref}
-                        id={inputId}
-                        className={cn(
-                            'w-full rounded-lg border transition-[border-color,box-shadow] duration-200',
-                            'bg-white dark:bg-ink-1000 border-ink-700',
-                            'text-ink-50 placeholder:text-ink-400',
-                            'focus:outline-none focus:ring-[3px] focus:ring-accent-600/15 focus:border-accent-600 dark:focus:ring-[#FFD98A]/20 dark:focus:border-[#FFD98A]/70',
-                            'hover:border-ink-600',
-                            icon ? 'pl-10 pr-4' : 'px-4',
-                            'py-2.5',
-                            error && 'border-[#B03A2E] focus:ring-[#B03A2E]/15 focus:border-[#B03A2E] dark:focus:border-[#B03A2E] dark:focus:ring-[#B03A2E]/20',
-                            className
-                        )}
+                        id={ids.inputId}
+                        required={required}
+                        aria-invalid={error ? true : undefined}
+                        aria-describedby={describedBy(ids, hint, error)}
+                        className={cn(controlClasses, icon && 'pl-11', error && controlErrorClasses, className)}
                         {...props}
                     />
                 </div>
-                {error && (
-                    <p className="ui-field-error text-[13px] text-[#B03A2E] dark:text-[#F0B8B0]">{error}</p>
-                )}
+                <FieldMessages hintId={ids.hintId} errorId={ids.errorId} hint={hint} error={error} />
             </div>
         );
     }

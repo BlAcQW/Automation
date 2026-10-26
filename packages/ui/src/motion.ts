@@ -1,33 +1,41 @@
 /**
- * Shared motion tokens — ui.md §10.1. Use these everywhere; never inline
- * a bespoke easing/duration in a component file.
+ * Shared motion tokens. Friendly, snappy, confident: 200–300ms for UI,
+ * ≤500ms for page/hero. ease-out to enter, ease-in to leave; a light spring
+ * only on ticks and icons. Use these everywhere — never inline a bespoke
+ * easing or duration in a component file.
  */
 
 import type { Transition, Variants } from 'framer-motion';
 
 export const ease = {
-    /** Forest ledger ease — the reference's cubic-bezier(.2,.8,.2,1). Default for reveals and hovers. */
-    out: [0.2, 0.8, 0.2, 1] as const,
-    /** Expo out — snappier, for micro-interactions. */
+    /** Enter / default: quick start, gentle settle. */
+    out: [0.22, 1, 0.36, 1] as const,
+    /** Leave: accelerate away. */
+    in: [0.55, 0, 1, 0.45] as const,
+    /** Alias kept for existing call sites. */
     expo: [0.16, 1, 0.3, 1] as const,
     inOut: [0.65, 0, 0.35, 1] as const,
-    /** Spring used for tactile/physical motion (button press, drawer). */
-    spring: { type: 'spring', stiffness: 260, damping: 24 } satisfies Transition,
+    /** Light spring — ticks and icons only. */
+    spring: { type: 'spring', stiffness: 420, damping: 18 } satisfies Transition,
 } as const;
 
 export const durations = {
-    micro: 0.18,
-    short: 0.32,
-    medium: 0.6,
-    long: 1.2,
+    /** Hovers, presses, toggles. */
+    micro: 0.2,
+    /** Most UI: dropdowns, toasts, tabs. */
+    short: 0.25,
+    /** Modals, drawers, page transitions. */
+    medium: 0.3,
+    /** Hero / logo reveal ceiling. */
+    long: 0.5,
 } as const;
 
-/**
- * Default reveal variants — the one entrance: fade + 18px rise over 0.9s. Used by `<ScrollReveal>` and
- * any component that wants a consistent enter animation.
- */
+/** Stagger between list items / cards: 50–80ms. */
+export const STAGGER_SECONDS = 0.06;
+
+/** Page / block entrance: fade + 8px rise. */
 export const revealVariants: Variants = {
-    hidden: { opacity: 0, y: 18 },
+    hidden: { opacity: 0, y: 8 },
     visible: {
         opacity: 1,
         y: 0,
@@ -35,11 +43,14 @@ export const revealVariants: Variants = {
     },
 };
 
-/** Stagger children inside a reveal container by 80ms. */
+/** Stagger children inside a reveal container. */
 export const staggerVariants: Variants = {
     hidden: { opacity: 1 },
     visible: {
         opacity: 1,
-        transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+        transition: { staggerChildren: STAGGER_SECONDS, delayChildren: 0.04 },
     },
 };
+
+/** Button press: scale 0.97. */
+export const pressScale = { scale: 0.97 } as const;

@@ -1,18 +1,25 @@
 'use client';
 
 import { forwardRef, type HTMLAttributes } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { cn } from '../cn';
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
+    /** Lift 2px with a deeper warm shadow on hover (clickable cards). */
     hover?: boolean;
+    /** Legacy prop: renders the same surface with the larger shadow. */
     glass?: boolean;
 }
 
+/**
+ * White surface on the cream page: 20px corners, hairline border, soft warm
+ * shadow. Use `rounded-card-lg` (24px) for hero / feature cards.
+ */
 const Card = forwardRef<HTMLDivElement, CardProps>(
     ({ className, hover = false, glass = false, children, ...props }, ref) => {
+        const reduce = useReducedMotion();
         const Comp = hover ? motion.div : 'div';
-        const motionProps = hover
+        const motionProps = hover && !reduce
             ? { whileHover: { y: -2, transition: { duration: 0.2 } } }
             : {};
 
@@ -20,12 +27,8 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
             <Comp
                 ref={ref}
                 className={cn(
-                    // Cream card on paper (card-green on night): 6px corners, a
-                    // 1px hairline ring and the long soft drop shadow, no border.
-                    'rounded-xl border border-transparent transition-[box-shadow,transform] duration-300 ease-[cubic-bezier(.2,.8,.2,1)]',
-                    glass
-                        ? 'bg-ink-900/85 backdrop-blur-md shadow-card-lg'
-                        : 'bg-ink-900 shadow-card',
+                    'rounded-card border border-border bg-surface text-text transition-[box-shadow,transform] duration-ui-slow ease-brand-out',
+                    glass ? 'shadow-card-lg' : 'shadow-card',
                     hover && 'hover:shadow-card-hover',
                     className
                 )}
@@ -44,7 +47,7 @@ const CardHeader = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     ({ className, ...props }, ref) => (
         <div
             ref={ref}
-            className={cn('px-6 py-4 border-b border-ink-50/[0.08]', className)}
+            className={cn('px-5 py-4 sm:px-6 border-b border-border', className)}
             {...props}
         />
     )
@@ -55,7 +58,7 @@ const CardTitle = forwardRef<HTMLHeadingElement, HTMLAttributes<HTMLHeadingEleme
     ({ className, ...props }, ref) => (
         <h3
             ref={ref}
-            className={cn('font-display text-[15px] font-medium tracking-[-0.02em] text-ink-50 flex items-center gap-2', className)}
+            className={cn('font-sans text-[17px] font-bold leading-snug text-text flex items-center gap-2', className)}
             {...props}
         />
     )
@@ -64,7 +67,7 @@ CardTitle.displayName = 'CardTitle';
 
 const CardContent = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
     ({ className, ...props }, ref) => (
-        <div ref={ref} className={cn('p-6', className)} {...props} />
+        <div ref={ref} className={cn('p-5 sm:p-6', className)} {...props} />
     )
 );
 CardContent.displayName = 'CardContent';

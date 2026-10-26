@@ -2,42 +2,50 @@
 
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../cn';
+import { pressScale } from '../motion';
 
+/**
+ * Bookly button. 12px corners, min 44px tall (tap target), Bricolage 600,
+ * press scale 0.97, gold focus outline (global :focus-visible).
+ *
+ * Variants: primary (green — the default), accent (gold — once per screen,
+ * for THE most important action), secondary (outline), ghost, destructive.
+ * `default`, `outline` and `glow` are kept as aliases so existing call sites compile.
+ */
 const buttonVariants = cva(
-    // Forest ledger: small 3px corners, medium weight, tight tracking. The
-    // focus ring is the theme ring (forest on paper, gold on night).
-    'inline-flex items-center justify-center gap-2 rounded font-medium tracking-[-0.01em] whitespace-nowrap transition-[background-color,box-shadow,color,border-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 disabled:pointer-events-none disabled:opacity-50',
+    'relative inline-flex items-center justify-center gap-2 rounded-control font-sans font-semibold whitespace-nowrap select-none transition-[background-color,box-shadow,color,border-color] duration-ui ease-brand-out disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0',
     {
         variants: {
             variant: {
-                default:
-                    'bg-accent-600 text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)] hover:bg-accent-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_22px_-8px_rgb(var(--accent-600-rgb)/0.7)] dark:bg-accent-500 dark:hover:bg-accent-600',
-                secondary:
-                    'bg-ink-1000 text-ink-50 shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.1),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.18),0_8px_22px_-12px_rgba(0,0,0,0.35)] dark:bg-ink-800 dark:hover:bg-ink-700',
-                outline:
-                    'bg-transparent text-ink-50 shadow-[inset_0_0_0_1px_rgb(var(--ink-50-rgb)/0.22)] hover:bg-ink-50/[0.04] hover:shadow-[inset_0_0_0_1px_rgb(var(--ink-50-rgb)/0.45)]',
-                ghost:
-                    'text-ink-200 hover:bg-ink-50/[0.06] hover:text-ink-50',
-                destructive:
-                    'bg-[#B03A2E] text-[#FBFAF7] shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)] hover:bg-[#962F25]',
-                // Kept as an alias of `default` so existing call sites compile.
-                glow:
-                    'bg-accent-600 text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)] hover:bg-accent-700 dark:bg-accent-500 dark:hover:bg-accent-600',
+                primary: 'bg-primary text-primary-fg shadow-soft hover:bg-primary-hover',
+                accent: 'bg-accent text-accent-fg shadow-soft hover:bg-accent-hover',
+                secondary: 'bg-surface text-text border border-border hover:border-text/30 hover:bg-surface-2',
+                ghost: 'text-text hover:bg-text/[0.06]',
+                destructive: 'bg-error text-white shadow-soft hover:bg-error-fg',
+                // Aliases (legacy names).
+                default: 'bg-primary text-primary-fg shadow-soft hover:bg-primary-hover',
+                outline: 'bg-transparent text-text border border-border hover:border-text/30 hover:bg-text/[0.04]',
+                glow: 'bg-primary text-primary-fg shadow-soft hover:bg-primary-hover',
             },
             size: {
-                sm: 'h-9 px-3.5 text-[13px]',
-                md: 'h-11 px-5 text-sm',
-                lg: 'h-12 px-6 text-[15px]',
-                xl: 'h-14 px-8 text-base',
-                icon: 'h-10 w-10',
+                sm: 'min-h-[44px] h-11 px-4 text-[14px]',
+                md: 'min-h-[44px] h-11 px-5 text-[15px]',
+                lg: 'min-h-[48px] h-12 px-6 text-base',
+                xl: 'min-h-[56px] h-14 px-8 text-[17px]',
+                icon: 'h-11 w-11 min-h-[44px] min-w-[44px]',
+            },
+            fullWidth: {
+                true: 'w-full',
+                false: '',
             },
         },
         defaultVariants: {
-            variant: 'default',
+            variant: 'primary',
             size: 'md',
+            fullWidth: false,
         },
     }
 );
@@ -46,19 +54,31 @@ export interface ButtonProps
     extends ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
     isLoading?: boolean;
+    /** Text announced (and shown next to the spinner) while loading. */
+    loadingText?: string;
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-    ({ className, variant, size, isLoading, children, disabled, ...props }, ref) => {
+    ({ className, variant, size, fullWidth, isLoading, loadingText, children, disabled, ...props }, ref) => {
+        const reduce = useReducedMotion();
         return (
             <motion.button
                 ref={ref}
-                whileTap={{ y: 1 }}
-                className={cn(buttonVariants({ variant, size, className }))}
+                whileTap={reduce || disabled || isLoading ? undefined : pressScale}
+                transition={{ duration: 0.12 }}
+                className={cn(buttonVariants({ variant, size, fullWidth, className }))}
                 disabled={disabled || isLoading}
+                aria-busy={isLoading || undefined}
                 {...(props as any)}
             >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : children}
+                {isLoading ? (
+                    <>
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        {loadingText ? <span>{loadingText}</span> : <span className="sr-only">Loading</span>}
+                    </>
+                ) : (
+                    children
+                )}
             </motion.button>
         );
     }

@@ -20,9 +20,9 @@ const sizeClasses = {
 };
 
 const statusClasses = {
-    online: 'bg-[#7BD389]',
-    offline: 'bg-ink-400',
-    busy: 'bg-[#E0A43A]',
+    online: 'bg-success',
+    offline: 'bg-muted',
+    busy: 'bg-warning',
 };
 
 const statusSizeClasses = {
@@ -47,12 +47,12 @@ export function Avatar({ name, src, size = 'md', className, status }: AvatarProp
                     src={src}
                     alt={name ?? 'Avatar'}
                     onError={() => setImgFailed(true)}
-                    className={cn('rounded-full object-cover ring-1 ring-ink-50/10', sizeClasses[size])}
+                    className={cn('rounded-full object-cover ring-1 ring-border', sizeClasses[size])}
                 />
             ) : (
                 <div
                     className={cn(
-                        'bg-accent-600 rounded-full flex items-center justify-center font-medium tracking-[-0.02em] text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]',
+                        'bg-primary rounded-full flex items-center justify-center font-semibold text-primary-fg',
                         sizeClasses[size],
                     )}
                 >
@@ -62,7 +62,7 @@ export function Avatar({ name, src, size = 'md', className, status }: AvatarProp
             {status && (
                 <span
                     className={cn(
-                        'absolute -bottom-0.5 -right-0.5 rounded-full border-ink-950',
+                        'absolute -bottom-0.5 -right-0.5 rounded-full border-surface',
                         statusClasses[status],
                         statusSizeClasses[size],
                     )}

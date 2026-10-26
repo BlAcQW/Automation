@@ -4,19 +4,32 @@ import { type HTMLAttributes } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../cn';
 
+/**
+ * Small label chip. For anything that is a STATUS (paid, pending, failed…)
+ * use <StatusPill> instead — it always pairs the colour with an icon + word.
+ *
+ * Semantic variants: neutral, success, warning, error, info.
+ * Legacy variants (default, blue, yellow, red, purple, orange, slate) still
+ * work and map onto the brand palette.
+ */
 const badgeVariants = cva(
-    'inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] leading-[18px] font-medium tracking-normal normal-case transition-colors',
+    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[13px] leading-5 font-medium normal-case transition-colors',
     {
         variants: {
             variant: {
-                // Muted, ink-toned fills: status reads from the hue, not from loudness.
-                default: 'bg-accent-100 text-accent-700 dark:bg-accent-500/20 dark:text-accent-200',
-                blue: 'bg-[#DDE4EA] text-[#2C4A63] dark:bg-[#2C4A63]/40 dark:text-[#B9CCDD]',
-                yellow: 'bg-[#F1E3C2] text-[#7A5512] dark:bg-[#FFD98A]/15 dark:text-[#FFD98A]',
-                red: 'bg-[#F0D9D5] text-[#962F25] dark:bg-[#B03A2E]/25 dark:text-[#F0B8B0]',
-                purple: 'bg-[#E4DEEA] text-[#53426B] dark:bg-[#53426B]/40 dark:text-[#CFC3DE]',
-                orange: 'bg-[#F0DDCB] text-[#87471C] dark:bg-[#87471C]/35 dark:text-[#EBC29F]',
-                slate: 'bg-ink-800 text-ink-200 dark:bg-ink-800 dark:text-ink-200',
+                neutral: 'bg-surface-2 text-text',
+                success: 'bg-success-soft text-success-fg',
+                warning: 'bg-warning-soft text-warning-fg',
+                error: 'bg-error-soft text-error-fg',
+                info: 'bg-[#E6EEF6] text-[#24507A] dark:bg-[#24507A]/40 dark:text-[#B9CCDD]',
+                // Legacy names → brand.
+                default: 'bg-primary-soft text-primary-hover dark:text-success-fg',
+                blue: 'bg-[#E6EEF6] text-[#24507A] dark:bg-[#24507A]/40 dark:text-[#B9CCDD]',
+                yellow: 'bg-warning-soft text-warning-fg',
+                red: 'bg-error-soft text-error-fg',
+                purple: 'bg-[#EEE8F4] text-[#55407A] dark:bg-[#55407A]/40 dark:text-[#D3C6E6]',
+                orange: 'bg-warning-soft text-warning-fg',
+                slate: 'bg-surface-2 text-muted',
             },
             pulse: {
                 true: '',
@@ -38,9 +51,9 @@ function Badge({ className, variant, pulse, dot, children, ...props }: BadgeProp
     return (
         <span className={cn(badgeVariants({ variant, pulse }), className)} {...props}>
             {dot && (
-                <span className="relative flex h-2 w-2">
+                <span className="relative flex h-2 w-2" aria-hidden>
                     {pulse && (
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
+                        <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-current opacity-75" />
                     )}
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-current" />
                 </span>

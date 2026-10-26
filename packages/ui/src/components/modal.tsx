@@ -1,9 +1,10 @@
 'use client';
 
-import { type ReactNode, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { type ReactNode, useId } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { cn } from '../cn';
+import { durations, ease } from '../motion';
+import { Backdrop, CloseButton, useOverlay } from './overlay';
 
 interface ModalProps {
     isOpen: boolean;
@@ -12,61 +13,56 @@ interface ModalProps {
     children: ReactNode;
     className?: string;
     maxWidth?: string;
+    /** Optional line under the title. */
+    description?: ReactNode;
+    /** Optional sticky action row (right-aligned buttons). */
+    footer?: ReactNode;
 }
 
-export function Modal({ isOpen, onClose, title, children, className, maxWidth = 'max-w-md' }: ModalProps) {
-    useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = '';
-        }
-        return () => { document.body.style.overflow = ''; };
-    }, [isOpen]);
+/**
+ * Centred dialog on desktop; a bottom sheet on phones (thumb reach).
+ * Backdrop fades, the panel slides up 16px. Escape and backdrop close it.
+ */
+export function Modal({ isOpen, onClose, title, children, className, maxWidth = 'max-w-md', description, footer }: ModalProps) {
+    const panelRef = useOverlay(isOpen, onClose);
+    const reduce = useReducedMotion();
+    const titleId = useId();
 
     return (
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    {/* Backdrop */}
+                <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+                    <Backdrop onClick={onClose} />
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute inset-0 bg-[rgba(18,29,23,0.55)] backdrop-blur-[6px]"
-                        onClick={onClose}
-                    />
-
-                    {/* Content */}
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.96, y: 14 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.98, y: 8, transition: { duration: 0.15 } }}
-                        transition={{ duration: 0.32, ease: [0.2, 0.8, 0.2, 1] }}
+                        ref={panelRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby={titleId}
+                        tabIndex={-1}
+                        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={reduce ? { opacity: 0 } : { opacity: 0, y: 12, transition: { duration: 0.15, ease: ease.in } }}
+                        transition={{ duration: durations.medium, ease: ease.out }}
                         className={cn(
-                            'relative w-full rounded-3xl bg-ink-950 text-ink-50 shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.08),0_40px_80px_-36px_rgba(0,0,0,0.6)]',
+                            'relative flex max-h-[92dvh] w-full flex-col rounded-t-card-lg bg-surface text-text shadow-card-lg outline-none sm:rounded-card-lg',
+                            'pb-[env(safe-area-inset-bottom)] sm:pb-0',
                             maxWidth,
                             className
                         )}
                     >
-                        {/* Header */}
-                        <div className="flex items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-ink-50/[0.08]">
-                            <h2 className="text-[1.25rem] font-normal leading-tight tracking-[-0.035em] text-ink-50">{title}</h2>
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                aria-label="Close"
-                                className="-mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded text-ink-300 hover:bg-ink-50/[0.06] hover:text-ink-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
+                        <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3 sm:px-6">
+                            <div className="min-w-0 pt-1.5">
+                                <h2 id={titleId} className="text-[20px] font-bold leading-tight text-text">{title}</h2>
+                                {description && <p className="mt-1 text-[15px] text-muted">{description}</p>}
+                            </div>
+                            <CloseButton onClick={onClose} className="-mr-2" />
                         </div>
-
-                        {/* Body */}
-                        <div className="p-6">
-                            {children}
-                        </div>
+                        <div className="overflow-y-auto px-5 pb-5 sm:px-6 sm:pb-6">{children}</div>
+                        {footer && (
+                            <div className="flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+                                {footer}
+                            </div>
+                        )}
                     </motion.div>
                 </div>
             )}

@@ -46,7 +46,6 @@ export { EmptyState, ErrorState } from './components/states';
 
 // Brand & motion
 export { BrandLogo } from './components/brand-logo';
-export { LogoReveal } from './components/logo-reveal';
 export { AwningDivider } from './components/awning-divider';
 export { TickPop } from './components/tick-pop';
 export { PageTransition, Stagger, StaggerItem, useReducedMotion } from './components/motion-helpers';

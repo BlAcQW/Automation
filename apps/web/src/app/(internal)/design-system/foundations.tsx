@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { RotateCcw } from 'lucide-react';
-import { AwningDivider, BrandLogo, Button, LogoReveal } from '@bookingflow/ui';
+import { AwningDivider, BrandLogo, Button } from '@bookingflow/ui';
 import { Row, Section } from './section';
 
 const SEMANTIC = [
@@ -26,10 +24,9 @@ const SEMANTIC = [
 ] as const;
 
 export function FoundationsSection() {
-    const [replay, setReplay] = useState(0);
     return (
         <>
-            <Section title="Logo" description="One component. The real storefront-B mark replaces it in one place later.">
+            <Section title="Logo" description="Logo work is on hold: plain text Bookly, and the existing app icon where a square mark is needed. Swapped in one place later.">
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div className="flex flex-wrap items-center gap-6 rounded-card border border-border bg-surface p-6 shadow-card">
                         <BrandLogo variant="wordmark" size="lg" />
@@ -40,12 +37,6 @@ export function FoundationsSection() {
                         <BrandLogo variant="wordmark" size="lg" tone="inverse" />
                         <BrandLogo variant="lockup" size="md" tone="inverse" />
                     </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-card-lg border border-border bg-surface p-8 shadow-card">
-                    <LogoReveal key={replay} size="xl" />
-                    <Button variant="secondary" size="sm" onClick={() => setReplay((n) => n + 1)}>
-                        <RotateCcw className="h-4 w-4" aria-hidden /> Replay shop opening
-                    </Button>
                 </div>
             </Section>
 

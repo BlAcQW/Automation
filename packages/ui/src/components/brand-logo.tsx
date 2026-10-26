@@ -2,16 +2,17 @@ import { cn } from '../cn';
 
 /*
  * THE ONE PLACE TO SWAP THE REAL LOGO.
- * Today the mark is typographic (Clash Display "Bookly" / a "B" on green).
- * When the designer's storefront-B SVG lands, replace <Monogram/> (and the
- * wordmark if needed) below — every header, sidebar, loader and email
- * preview renders through <BrandLogo/>.
+ * Logo work is on hold (owner, 2026-10-26): the mark is the plain text
+ * "Bookly", and where a square mark is needed we show the EXISTING app icon
+ * file (/icons/icon-96.png) unchanged — no new logo art. When the designer's
+ * files arrive, replace <AppIcon/> and <Wordmark/> below; every header,
+ * sidebar and loader renders through <BrandLogo/>.
  */
 
 type LogoSize = 'sm' | 'md' | 'lg' | 'xl';
 
 interface BrandLogoProps {
-    /** `wordmark` "Bookly" · `icon` the B monogram · `lockup` icon + wordmark. */
+    /** `wordmark` text "Bookly" · `icon` the existing app icon file · `lockup` same as wordmark while logo work is on hold. */
     variant?: 'wordmark' | 'icon' | 'lockup';
     size?: LogoSize;
     /** `default` green on light grounds · `inverse` cream for charcoal/green grounds. */
@@ -29,23 +30,17 @@ const WORD: Record<LogoSize, string> = {
 };
 
 const ICON: Record<LogoSize, string> = {
-    sm: 'h-8 w-8 text-[18px] rounded-[9px]',
-    md: 'h-10 w-10 text-[22px] rounded-[11px]',
-    lg: 'h-12 w-12 text-[27px] rounded-[13px]',
-    xl: 'h-16 w-16 text-[36px] rounded-[17px]',
+    sm: 'h-8 w-8 rounded-[9px]',
+    md: 'h-10 w-10 rounded-[11px]',
+    lg: 'h-12 w-12 rounded-[13px]',
+    xl: 'h-16 w-16 rounded-[17px]',
 };
 
-function Monogram({ size }: { size: LogoSize }) {
+function AppIcon({ size }: { size: LogoSize }) {
+    // The existing app icon, as-is. Not new logo art.
     return (
-        <span
-            aria-hidden
-            className={cn(
-                'inline-flex shrink-0 items-center justify-center bg-primary font-display font-semibold leading-none text-cream shadow-soft',
-                ICON[size],
-            )}
-        >
-            <span className="translate-y-[0.04em]">B</span>
-        </span>
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src="/icons/icon-96.png" alt="" aria-hidden width={48} height={48} className={cn('shrink-0 object-contain', ICON[size])} />
     );
 }
 
@@ -73,8 +68,7 @@ export function BrandLogo({ variant = 'wordmark', size = 'md', tone = 'default',
             aria-hidden={labelled ? undefined : true}
             className={cn('inline-flex items-center gap-2.5', className)}
         >
-            {variant !== 'wordmark' && <Monogram size={size} />}
-            {variant !== 'icon' && <Wordmark size={size} tone={tone} />}
+            {variant === 'icon' ? <AppIcon size={size} /> : <Wordmark size={size} tone={tone} />}
         </span>
     );
 }

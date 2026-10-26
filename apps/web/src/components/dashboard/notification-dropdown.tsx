@@ -142,7 +142,7 @@ export function NotificationDropdown() {
                 onClick={toggleOpen}
                 aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                 aria-expanded={isOpen}
-                className="relative flex h-10 w-10 items-center justify-center rounded-lg text-ink-300 hover:bg-ink-50/[0.06] hover:text-ink-50 transition-colors"
+                className="relative flex h-11 w-11 items-center justify-center rounded-control text-muted hover:bg-text/[0.06] hover:text-text transition-colors"
             >
                 <Bell className="w-5 h-5" />
                 <AnimatePresence>
@@ -151,7 +151,7 @@ export function NotificationDropdown() {
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
                             exit={{ scale: 0 }}
-                            className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] px-1 bg-[#B03A2E] text-[#FBFAF7] text-[11px] font-medium tabular-nums rounded-full flex items-center justify-center ring-2 ring-ink-950"
+                            className="absolute top-0.5 right-0.5 min-w-[18px] h-[18px] px-1 bg-error text-white text-[11px] font-semibold tabular-nums rounded-full flex items-center justify-center ring-2 ring-bg"
                         >
                             {unreadCount > 99 ? '99+' : unreadCount}
                         </motion.span>

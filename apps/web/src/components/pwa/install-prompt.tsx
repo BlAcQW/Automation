@@ -91,7 +91,7 @@ export function InstallPrompt() {
         <div className="fixed inset-x-3 z-50 bottom-24 lg:bottom-4 lg:left-auto lg:right-4 lg:max-w-sm">
             <div className="flex items-start gap-3 rounded-2xl bg-forest-night p-4 text-forest-cream shadow-[0_30px_50px_-28px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] dark:bg-forest-card dark:shadow-[0_0_0_1px_rgba(236,235,225,0.08),0_30px_50px_-28px_rgba(0,0,0,0.8)]">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-forest-paper">
-                    <BooklyIcon className="h-7 w-7" />
+                    <BooklyIcon size="sm" />
                 </div>
                 <div className="min-w-0 flex-1">
                     <p className="text-[15px] font-medium tracking-[-0.02em] text-forest-cream">

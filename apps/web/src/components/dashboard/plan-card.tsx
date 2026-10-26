@@ -42,34 +42,32 @@ export function PlanCard() {
     const trialing = data.subscription.status === 'TRIALING';
 
     return (
-        // Dark forest-card panel on the forest frame.
+        // Quiet surface card at the foot of the sidebar.
         <Link
             href="/settings"
-            className="group block rounded-xl bg-forest-card p-3 text-forest-cream shadow-[0_20px_36px_-24px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] hover:shadow-[0_20px_36px_-24px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06),0_0_0_1px_rgba(236,235,225,0.14)] dark:shadow-[0_0_0_1px_rgba(236,235,225,0.06)] transition-shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-glow"
+            className="group block rounded-control border border-border bg-surface-2 p-3 text-text transition-colors hover:border-text/20"
         >
             <div className="flex items-center justify-between">
-                <p className="font-mono text-[11px] text-forest-cream/50">
-                    /plan details/
-                </p>
+                <p className="text-[13px] font-medium text-muted">Your plan</p>
                 {trialing && (
-                    <span className="inline-flex items-center gap-1 rounded bg-forest-cream px-1.5 py-0.5 text-[11px] font-medium text-forest-night">
-                        <Sparkles className="h-2.5 w-2.5" />
+                    <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[12px] font-semibold text-accent-fg">
+                        <Sparkles className="h-3 w-3" aria-hidden />
                         Trial
                     </span>
                 )}
             </div>
-            <p className="mt-1.5 text-[15px] font-medium tracking-[-0.02em] text-forest-cream">{data.plan.name}</p>
+            <p className="mt-1 text-[15px] font-semibold text-text">{data.plan.name}</p>
 
-            <div className="mt-2.5 h-1 w-full rounded-sm bg-white/10 overflow-hidden">
+            <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-border">
                 <div
                     className={cn(
-                        'h-full rounded-sm transition-all',
-                        pct >= 90 ? 'bg-[#E08A7E]' : 'bg-forest-glow',
+                        'h-full rounded-full transition-all',
+                        pct >= 90 ? 'bg-error' : 'bg-primary',
                     )}
                     style={{ width: `${pct}%` }}
                 />
             </div>
-            <p className="mt-1.5 text-[11px] tabular-nums text-forest-cream/60">
+            <p className="mt-1.5 text-[13px] tabular-nums text-muted">
                 {used.toLocaleString()}/{limit.toLocaleString()} messages used
             </p>
         </Link>

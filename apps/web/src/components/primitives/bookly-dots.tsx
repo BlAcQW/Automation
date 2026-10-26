@@ -6,7 +6,7 @@ import { cn } from '@bookingflow/ui';
 interface BooklyDotsProps {
     /** Visual scale. xs ~ 4px dots (inline), lg ~ 10px dots (full-page). */
     size?: 'xs' | 'sm' | 'md' | 'lg';
-    /** 'emerald' (default): forest on paper, sage on night · 'ink' for use against brand CTAs. */
+    /** 'emerald' (default): brand green (lighter in dark mode) · 'ink' for use against brand CTAs. */
     tone?: 'emerald' | 'ink';
     /** When true, wraps the dots in a flex container that fills its parent and centers. */
     centered?: boolean;
@@ -23,9 +23,9 @@ const SIZE_TOKENS: Record<NonNullable<BooklyDotsProps['size']>, { dot: string; g
 };
 
 /**
- * Signature Bookly loader — three forest dots, staggered pulse. The same
- * gesture as the hero's TypingIndicator: "someone is on the other end."
- * Reduced-motion safe (freezes at 0.7 opacity).
+ * Small inline busy indicator — three brand dots, staggered pulse. For
+ * "loading more" / in-button busy only; whole sections load with the
+ * Skeleton set from @bookingflow/ui. Reduced-motion safe (freezes at 0.7).
  */
 export function BooklyDots({
     size = 'md',
@@ -36,7 +36,7 @@ export function BooklyDots({
 }: BooklyDotsProps) {
     const reduce = useReducedMotion();
     const { dot, gap } = SIZE_TOKENS[size];
-    const color = tone === 'ink' ? 'bg-ink-50' : 'bg-forest-brand dark:bg-bookly-emerald-300';
+    const color = tone === 'ink' ? 'bg-text' : 'bg-primary dark:bg-success';
 
     const dots = (
         <span

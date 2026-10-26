@@ -69,10 +69,29 @@
     transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Hero chat demo. Bubbles pop in from slightly below; never rest invisible. */
+@keyframes bubbleIn {
+    from { opacity: 0.2; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+}
+.bubble {
+    animation: bubbleIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform-origin: bottom center;
+}
+@keyframes typingDot {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-3px); opacity: 0.8; }
+}
+.typingDot {
+    animation: typingDot 1s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .enter,
     .enterTitle,
-    .menuPanel {
+    .menuPanel,
+    .bubble,
+    .typingDot {
         animation: none;
     }
     .lift,

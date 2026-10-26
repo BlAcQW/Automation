@@ -3,7 +3,7 @@ import { ArrowRight, Check, CheckCircle2, Clock3, Plus, Store } from 'lucide-rea
 import { AwningDivider, formatCedi } from '@bookingflow/ui';
 import { cx as cn } from './cx';
 import {
-    BUSINESS_TYPES, CHANNELS, COMPARISON, JOBS, NO_SETUP_POINTS, STEPS, TRUST_POINTS, WORKS_WITH,
+    BUSINESS_TYPES, CHANNELS, COMPARISON, INDUSTRIES, JOBS, NO_SETUP_POINTS, STEPS, WORKS_WITH,
     type BusinessType, type QA,
 } from './content';
 import { CheckList, Panel, SectionTitle } from './primitives';
@@ -14,12 +14,12 @@ import styles from './marketing.module.css';
 /* ------------------------------------------------------------------ */
 
 const SLOTS = [
-    { t: '9:00', state: 'free' },
-    { t: '10:30', state: 'booked' },
-    { t: '12:00', state: 'booked' },
-    { t: '1:30', state: 'chosen' },
-    { t: '3:00', state: 'free' },
-    { t: '4:30', state: 'free' },
+    { t: '9:00', state: 'booked' },
+    { t: '11:00', state: 'free' },
+    { t: '1:00', state: 'booked' },
+    { t: '2:30', state: 'booked' },
+    { t: '4:30', state: 'chosen' },
+    { t: '6:00', state: 'free' },
 ] as const;
 
 /**
@@ -39,8 +39,8 @@ export function Shopfront({ className }: { className?: string }) {
                                 <Store className="h-5 w-5" />
                             </span>
                             <div>
-                                <p className="text-[15px] font-semibold text-text">Glow Hair Studio</p>
-                                <p className="text-small text-muted">Saturday · Osu, Accra</p>
+                                <p className="text-[15px] font-semibold text-text">Maison Skin Clinic</p>
+                                <p className="text-small text-muted">Thursday · East Legon, Accra</p>
                             </div>
                         </div>
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-small font-semibold text-success-fg">
@@ -72,13 +72,13 @@ export function Shopfront({ className }: { className?: string }) {
                             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden />
                             <div className="min-w-0 flex-1">
                                 <p className="text-[15px] font-semibold text-text">Booking confirmed</p>
-                                <p className="text-small text-muted">Ama K. · Box braids · Sat 1:30 pm</p>
+                                <p className="text-small text-muted">Efua A. · HydraFacial · Thu 4:30 pm</p>
                             </div>
                         </div>
                         <dl className="mt-3 grid grid-cols-2 gap-3 border-t border-border pt-3 text-small">
                             <div>
                                 <dt className="text-muted">Deposit paid</dt>
-                                <dd className="font-semibold tabular-nums text-text">{formatCedi(50)}</dd>
+                                <dd className="font-semibold tabular-nums text-text">{formatCedi(200)}</dd>
                             </div>
                             <div>
                                 <dt className="text-muted">Paid with</dt>
@@ -87,30 +87,17 @@ export function Shopfront({ className }: { className?: string }) {
                         </dl>
                         <p className="mt-3 flex items-center gap-1.5 text-small text-muted">
                             <Clock3 className="h-3.5 w-3.5" aria-hidden />
-                            Reminder goes out Friday evening
+                            Reminder goes out Wednesday evening
                         </p>
                     </div>
                 </div>
             </div>
-            <figcaption className="mt-3 text-center text-small text-muted">Example: a Saturday at Glow Hair Studio. Your diary, your prices.</figcaption>
+            <figcaption className="mt-3 text-center text-small text-muted">Example: a Thursday at a made-up clinic. Your diary, your prices.</figcaption>
         </figure>
     );
 }
 
 /* ------------------------------------------------------------------ */
-
-export function TrustStrip() {
-    return (
-        <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:gap-x-10">
-            {TRUST_POINTS.map((t) => (
-                <li key={t} className="flex items-center gap-2 text-small font-medium text-text">
-                    <Check className="h-4 w-4 text-primary" strokeWidth={3} aria-hidden />
-                    {t}
-                </li>
-            ))}
-        </ul>
-    );
-}
 
 export function JobsGrid({ limit }: { limit?: number }) {
     const jobs = limit ? JOBS.slice(0, limit) : JOBS;
@@ -251,5 +238,53 @@ export function FaqList({ items }: { items: readonly QA[] }) {
                 </details>
             ))}
         </div>
+    );
+}
+
+/** Photo cards of the businesses Bookly is made for. Images are lazy and sized. */
+export function IndustryCards() {
+    return (
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {INDUSTRIES.map((b) => {
+                const body = (
+                    <>
+                        <div className="relative aspect-[4/3] overflow-hidden bg-surface-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src={`/images/marketing/${b.image}-640.webp`}
+                                srcSet={`/images/marketing/${b.image}-640.webp 640w, /images/marketing/${b.image}-960.webp 960w`}
+                                sizes="(min-width: 1024px) 300px, (min-width: 640px) 45vw, 92vw"
+                                width={640}
+                                height={478}
+                                loading="lazy"
+                                decoding="async"
+                                alt={b.alt}
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03] motion-reduce:transition-none"
+                            />
+                        </div>
+                        <div className="flex flex-1 flex-col p-5">
+                            <h3 className="text-[1.0625rem] font-bold text-text">{b.name}</h3>
+                            <p className="mt-1.5 flex-1 text-[15px] leading-relaxed text-muted">{b.blurb}</p>
+                            {b.href && (
+                                <span className="mt-3 inline-flex items-center gap-1.5 text-[15px] font-semibold text-primary">
+                                    See how it works
+                                    <ArrowRight className="h-4 w-4 transition-transform duration-ui group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden />
+                                </span>
+                            )}
+                        </div>
+                    </>
+                );
+                const shell = 'group flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface shadow-card';
+                return (
+                    <li key={b.name}>
+                        {b.href ? (
+                            <Link href={b.href} className={cn(shell, 'hover:shadow-card-hover', styles.lift)}>{body}</Link>
+                        ) : (
+                            <div className={shell}>{body}</div>
+                        )}
+                    </li>
+                );
+            })}
+        </ul>
     );
 }

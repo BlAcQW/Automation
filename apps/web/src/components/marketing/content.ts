@@ -31,21 +31,13 @@ export const LEAKS = [
     {
         icon: Clock3,
         title: "You're busy and the phone buzzes",
-        body: "You can't stop mid-job. By the time you reply, she has booked somewhere else, and you never see the ones you lost.",
+        body: "You're with a client and can't reply. By the time you do, they've booked somewhere else, and you never see the ones you lost.",
     },
     {
         icon: Store,
         title: 'They book, then never come',
-        body: 'Three no-shows a week at GH₵ 50 is GH₵ 600 a month gone, with the chair sitting empty.',
+        body: 'Three no-shows a week on a GH₵ 800 treatment is over GH₵ 10,000 a month gone, with the room sitting empty.',
     },
-] as const;
-
-/** True and checkable only. */
-export const TRUST_POINTS = [
-    'Verified Meta Tech Provider',
-    'Official WhatsApp Business Platform',
-    'Payments by Paystack',
-    'Mobile Money and card',
 ] as const;
 
 /** Other tools ask you to … / With Bookly … */
@@ -85,7 +77,7 @@ export const FAQ_GROUPS: readonly { title: string; items: readonly QA[] }[] = [
         items: [
             { q: 'Do my customers need an app?', a: 'No. They use WhatsApp or Instagram exactly as they already do. That is the whole point.' },
             { q: 'Can I still reply myself?', a: 'Any time. Open the chat and type. Bookly steps back and waits until you hand the chat back.' },
-            { q: 'Is it only for salons?', a: 'No. Anything booked by appointment works: barbers, nail techs, clinics, tutors, mechanics, photographers, tailors and food vendors taking pre-orders.' },
+            { q: 'What kind of business is it for?', a: 'Anything booked by appointment: skin and aesthetics clinics, spas, dental clinics, tailors, private chefs, photographers, pilates studios, car detailers, salons and more.' },
         ],
     },
     {
@@ -127,4 +119,29 @@ export const BUSINESS_TYPES: readonly BusinessType[] = [
     { slug: 'salons', path: '/for/salons', name: 'Salons and barbers', short: 'Salons', blurb: 'Braids, cuts, nails and lashes, booked into real free times with a deposit.' },
     { slug: 'boutiques', path: '/for/boutiques', name: 'Boutiques and tailors', short: 'Boutiques', blurb: 'Fittings, measurements and pick-ups, booked on WhatsApp with a deposit.' },
     { slug: 'food-vendors', path: '/for/food-vendors', name: 'Food vendors', short: 'Food vendors', blurb: 'Pre-orders and pick-up times, with the deposit paid before you cook.' },
+];
+
+/* ------------------------------------------------------------------ */
+/* Industries shown with photos on the home and features pages         */
+/* ------------------------------------------------------------------ */
+
+export interface Industry {
+    name: string;
+    blurb: string;
+    /** Base name in /public/images/marketing (…-640.webp and …-960.webp). */
+    image: string;
+    alt: string;
+    href?: string;
+}
+
+/** Example photos are generated, not real customers. */
+export const INDUSTRIES: readonly Industry[] = [
+    { name: 'Skin and aesthetics clinics', blurb: 'Facials, peels and laser, with the consultation and deposit sorted before they arrive.', image: 'aesthetics', alt: 'An aesthetician giving a client a facial in a calm treatment room' },
+    { name: 'Spas and wellness', blurb: 'Massages and packages booked into the therapist time you really have.', image: 'spa', alt: 'A therapist preparing a massage room with towels and oils' },
+    { name: 'Private dental clinics', blurb: 'Check-ups and whitening booked and reminded, so the chair is never empty.', image: 'dental', alt: 'A dentist chatting with a smiling patient in a bright clinic' },
+    { name: 'Bespoke tailoring', blurb: 'Fittings and collections booked on WhatsApp, with a deposit on every order.', image: 'tailoring', alt: 'A tailor measuring a client in a dark green suit' },
+    { name: 'Private chefs and caterers', blurb: 'Dinners and events with the date held and the deposit paid before you shop.', image: 'private-chef', alt: 'A chef plating jollof rice and chicken for a private dinner' },
+    { name: 'Photography studios', blurb: 'Shoots and studio time booked into your calendar, deposit first.', image: 'photography', alt: 'A photographer directing a model in a green dress in a studio' },
+    { name: 'Pilates and fitness studios', blurb: 'Private sessions and classes filled without the back-and-forth.', image: 'pilates', alt: 'An instructor guiding a client on a reformer pilates machine' },
+    { name: 'Car detailing', blurb: 'Details and ceramic coatings booked into the bay with a deposit.', image: 'detailing', alt: 'A detailer polishing the bonnet of a dark SUV' },
 ];

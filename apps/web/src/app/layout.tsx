@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     },
     description: SITE_DESCRIPTION,
     keywords: [
-        'WhatsApp booking system Ghana', 'salon booking app Ghana', 'automate WhatsApp orders Accra',
+        'WhatsApp booking system Ghana', 'clinic booking app Ghana', 'spa booking WhatsApp Accra', 'salon booking app Ghana', 'automate WhatsApp orders Accra',
         'WhatsApp bookings', 'Mobile Money deposits', 'appointment reminders', 'small business Ghana',
     ],
     openGraph: {

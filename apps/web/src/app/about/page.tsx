@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { Clock3, Mail, MessageCircle } from 'lucide-react';
 import { SiteShell } from '@/components/marketing/site-shell';
 import { ButtonLink, CheckList, ClosingCTA, PageHero, Panel, Section, SectionTitle } from '@/components/marketing/primitives';
-import { TrustStrip } from '@/components/marketing/sections';
 import { breadcrumbJsonLd, pageMetadata } from '@/lib/seo';
 import { LEGAL_EMAIL, SITE_TAGLINE, supportWhatsAppUrl } from '@/lib/site';
 
@@ -32,7 +31,7 @@ export default function AboutPage() {
                 crumbs={CRUMBS}
                 eyebrow="About Bookly"
                 title={SITE_TAGLINE}
-                sub="Bookly is made in Ghana for the salons, boutiques, food vendors and small shops that run their business from a phone."
+                sub="Bookly is made in Ghana for clinics, spas, studios, ateliers and every business where clients book a time."
             />
 
             <Section labelledBy="why">
@@ -48,11 +47,6 @@ export default function AboutPage() {
                         <CheckList items={BELIEFS} className="mt-4" />
                     </div>
                 </div>
-            </Section>
-
-            <Section tone="surface" className="!py-8 sm:!py-10" labelledBy="trust">
-                <h2 id="trust" className="sr-only">Why you can trust Bookly</h2>
-                <TrustStrip />
             </Section>
 
             <Section tone="soft" id="contact" labelledBy="contact-title">

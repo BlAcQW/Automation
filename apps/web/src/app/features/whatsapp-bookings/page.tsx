@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { BellRing, CalendarCheck, CheckCircle2, ListChecks, MessageCircle, Wallet } from 'lucide-react';
 import { SiteShell } from '@/components/marketing/site-shell';
 import { ButtonLink, ClosingCTA, Panel, PageHero, Section, SectionTitle, SignupLink, CheckList } from '@/components/marketing/primitives';
-import { BusinessTypeCards, FaqList, Shopfront } from '@/components/marketing/sections';
+import { IndustryCards, FaqList, Shopfront } from '@/components/marketing/sections';
 import type { QA } from '@/components/marketing/content';
 import { breadcrumbJsonLd, faqJsonLd, pageMetadata } from '@/lib/seo';
 
@@ -103,8 +103,8 @@ export default function WhatsAppBookingsPage() {
             </Section>
 
             <Section tone="surface" labelledBy="made-for">
-                <SectionTitle id="made-for" eyebrow="Made for" title="See how it fits your kind of shop." />
-                <div className="mt-10"><BusinessTypeCards /></div>
+                <SectionTitle id="made-for" eyebrow="Made for" title="Made for businesses where every booking counts." />
+                <div className="mt-10"><IndustryCards /></div>
             </Section>
 
             <ClosingCTA title="Take your next booking on WhatsApp." sub="Free to start. Most people are taking bookings the same afternoon." />

@@ -5,8 +5,9 @@ import {
     Awning, ButtonLink, Container, Panel, Section, SectionTitle, SignupLink, ClosingCTA, motionStyles as m,
 } from '@/components/marketing/primitives';
 import {
-    BusinessTypeCards, ChannelCards, JobsGrid, NoSetupBlock, Shopfront, StepsList, TrustStrip,
+    ChannelCards, IndustryCards, JobsGrid, NoSetupBlock, StepsList,
 } from '@/components/marketing/sections';
+import { ChatDemo } from '@/components/marketing/chat-demo';
 import { LEAKS } from '@/components/marketing/content';
 import { pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
 import { SITE_TAGLINE } from '@/lib/site';
@@ -19,8 +20,8 @@ export const metadata = pageMetadata({
 });
 
 /**
- * Home. A typographic hero (the tagline in Clash Display) next to a
- * shopfront illustration, then the honest sections. Every number on the
+ * Home. A typographic hero (the tagline in Clash Display) next to a live
+ * chat demo over a client photo, then the honest sections. Every number on the
  * page is something Bookly does, never a customer count.
  */
 export default function HomePage() {
@@ -31,7 +32,7 @@ export default function HomePage() {
                 <Container className="grid items-center gap-12 pb-14 pt-8 sm:pt-12 lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:pb-20 lg:pt-16">
                     <div>
                         <p className={cn('text-small font-semibold uppercase tracking-[0.08em] text-primary', m.enter)}>
-                            WhatsApp bookings for small businesses in Ghana
+                            Bookings on WhatsApp, Instagram and Messenger
                         </p>
                         <h1 className={cn('mt-4 font-display text-hero text-text [text-wrap:balance]', m.enterTitle)}>
                             {SITE_TAGLINE}
@@ -52,16 +53,25 @@ export default function HomePage() {
                             No card needed. Nothing to set up first.
                         </p>
                     </div>
-                    <Shopfront className={cn(m.enter, m.d2)} />
+                    <div className={cn('relative mx-auto w-full max-w-md lg:max-w-none', m.enter, m.d2)}>
+                        {/* A client checking her phone; the chat below is what she sees. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src="/images/marketing/clinic-client-640.webp"
+                            srcSet="/images/marketing/clinic-client-640.webp 640w, /images/marketing/clinic-client-960.webp 960w"
+                            sizes="(min-width: 1024px) 340px, 0px"
+                            width={640}
+                            height={800}
+                            alt=""
+                            decoding="async"
+                            className="absolute right-0 top-0 hidden aspect-[4/5] w-[56%] rounded-card-lg object-cover shadow-card-lg lg:block"
+                        />
+                        <ChatDemo className="relative lg:mr-auto lg:w-[72%] lg:pt-16" />
+                    </div>
                 </Container>
             </header>
 
             <Awning />
-
-            <Section tone="surface" className="!py-8 sm:!py-10" labelledBy="trust">
-                <h2 id="trust" className="sr-only">Why you can trust Bookly</h2>
-                <TrustStrip />
-            </Section>
 
             {/* The two leaks */}
             <Section labelledBy="leaks">
@@ -137,10 +147,10 @@ export default function HomePage() {
                 <SectionTitle
                     id="made-for"
                     eyebrow="Made for"
-                    title="Built for a business run from a phone."
-                    sub="Big enough to lose bookings while you're busy, too small to pay someone to answer the phone."
+                    title="Built for businesses where every booking is worth it."
+                    sub="When one appointment is worth hundreds of cedis, a slow reply or a no-show costs real money. Bookly answers in seconds and takes the deposit first."
                 />
-                <div className="mt-10"><BusinessTypeCards /></div>
+                <div className="mt-10"><IndustryCards /></div>
             </Section>
 
             <ClosingCTA

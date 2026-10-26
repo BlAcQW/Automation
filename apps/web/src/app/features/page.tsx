@@ -1,7 +1,7 @@
 import { ArrowRight } from 'lucide-react';
 import { SiteShell } from '@/components/marketing/site-shell';
 import { ButtonLink, ClosingCTA, Section, SectionTitle, SignupLink, PageHero } from '@/components/marketing/primitives';
-import { BusinessTypeCards, ChannelCards, JobsGrid, NoSetupBlock, StepsList } from '@/components/marketing/sections';
+import { IndustryCards, ChannelCards, JobsGrid, NoSetupBlock, StepsList } from '@/components/marketing/sections';
 import { breadcrumbJsonLd, pageMetadata } from '@/lib/seo';
 
 const CRUMBS = [{ name: 'What it does', path: '/features' }];
@@ -52,9 +52,9 @@ export default function FeaturesPage() {
                     id="made-for"
                     eyebrow="Who it's for"
                     title="Anything booked by appointment."
-                    sub="Run by one to eight people: salons, barbers, nail and lash techs, clinics, tutors, photographers, tailors and food vendors taking pre-orders."
+                    sub="Skin clinics, spas, dental clinics, tailors, private chefs, photographers, pilates studios and car detailers. If clients book you, Bookly fits."
                 />
-                <div className="mt-10"><BusinessTypeCards /></div>
+                <div className="mt-10"><IndustryCards /></div>
             </Section>
 
             <ClosingCTA title="Try it on your own number." sub="Free to start. Nothing to set up first." />

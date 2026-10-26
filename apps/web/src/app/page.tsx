@@ -30,27 +30,33 @@ export default function HomePage() {
         <SiteShell current="/" jsonLd={[softwareApplicationJsonLd()]}>
             {/* Hero */}
             <header className="bg-bg">
-                <Container className="grid items-center gap-12 pb-14 pt-8 sm:pt-12 lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:pb-20 lg:pt-16">
-                    <div>
-                        <p className={cn('text-small font-semibold uppercase tracking-[0.08em] text-primary', m.enter)}>
+                <Container className="grid items-center gap-8 pb-12 pt-6 sm:gap-12 sm:pt-12 lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:pb-20 lg:pt-16">
+                    {/* Centred while stacked so it lines up with the phone below; left-aligned beside it on desktop. */}
+                    <div className="mx-auto max-w-xl text-center lg:mx-0 lg:max-w-none lg:text-left">
+                        <p className={cn('hidden text-small font-semibold uppercase tracking-[0.08em] text-primary sm:block', m.enter)}>
                             Bookings on WhatsApp, Instagram and Messenger
                         </p>
-                        <h1 className={cn('mt-4 font-display text-hero text-text [text-wrap:balance]', m.enterTitle)}>
+                        <h1 className={cn('font-display text-hero text-text [text-wrap:balance] sm:mt-4', m.enterTitle)}>
                             {SITE_TAGLINE}
                         </h1>
-                        <p className={cn('mt-5 max-w-xl text-[1.0625rem] text-muted sm:text-xl sm:leading-relaxed', m.enter, m.d1)}>
+                        {/* Phones get one short line so the chat demo shows at first glance. */}
+                        <p className={cn('mt-3 text-[1.0625rem] text-muted sm:hidden', m.enter, m.d1)}>
+                            Bookly books your clients on <RotatingChannel /> and takes the deposit.
+                        </p>
+                        <p className={cn('mt-5 hidden max-w-xl text-xl leading-relaxed text-muted sm:mx-auto sm:block lg:mx-0', m.enter, m.d1)}>
                             Bookly answers your <RotatingChannel /> while you work. It books customers into times you&apos;re really
                             free, takes the deposit by Mobile Money and sends the reminder, so they show up.
                         </p>
-                        <div className={cn('mt-8 flex flex-col gap-3 sm:flex-row', m.enter, m.d2)}>
-                            <SignupLink size="xl">
+                        <div className={cn('mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:flex sm:justify-center lg:justify-start', m.enter, m.d2)}>
+                            <SignupLink size="xl" className="px-3 sm:px-7">
                                 Start free <ArrowRight className="h-5 w-5" aria-hidden />
                             </SignupLink>
-                            <ButtonLink href="/features" variant="secondary" size="xl">
-                                See what it does
+                            <ButtonLink href="/features" variant="secondary" size="xl" className="px-3 sm:px-7">
+                                <span className="sm:hidden">How it works</span>
+                                <span className="hidden sm:inline">See what it does</span>
                             </ButtonLink>
                         </div>
-                        <p className={cn('mt-4 text-small text-muted', m.enter, m.d3)}>
+                        <p className={cn('mt-4 hidden text-small text-muted sm:block', m.enter, m.d3)}>
                             No card needed. Nothing to set up first.
                         </p>
                     </div>

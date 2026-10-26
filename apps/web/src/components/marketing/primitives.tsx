@@ -186,11 +186,11 @@ export function Panel({ children, className, lift }: { children: React.ReactNode
 
 export interface Crumb { name: string; path: string }
 
-export function Breadcrumbs({ crumbs }: { crumbs: readonly Crumb[] }) {
+export function Breadcrumbs({ crumbs, className }: { crumbs: readonly Crumb[]; className?: string }) {
     const all = [{ name: 'Home', path: '/' }, ...crumbs];
     return (
         <nav aria-label="Breadcrumb">
-            <ol className="flex flex-wrap items-center gap-1 text-small text-muted">
+            <ol className={cn('flex flex-wrap items-center gap-1 text-small text-muted', className)}>
                 {all.map((c, i) => {
                     const last = i === all.length - 1;
                     return (
@@ -211,7 +211,11 @@ export function Breadcrumbs({ crumbs }: { crumbs: readonly Crumb[] }) {
     );
 }
 
-/** Top of every inner page: breadcrumbs, the page's one h1 (Clash), a line, optional CTAs. */
+/**
+ * Top of every inner page: breadcrumbs, the page's one h1 (Clash), a line,
+ * optional CTAs. Centred at every width so inner pages line up with each
+ * other and with the stacked home hero.
+ */
 export function PageHero({
     eyebrow, title, sub, crumbs, children,
 }: {
@@ -221,14 +225,14 @@ export function PageHero({
         <>
             <header className="bg-bg pb-12 pt-4 sm:pb-16 sm:pt-8">
                 <Container>
-                    {crumbs && <Breadcrumbs crumbs={crumbs} />}
-                    <div className={cn('max-w-3xl', crumbs ? 'mt-6 sm:mt-8' : 'mt-6')}>
+                    {crumbs && <Breadcrumbs crumbs={crumbs} className="justify-center" />}
+                    <div className={cn('mx-auto max-w-3xl text-center', crumbs ? 'mt-4 sm:mt-6' : 'mt-6')}>
                         {eyebrow && <div className={styles.enter}><Eyebrow>{eyebrow}</Eyebrow></div>}
                         <h1 className={cn('mt-3 font-display text-page-title text-text [text-wrap:balance] lg:text-[3rem] lg:leading-[1.05]', styles.enterTitle)}>
                             {title}
                         </h1>
-                        {sub && <p className={cn('mt-4 max-w-2xl text-[1.0625rem] text-muted sm:text-lg', styles.enter, styles.d1)}>{sub}</p>}
-                        {children && <div className={cn('mt-8 flex flex-col gap-3 sm:flex-row', styles.enter, styles.d2)}>{children}</div>}
+                        {sub && <p className={cn('mx-auto mt-4 max-w-2xl text-[1.0625rem] text-muted sm:text-lg', styles.enter, styles.d1)}>{sub}</p>}
+                        {children && <div className={cn('mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center', styles.enter, styles.d2)}>{children}</div>}
                     </div>
                 </Container>
             </header>

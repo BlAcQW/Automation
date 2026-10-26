@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ChevronRight, Menu, X } from 'lucide-react';
 import { cx as cn } from '@/components/marketing/cx';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { SiteLogo } from './site-logo';
 import { ButtonLink, Container, SignupLink } from './primitives';
 import styles from './marketing.module.css';
@@ -43,7 +44,8 @@ export function SiteHeader({ current }: { current?: string }) {
                     </ul>
                 </nav>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                    <ThemeToggle />
                     <ButtonLink href="/login" variant="ghost" size="md" className="hidden sm:inline-flex">
                         Log in
                     </ButtonLink>

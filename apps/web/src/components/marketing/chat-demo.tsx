@@ -198,7 +198,7 @@ export function ChatDemo({ className }: { className?: string }) {
                         <Icon className="h-4 w-4 opacity-80" />
                     </div>
 
-                    <div className="flex h-[360px] flex-col justify-end gap-1.5 overflow-hidden px-3 pb-4 pt-3">
+                    <div className="flex h-[300px] flex-col justify-end gap-1.5 overflow-hidden px-3 pb-4 pt-3 sm:h-[360px]">
                         {visible.map((m, i) => {
                             const mine = m.from === 'customer';
                             return (

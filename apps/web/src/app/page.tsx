@@ -1,182 +1,152 @@
-import { CalendarCheck, MessageCircle, Wallet } from 'lucide-react';
-import { Nav, Footer, MobileCTA } from '@/components/marketing/site/chrome';
-import { HomeHero } from '@/components/marketing/site/home-hero';
+import { ArrowRight } from 'lucide-react';
+import { cx as cn } from '@/components/marketing/cx';
+import { SiteShell } from '@/components/marketing/site-shell';
 import {
-    Section, Eyebrow, Heading, ChannelCards, NoSetupBlock, ClosingCTA, CTA,
-    TrustStrip, Comparison, WorksWith,
-} from '@/components/marketing/site/pieces';
-import { Reveal, LiftCard } from '@/components/marketing/site/motion';
-import { Satin } from '@/components/marketing/site/satin';
+    Awning, ButtonLink, Container, Panel, Section, SectionTitle, SignupLink, ClosingCTA, motionStyles as m,
+} from '@/components/marketing/primitives';
+import {
+    BusinessTypeCards, ChannelCards, JobsGrid, NoSetupBlock, Shopfront, StepsList, TrustStrip,
+} from '@/components/marketing/sections';
+import { LEAKS } from '@/components/marketing/content';
+import { pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
+import { SITE_TAGLINE } from '@/lib/site';
 
-export const metadata = {
-    title: 'Bookly — never lose a booking because you were busy',
+export const metadata = pageMetadata({
+    title: 'Bookly: WhatsApp booking system for Ghana businesses',
     description:
-        'A receptionist for your WhatsApp and Instagram. Answers customers while you work, books real free times, and takes a deposit so they show up.',
-};
+        'Your shop, always open. Bookly answers WhatsApp while you work, books real free times, takes the deposit by Mobile Money and sends the reminder.',
+    path: '/',
+});
 
 /**
- * Home, on the reference's arc: paper hero → night statement with three
- * product facts → satin feature band → the honest sections → closing CTA →
- * wordmark footer. The stats are things Bookly does, never customer counts:
- * there are barely any customers yet and inventing them loses the real ones.
+ * Home. A typographic hero (the tagline in Clash Display) next to a
+ * shopfront illustration, then the honest sections. Every number on the
+ * page is something Bookly does, never a customer count.
  */
 export default function HomePage() {
     return (
-        <main id="main" className="theme-site">
-            <Nav />
-            <HomeHero />
-            <TrustStrip />
-
-            <section className="fs-night">
-                <div className="fs-about">
-                    <span className="fs-badge">What it costs you</span>
-                    <p className="fs-statement">
-                        Every missed message is a booking that went next door.{' '}
-                        <span className="fs-w">Bookly answers while you&apos;re mid-service, offers only the times you&apos;re
-                        really free, and holds the slot with a deposit.</span>
-                    </p>
-                    <dl className="fs-stats">
-                        {[
-                            { v: '24/7', l: 'Replies in seconds, even at 11pm' },
-                            { v: '30 min', l: 'A slot is held while the customer pays' },
-                            { v: '0', l: 'Payment gateways or API keys for you to set up' },
-                        ].map((s) => (
-                            <div key={s.l} className="fs-statnum">
-                                <dt className="fs-statnum-l" style={{ marginTop: 0, order: 2 }}>{s.l}</dt>
-                                <dd className="fs-statnum-v" style={{ order: 1, marginBottom: 16 }}>{s.v}</dd>
-                            </div>
-                        ))}
-                    </dl>
-                </div>
-
-                <div className="fs-feat">
-                    <div className="fs-feat-bg"><Satin /></div>
-                    <div className="fs-feat-in">
-                        <span className="fs-badge">Inside the app</span>
-                        <h2 className="fs-h2" style={{ color: 'var(--forest-cream)' }}>
-                            Every chat, <span className="fs-mute">one diary.</span>
-                        </h2>
-                        <p className="fs-feat-sub">
-                            The conversation, the booking and the deposit, side by side, for every channel your customers use.
+        <SiteShell current="/" jsonLd={[softwareApplicationJsonLd()]}>
+            {/* Hero */}
+            <header className="bg-bg">
+                <Container className="grid items-center gap-12 pb-14 pt-8 sm:pt-12 lg:grid-cols-[1.1fr_1fr] lg:gap-16 lg:pb-20 lg:pt-16">
+                    <div>
+                        <p className={cn('text-small font-semibold uppercase tracking-[0.08em] text-primary', m.enter)}>
+                            WhatsApp bookings for small businesses in Ghana
                         </p>
-                        <Reveal className="fs-fcards">
-                            <FeatureCard
-                                variant={0}
-                                title="Only offers real free times"
-                                body="Checks your hours, days off, existing bookings and how many customers you take at once."
-                            >
-                                <div className="fs-panel">
-                                    <p className="fs-panel-k">Saturday · Glow Hair Studio</p>
-                                    <ul className="mt-3 grid grid-cols-3 gap-1.5 text-[11px]">
-                                        {['9:00', '10:30', '12:00', '1:30', '3:00', '4:30'].map((t, i) => (
-                                            <li
-                                                key={t}
-                                                className="rounded-[4px] py-1.5 text-center tabular-nums"
-                                                style={
-                                                    i === 3
-                                                        ? { background: 'var(--forest-brand)', color: '#FBFAF7' }
-                                                        : i === 1 || i === 2
-                                                            ? { background: '#ECE8E2', color: '#9A9A8D', textDecoration: 'line-through' }
-                                                            : { background: '#F2EFEA', color: '#141A16' }
-                                                }
-                                            >
-                                                {t}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    <p className="mt-3 flex items-center gap-1.5 text-[11px]" style={{ color: '#5F675E' }}>
-                                        <CalendarCheck className="h-3 w-3" /> 1:30 offered to Ama · box braids
-                                    </p>
-                                </div>
-                            </FeatureCard>
-                            <FeatureCard
-                                variant={1}
-                                title="Takes the deposit up front"
-                                body="Mobile Money or card. The slot is held for 30 minutes and released if nobody pays."
-                            >
-                                <div className="fs-panel">
-                                    <div className="flex items-start justify-between">
-                                        <div>
-                                            <p className="fs-panel-k">Deposit received</p>
-                                            <p className="fs-panel-v">GHS 50.00</p>
-                                            <p className="fs-panel-g">MTN MoMo · Ama K.</p>
-                                        </div>
-                                        <span className="fs-ico" style={{ background: '#F2EFEA' }}><Wallet className="h-3 w-3" /></span>
-                                    </div>
-                                    <div className="mt-3 flex items-center gap-2 rounded-[5px] p-2 text-[11px]" style={{ background: '#F2EFEA' }}>
-                                        <MessageCircle className="h-3.5 w-3.5" style={{ color: 'var(--wa-teal)' }} />
-                                        Confirmation sent on WhatsApp
-                                    </div>
-                                </div>
-                            </FeatureCard>
-                        </Reveal>
+                        <h1 className={cn('mt-4 font-display text-hero text-text [text-wrap:balance]', m.enterTitle)}>
+                            {SITE_TAGLINE}
+                        </h1>
+                        <p className={cn('mt-5 max-w-xl text-[1.0625rem] text-muted sm:text-xl sm:leading-relaxed', m.enter, m.d1)}>
+                            Bookly answers your WhatsApp while you work. It books customers into times you&apos;re really
+                            free, takes the deposit by Mobile Money and sends the reminder, so they show up.
+                        </p>
+                        <div className={cn('mt-8 flex flex-col gap-3 sm:flex-row', m.enter, m.d2)}>
+                            <SignupLink size="xl">
+                                Start free <ArrowRight className="h-5 w-5" aria-hidden />
+                            </SignupLink>
+                            <ButtonLink href="/features" variant="secondary" size="xl">
+                                See what it does
+                            </ButtonLink>
+                        </div>
+                        <p className={cn('mt-4 text-small text-muted', m.enter, m.d3)}>
+                            No card needed. Nothing to set up first.
+                        </p>
                     </div>
-                </div>
-            </section>
+                    <Shopfront className={cn(m.enter, m.d2)} />
+                </Container>
+            </header>
 
-            <Section tint>
-                <Eyebrow>The two leaks</Eyebrow>
-                <Heading sub="Not admin. Two specific leaks, both of them money.">
-                    Where the bookings go.
-                </Heading>
-                <Reveal className="mt-10 grid gap-4 sm:grid-cols-2">
-                    {[
-                        { t: "You're mid-service and the phone buzzes", d: "You can't stop. By the time you reply she's booked somewhere else — and you never see the ones you lost." },
-                        { t: 'They book, then never come', d: 'Three no-shows a week at GHS 50 is GHS 600 a month gone, with the chair sat empty.' },
-                    ].map((c) => (
-                        <LiftCard key={c.t} className="rounded-[6px] p-6" style={{ background: '#FBFAF7', boxShadow: '0 24px 50px -30px rgba(20,26,22,0.45), 0 0 0 1px var(--border)' }}>
-                            <h3 className="text-[20px] font-normal leading-tight tracking-[-0.03em]" style={{ color: 'var(--foreground)' }}>{c.t}</h3>
-                            <p className="mt-3 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{c.d}</p>
-                        </LiftCard>
+            <Awning />
+
+            <Section tone="surface" className="!py-8 sm:!py-10" labelledBy="trust">
+                <h2 id="trust" className="sr-only">Why you can trust Bookly</h2>
+                <TrustStrip />
+            </Section>
+
+            {/* The two leaks */}
+            <Section labelledBy="leaks">
+                <SectionTitle
+                    id="leaks"
+                    eyebrow="Where the bookings go"
+                    title="Two leaks, and both of them are money."
+                    sub="Not admin. Two specific moments where a customer slips away."
+                />
+                <ul className="mt-10 grid gap-4 sm:grid-cols-2">
+                    {LEAKS.map(({ icon: Icon, title, body }) => (
+                        <li key={title}>
+                            <Panel className="h-full">
+                                <Icon className="h-6 w-6 text-primary" aria-hidden />
+                                <h3 className="mt-4 text-[1.125rem] font-bold text-text">{title}</h3>
+                                <p className="mt-1.5 text-body text-muted">{body}</p>
+                            </Panel>
+                        </li>
                     ))}
-                </Reveal>
+                </ul>
+                <p className="mt-8 max-w-2xl text-[1.0625rem] font-medium text-text">
+                    Bookly answers while you&apos;re mid-job, offers only the times you&apos;re really free, and holds
+                    the slot with a deposit.
+                </p>
             </Section>
 
-            <Section><NoSetupBlock /></Section>
-
-            <Section tint>
-                <Eyebrow>Why people switch</Eyebrow>
-                <Heading sub="The setup is where every other tool loses people. We removed it.">
-                    Nothing to sign up for first.
-                </Heading>
-                <div className="mt-10"><Comparison /></div>
-                <p className="mt-8 text-[12px] font-medium" style={{ color: 'var(--muted-foreground)' }}>Works with</p>
-                <div className="mt-3"><WorksWith /></div>
+            {/* How it works */}
+            <Section tone="green" labelledBy="how">
+                <SectionTitle
+                    id="how"
+                    inverse
+                    eyebrow="How it works"
+                    title="Three steps, once. Then it just runs."
+                    sub="Most people are taking bookings the same afternoon."
+                />
+                <div className="mt-10"><StepsList inverse /></div>
             </Section>
 
-            <Section>
-                <Eyebrow>Where it works</Eyebrow>
-                <Heading sub="Customers message you the way they already do. Nothing for them to download.">
-                    Your customers don&apos;t install anything.
-                </Heading>
+            {/* What it does */}
+            <Section labelledBy="jobs">
+                <SectionTitle
+                    id="jobs"
+                    eyebrow="What it does"
+                    title="A front desk that never takes lunch."
+                    sub="The jobs Bookly takes off your hands, in the order you'll feel them."
+                />
+                <div className="mt-10"><JobsGrid limit={6} /></div>
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                    <ButtonLink href="/features" variant="secondary">Everything it does</ButtonLink>
+                    <ButtonLink href="/features/whatsapp-bookings" variant="ghost">
+                        How WhatsApp bookings work <ArrowRight className="h-4 w-4" aria-hidden />
+                    </ButtonLink>
+                </div>
+            </Section>
+
+            <Section tone="soft" labelledBy="no-setup">
+                <NoSetupBlock headingId="no-setup" />
+            </Section>
+
+            {/* Channels */}
+            <Section labelledBy="channels">
+                <SectionTitle
+                    id="channels"
+                    eyebrow="Where it works"
+                    title="Your customers don't install anything."
+                    sub="They message you the way they already do. One assistant and one diary behind every channel."
+                />
                 <div className="mt-10"><ChannelCards /></div>
-                <div className="mt-8"><CTA href="/features" variant="ghost">See everything it does</CTA></div>
+            </Section>
+
+            {/* Business types */}
+            <Section tone="surface" labelledBy="made-for">
+                <SectionTitle
+                    id="made-for"
+                    eyebrow="Made for"
+                    title="Built for a business run from a phone."
+                    sub="Big enough to lose bookings while you're busy, too small to pay someone to answer the phone."
+                />
+                <div className="mt-10"><BusinessTypeCards /></div>
             </Section>
 
             <ClosingCTA
                 title="Stop losing bookings because you were busy."
-                sub="Set it up this afternoon. Your assistant answers the next message that comes in."
+                sub="Set it up this afternoon. Bookly answers the next message that comes in."
             />
-            <Footer />
-            <MobileCTA />
-        </main>
-    );
-}
-
-function FeatureCard({
-    variant, title, body, children,
-}: {
-    variant: number; title: string; body: string; children: React.ReactNode;
-}) {
-    return (
-        <article className="fs-fcard">
-            <div className="fs-fmedia">
-                <Satin variant={variant} />
-                <span className={`fs-flare${variant % 2 ? ' fs-flare--r' : ''}`} aria-hidden />
-                {children}
-            </div>
-            <h3>{title}</h3>
-            <p>{body}</p>
-        </article>
+        </SiteShell>
     );
 }

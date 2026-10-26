@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import Link from 'next/link';
-import { AlertTriangle, RotateCw } from 'lucide-react';
+import { RotateCw, AlertTriangle } from 'lucide-react';
 import * as Sentry from '@sentry/nextjs';
 import { SupportLinks } from '@/components/support-links';
+import { ButtonLink } from '@/components/marketing/primitives';
+import { StatusPage } from '@/components/marketing/status-page';
 
 /**
  * Anything below the root layout that throws lands here. The person sees
@@ -27,43 +28,38 @@ export default function ErrorPage({
     const detail = process.env.NODE_ENV === 'production' ? null : error.message;
 
     return (
-        <main id="main" className="relative isolate flex min-h-screen items-center bg-ink-950 px-4 py-12 text-ink-50 sm:px-8">
-            <div className="fs-hero-grid" aria-hidden />
-            <div className="mx-auto w-full max-w-xl">
-                <p className="flex items-center gap-2 font-mono text-[11px] text-ink-300">
-                    <AlertTriangle className="h-3.5 w-3.5 text-rose-600 dark:text-rose-300" aria-hidden />
-                    /error/
+        <StatusPage>
+            <p className="inline-flex items-center gap-2 rounded-full bg-error-soft px-3 py-1 text-small font-semibold text-error-fg">
+                <AlertTriangle className="h-4 w-4" aria-hidden />
+                Something went wrong
+            </p>
+            <h1 className="mt-4 font-display text-page-title text-text">Oops, that didn&apos;t work.</h1>
+            <p className="mt-3 text-body text-muted">
+                This is on our side, not yours. Your bookings and chats are safe. Let&apos;s try again; if it keeps
+                happening, send us the reference below.
+            </p>
+            {detail && <p className="mt-3 break-words text-small text-error-fg">{detail}</p>}
+            {error.digest && (
+                <p className="mt-4 inline-flex rounded-control bg-surface-2 px-3 py-2 font-mono text-small tabular-nums text-text">
+                    Reference: {error.digest}
                 </p>
-                <h1 className="mt-4 max-w-[14ch] text-[clamp(40px,7vw,72px)] font-normal leading-[0.98] tracking-[-0.05em] text-ink-50">
-                    Something went wrong
-                </h1>
-                <p className="mt-5 max-w-[42ch] text-[15px] leading-relaxed text-ink-300">
-                    This is on our side, not yours. Your bookings and chats are safe. Try again; if it keeps
-                    happening, send us the reference below.
-                </p>
-                {detail && <p className="mt-3 break-words text-[13px] text-rose-700 dark:text-rose-300">{detail}</p>}
-                {error.digest && (
-                    <p className="mt-4 inline-flex rounded-[3px] bg-ink-900 px-2.5 py-1.5 font-mono text-[12px] tabular-nums text-ink-300 ring-1 ring-ink-700/60">
-                        Reference: {error.digest}
-                    </p>
-                )}
-                <div className="mt-9 flex flex-col gap-2 sm:flex-row">
-                    <button
-                        type="button"
-                        onClick={() => reset()}
-                        className="fs-btn fs-btn--lg fs-btn--brand"
-                    >
-                        <RotateCw className="h-4 w-4" aria-hidden />
-                        Try again
-                    </button>
-                    <Link href="/dashboard" className="fs-btn fs-btn--lg fs-btn--ghost text-ink-50">
-                        Back to dashboard
-                    </Link>
-                </div>
-                <div className="mt-12 border-t border-ink-700/60 pt-5">
-                    <SupportLinks topic={`something went wrong${error.digest ? ` (ref ${error.digest})` : ''}`} />
-                </div>
+            )}
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                {/* Plain button, not @bookingflow/ui Button: this boundary loads on
+                    every page, and Button would pull framer-motion into all of them. */}
+                <button
+                    type="button"
+                    onClick={() => reset()}
+                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-control bg-primary px-6 text-base font-semibold text-primary-fg shadow-soft transition-colors duration-ui hover:bg-primary-hover active:scale-[0.97] motion-reduce:active:scale-100"
+                >
+                    <RotateCw className="h-4 w-4" aria-hidden />
+                    Try again
+                </button>
+                <ButtonLink href="/dashboard" variant="secondary">Back to my dashboard</ButtonLink>
             </div>
-        </main>
+            <div className="mt-8 border-t border-border pt-6">
+                <SupportLinks topic={`something went wrong${error.digest ? ` (ref ${error.digest})` : ''}`} />
+            </div>
+        </StatusPage>
     );
 }

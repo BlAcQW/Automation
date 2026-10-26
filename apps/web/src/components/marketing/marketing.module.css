@@ -1,0 +1,85 @@
+/*
+ * Marketing motion. Pure CSS so it runs without hydration, and the resting
+ * state is always visible: no element waits for JS to become readable.
+ * Entrance = fade + 8px rise, ease-out, <= 450ms. Reduced motion: none.
+ */
+
+@keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* The h1 never starts invisible (it is the LCP element); it only rises. */
+@keyframes riseSolid {
+    from { transform: translateY(8px); }
+    to { transform: none; }
+}
+
+/*
+ * Above-the-fold copy never starts transparent: an opacity-0 first frame
+ * delays LCP / Speed Index on slow phones. It starts at 0.4 opacity and
+ * rises 8px, so the motion still reads as a fade-up.
+ */
+@keyframes riseSoft {
+    from { opacity: 0.4; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+.enter {
+    animation: riseSoft 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.enterTitle {
+    animation: riseSolid 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.d1 { animation-delay: 60ms; }
+.d2 { animation-delay: 120ms; }
+.d3 { animation-delay: 180ms; }
+
+.lift {
+    transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lift:hover {
+    transform: translateY(-3px);
+}
+
+/* Mobile menu: <details> disclosure, no JS. */
+.menu > summary {
+    list-style: none;
+}
+.menu > summary::-webkit-details-marker {
+    display: none;
+}
+.menu[open] .menuIconOpen { display: none; }
+.menu:not([open]) .menuIconClose { display: none; }
+
+.menuPanel {
+    animation: rise 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* FAQ accordions. */
+.faq > summary {
+    list-style: none;
+}
+.faq > summary::-webkit-details-marker {
+    display: none;
+}
+.faq[open] .faqIcon {
+    transform: rotate(45deg);
+}
+.faqIcon {
+    transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .enter,
+    .enterTitle,
+    .menuPanel {
+        animation: none;
+    }
+    .lift,
+    .faqIcon {
+        transition: none;
+    }
+    .lift:hover {
+        transform: none;
+    }
+}

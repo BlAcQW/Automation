@@ -1,24 +1,33 @@
-import type { Metadata } from 'next';
-import { Nav, Footer } from '@/components/marketing/site/chrome';
-import { PageHero, Section } from '@/components/marketing/site/pieces';
+import Link from 'next/link';
+import { SiteShell } from '@/components/marketing/site-shell';
+import { PageHero } from '@/components/marketing/primitives';
+import { Clause, LegalArticle } from '@/components/marketing/legal';
+import { breadcrumbJsonLd, pageMetadata } from '@/lib/seo';
+import { LEGAL_EMAIL } from '@/lib/site';
 
-export const metadata: Metadata = {
+const CRUMBS = [{ name: 'Privacy Policy', path: '/privacy' }];
+
+export const metadata = pageMetadata({
     title: 'Privacy Policy | Bookly',
-    description: 'How Bookly collects, uses, and protects your data.',
-};
+    description:
+        'How Bookly collects, uses and protects your data and your customers’ data, including cookies and analytics, under Ghana’s Data Protection Act.',
+    path: '/privacy',
+});
 
-const LAST_UPDATED = 'October 6, 2026';
-const CONTACT_EMAIL = 'support@bookly.ikieguy.online';
+const LAST_UPDATED = 'October 26, 2026';
+const CONTACT_EMAIL = LEGAL_EMAIL;
 
 export default function PrivacyPolicyPage() {
     return (
-        <main id="main" className="theme-site">
-            <Nav />
-            <PageHero eyebrow="Privacy" title="Privacy Policy" sub="How Bookly collects, uses, and protects your data." />
+        <SiteShell jsonLd={[breadcrumbJsonLd(CRUMBS)]}>
+            <PageHero crumbs={CRUMBS} eyebrow="Privacy" title="Privacy Policy" sub="How Bookly collects, uses, and protects your data." />
 
-            <Section tint>
-                <article className="mx-auto max-w-[68ch]">
-                    <p className="fs-key">Last updated: {LAST_UPDATED}</p>
+            <LegalArticle updated={LAST_UPDATED}>
+                    <p className="mt-6 rounded-card bg-primary-soft p-4 text-body text-text">
+                        <strong>In short:</strong> we collect only what we need to run Bookly, we never sell your
+                        data, and our website uses no tracking or advertising cookies. See{' '}
+                        <Link href="#cookies" className="font-semibold text-primary underline underline-offset-2">cookies and analytics</Link>.
+                    </p>
 
                     <Clause title="1. Who we are">
                         <p>
@@ -98,6 +107,26 @@ export default function PrivacyPolicyPage() {
                             We do <strong>not</strong> sell your personal data. We do not use customer conversation
                             contents to train machine-learning models, and we do not use data received from Meta for
                             advertising, profiling, or any purpose other than answering the conversation it came from.
+                        </p>
+                    </Clause>
+
+                    <Clause title="3a. Cookies and website analytics" id="cookies">
+                        <p>
+                            Our public website uses <strong>Plausible Analytics</strong> to count page visits and a
+                            few anonymous actions, such as clicks on &ldquo;Start free&rdquo;, demo requests and
+                            WhatsApp links. Plausible is cookieless: it sets <strong>no cookies</strong>, does not
+                            collect personal data, does not store your IP address, and does not follow you across
+                            other websites. Because of this, we do not show a cookie banner.
+                        </p>
+                        <p>
+                            The signed-in Bookly app uses only essential browser storage, such as keeping you logged
+                            in and remembering your display settings. We use no advertising or tracking cookies.
+                        </p>
+                        <p>
+                            We process personal data in line with Ghana&apos;s <strong>Data Protection Act, 2012
+                            (Act 843)</strong>. You may raise any concern with us at{' '}
+                            <a className="underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>, and you also
+                            have the right to complain to Ghana&apos;s Data Protection Commission.
                         </p>
                     </Clause>
 
@@ -193,27 +222,7 @@ export default function PrivacyPolicyPage() {
                             <a className="underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
                         </p>
                     </Clause>
-                </article>
-            </Section>
-
-            <Footer />
-        </main>
-    );
-}
-
-/** One numbered clause, set for long reading on the paper inset. */
-function Clause({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
-    return (
-        <section id={id} className="mt-10 scroll-mt-24 border-t pt-8" style={{ borderColor: 'var(--border)' }}>
-            <h2 className="mb-4 text-[22px] font-normal leading-tight tracking-[-0.03em] sm:text-[26px]" style={{ color: 'var(--foreground)' }}>
-                {title}
-            </h2>
-            <div
-                className="space-y-3 text-[15px] leading-[1.7] [&_a]:underline [&_a]:underline-offset-2 [&_strong]:font-medium"
-                style={{ color: 'color-mix(in srgb, var(--foreground) 86%, transparent)' }}
-            >
-                {children}
-            </div>
-        </section>
+            </LegalArticle>
+        </SiteShell>
     );
 }

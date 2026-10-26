@@ -1,7 +1,10 @@
 {
     "name": "Bookly",
     "short_name": "Bookly",
-    "description": "WhatsApp-first SaaS for small businesses. Bookings, payments, customer chats — all automated, all from one dashboard.",
+    "description": "Your shop, always open. Bookings, deposits and reminders on WhatsApp for small businesses in Ghana.",
+    "id": "/dashboard",
+    "lang": "en-GH",
+    "dir": "ltr",
     "start_url": "/dashboard",
     "scope": "/",
     "display": "standalone",
@@ -87,8 +90,8 @@
             ]
         },
         {
-            "name": "Conversations",
-            "short_name": "Chat",
+            "name": "Inbox",
+            "short_name": "Inbox",
             "url": "/conversations",
             "icons": [
                 {

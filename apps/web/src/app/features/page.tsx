@@ -1,89 +1,63 @@
-import { Nav, Footer, MobileCTA } from '@/components/marketing/site/chrome';
-import {
-    PageHero, Section, Eyebrow, Heading, JobsGrid, ChannelCards,
-    NoSetupBlock, ClosingCTA,
-} from '@/components/marketing/site/pieces';
-import { Reveal } from '@/components/marketing/site/motion';
+import { ArrowRight } from 'lucide-react';
+import { SiteShell } from '@/components/marketing/site-shell';
+import { ButtonLink, ClosingCTA, Section, SectionTitle, SignupLink, PageHero } from '@/components/marketing/primitives';
+import { BusinessTypeCards, ChannelCards, JobsGrid, NoSetupBlock, StepsList } from '@/components/marketing/sections';
+import { breadcrumbJsonLd, pageMetadata } from '@/lib/seo';
 
-export const metadata = {
-    title: 'What Bookly does',
+const CRUMBS = [{ name: 'What it does', path: '/features' }];
+
+export const metadata = pageMetadata({
+    title: 'What Bookly does: bookings, deposits, reminders',
     description:
-        'Answers customers while you work, books real free times, takes deposits, sends reminders, and keeps your customer list yours.',
-};
+        'Answers customers while you work, books real free times, takes Mobile Money deposits, sends reminders and keeps your customer list yours.',
+    path: '/features',
+});
 
 export default function FeaturesPage() {
-    const steps = [
-        { n: '1', t: 'Connect your WhatsApp', d: 'One guided step. No code, no keys.' },
-        { n: '2', t: 'Add your services and hours', d: 'What you do, what it costs, when you are open.' },
-        { n: '3', t: 'Share your number', d: 'Put it in your Instagram bio. The assistant takes it from there.' },
-    ];
-    const fits = [
-        'Salons, barbers, nail and lash techs', 'Spas, dental and aesthetic clinics',
-        'Physios, tutors and trainers', 'Photographers and mechanics',
-        'Anyone selling on Instagram', 'Anyone with staff on the books',
-    ];
-
     return (
-        <main id="main" className="theme-site">
-            <Nav />
+        <SiteShell current="/features" jsonLd={[breadcrumbJsonLd(CRUMBS)]}>
             <PageHero
+                crumbs={CRUMBS}
                 eyebrow="What it does"
-                title="A receptionist who never takes lunch."
-                sub="Seven jobs, in the order you'll feel them."
-            />
+                title="A front desk that never takes lunch."
+                sub="Seven jobs Bookly takes off your hands, in the order you'll feel them."
+            >
+                <SignupLink>Start free</SignupLink>
+                <ButtonLink href="/features/whatsapp-bookings" variant="secondary">
+                    How WhatsApp bookings work <ArrowRight className="h-4 w-4" aria-hidden />
+                </ButtonLink>
+            </PageHero>
 
-            <Section><JobsGrid /></Section>
+            <Section labelledBy="jobs">
+                <h2 id="jobs" className="sr-only">Seven jobs Bookly does for you</h2>
+                <JobsGrid />
+            </Section>
 
-            <Section tint><NoSetupBlock /></Section>
+            <Section tone="soft" labelledBy="no-setup">
+                <NoSetupBlock headingId="no-setup" />
+            </Section>
 
-            <Section>
-                <Eyebrow>Where it works</Eyebrow>
-                <Heading sub="One assistant and one diary behind every channel.">
-                    Three inboxes, one place.
-                </Heading>
+            <Section labelledBy="channels">
+                <SectionTitle id="channels" eyebrow="Where it works" title="Three inboxes, one place." sub="One assistant and one diary behind every channel." />
                 <div className="mt-10"><ChannelCards /></div>
             </Section>
 
-            <Section tint>
-                <Eyebrow>Getting started</Eyebrow>
-                <Heading sub="Most people are taking bookings the same afternoon.">Three steps, once.</Heading>
-                <Reveal className="mt-10 grid gap-8 sm:grid-cols-3">
-                    {steps.map((s) => (
-                        <div key={s.n} className="border-t pt-5" style={{ borderColor: 'var(--border)' }}>
-                            <span
-                                className="block text-[3.2rem] font-light leading-none tracking-[-0.05em] tabular-nums"
-                                style={{ color: 'var(--primary)' }}
-                            >
-                                0{s.n}
-                            </span>
-                            <h3 className="mt-5 text-[17px] font-medium tracking-[-0.02em]" style={{ color: 'var(--foreground)' }}>{s.t}</h3>
-                            <p className="mt-1.5 text-[15px] leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>{s.d}</p>
-                        </div>
-                    ))}
-                </Reveal>
+            <Section tone="green" labelledBy="steps">
+                <SectionTitle id="steps" inverse eyebrow="Getting started" title="Three steps, once." sub="Most people are taking bookings the same afternoon." />
+                <div className="mt-10"><StepsList inverse /></div>
             </Section>
 
-            <Section>
-                <Eyebrow>Who it&apos;s for</Eyebrow>
-                <Heading sub="Anything booked by appointment, run by one to eight people — big enough to lose bookings while you're busy, too small to pay someone to answer the phone.">
-                    Built for a business run from a phone.
-                </Heading>
-                <div className="mt-8 flex flex-wrap gap-2">
-                    {fits.map((f) => (
-                        <span
-                            key={f}
-                            className="rounded-[3px] px-3 py-2 text-[13px]"
-                            style={{ background: 'var(--card)', color: 'var(--foreground)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px var(--border)' }}
-                        >
-                            {f}
-                        </span>
-                    ))}
-                </div>
+            <Section tone="surface" labelledBy="made-for">
+                <SectionTitle
+                    id="made-for"
+                    eyebrow="Who it's for"
+                    title="Anything booked by appointment."
+                    sub="Run by one to eight people: salons, barbers, nail and lash techs, clinics, tutors, photographers, tailors and food vendors taking pre-orders."
+                />
+                <div className="mt-10"><BusinessTypeCards /></div>
             </Section>
 
             <ClosingCTA title="Try it on your own number." sub="Free to start. Nothing to set up first." />
-            <Footer />
-            <MobileCTA />
-        </main>
+        </SiteShell>
     );
 }

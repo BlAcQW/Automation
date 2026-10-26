@@ -1,50 +1,51 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { ImageResponse } from 'next/og';
+import { SITE_TAGLINE } from '@/lib/site';
 
-export const runtime = 'edge';
-export const alt = 'Bookly: your bookings, taken on WhatsApp';
+export const alt = `Bookly. ${SITE_TAGLINE}`;
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 /**
- * The preview card when the link is shared on WhatsApp, X, LinkedIn. Rendered
- * at build time; no image asset to keep in sync with the copy.
+ * The share card for WhatsApp, X, LinkedIn: the text wordmark and the
+ * tagline only (logo work is on hold), in the brand colours, under the
+ * scalloped awning. Rendered at build
+ * time. The font is Clash Display 600 as .woff (Satori can't read woff2),
+ * kept beside this file in `_og/` (Fontshare ITF Free Font License; see
+ * public/fonts/LICENSES.md).
  */
-export default function OpenGraphImage() {
+export default async function OpenGraphImage() {
+    const clash = await readFile(join(process.cwd(), 'src/app/_og/clash-display-600.woff'));
+    const stripe = 60;
+    const stripes = Array.from({ length: Math.ceil(size.width / stripe) });
+
     return new ImageResponse(
         (
-            <div
-                style={{
-                    width: '100%',
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    padding: 72,
-                    background: 'linear-gradient(135deg, #0A0F0D 0%, #0F1614 60%, #0B2E22 100%)',
-                    color: '#F2F6F4',
-                    fontFamily: 'sans-serif',
-                }}
-            >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <div style={{ width: 22, height: 22, borderRadius: 999, background: '#10B981' }} />
-                    <div style={{ fontSize: 40, fontWeight: 700, letterSpacing: -1 }}>Bookly</div>
+            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#FAF6EE', fontFamily: 'Clash Display' }}>
+                {/* Awning: alternating gold stripes with a scalloped edge. */}
+                <div style={{ display: 'flex', width: '100%', height: 70 }}>
+                    {stripes.map((_, i) => (
+                        <div
+                            key={i}
+                            style={{
+                                width: stripe,
+                                height: 70,
+                                background: i % 2 ? '#0F6B4F' : '#E8A317',
+                                borderBottomLeftRadius: stripe / 2,
+                                borderBottomRightRadius: stripe / 2,
+                            }}
+                        />
+                    ))}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                    <div style={{ fontSize: 74, fontWeight: 700, lineHeight: 1.05, letterSpacing: -2, maxWidth: 980 }}>
-                        Your bookings, taken on WhatsApp.
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 88px' }}>
+                    <div style={{ fontSize: 76, fontWeight: 600, color: '#0F6B4F', letterSpacing: -1 }}>Bookly</div>
+                    <div style={{ marginTop: 18, fontSize: 104, fontWeight: 600, lineHeight: 1.02, color: '#1F2328', letterSpacing: -2 }}>
+                        {SITE_TAGLINE}
                     </div>
-                    <div style={{ fontSize: 32, color: '#B6C2BD', maxWidth: 900, lineHeight: 1.35 }}>
-                        An assistant that answers, books, collects the deposit and sends the reminder. You just show up.
-                    </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 26, color: '#8A9994' }}>
-                    <div style={{ padding: '10px 18px', borderRadius: 12, background: '#10B981', color: '#050807', fontWeight: 600 }}>
-                        Start free
-                    </div>
-                    <div>bookly.ikieguy.online</div>
                 </div>
             </div>
         ),
-        { ...size },
+        { ...size, fonts: [{ name: 'Clash Display', data: clash, weight: 600, style: 'normal' }] },
     );
 }

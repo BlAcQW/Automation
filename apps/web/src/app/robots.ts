@@ -1,22 +1,22 @@
 import type { MetadataRoute } from 'next';
-import { SITE_URL } from '@/lib/site';
+import { PRIVATE_ROUTES, SITE_URL, absoluteUrl } from '@/lib/site';
 
-/** Only the marketing and legal pages are for search engines; the app is not. */
+/**
+ * Marketing, landing and legal pages are for search engines; the signed-in
+ * app and transactional links (pay, track, c/…) are not. The same list
+ * drives the `X-Robots-Tag: noindex` header in next.config.js.
+ */
 export default function robots(): MetadataRoute.Robots {
     return {
         rules: [
             {
                 userAgent: '*',
-                allow: ['/', '/privacy', '/terms', '/support', '/login', '/register'],
-                disallow: [
-                    '/dashboard', '/bookings', '/services', '/availability', '/conversations',
-                    '/customers', '/whatsapp', '/templates', '/settings', '/orders', '/products',
-                    '/inventory', '/admin', '/pay', '/track', '/c/', '/api/', '/reset-password',
-                    '/verify-email', '/offline',
-                ],
+                allow: '/',
+                // `/dashboard` (no trailing slash) also covers /dashboard/… and /dashboard?x.
+                disallow: [...PRIVATE_ROUTES],
             },
         ],
-        sitemap: `${SITE_URL}/sitemap.xml`,
+        sitemap: absoluteUrl('/sitemap.xml'),
         host: SITE_URL,
     };
 }

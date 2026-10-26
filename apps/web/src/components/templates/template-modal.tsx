@@ -1,9 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
-import { Modal, Button, DashboardInput } from '@bookingflow/ui';
+import { Modal, Button, DashboardInput, Select, Textarea, Switch } from '@bookingflow/ui';
+import { notify } from '@/components/brand/toast';
+
+/** "BOOKING_REMINDER" → "Booking reminder". */
+function humanise(value: string): string {
+    const words = value.replace(/_/g, ' ').toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
 // Mirrors apps/api/prisma/schema.prisma — keep in sync if the enum grows.
 export type TemplatePurpose =
@@ -120,7 +126,7 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                     bodyPreview: form.bodyPreview || undefined,
                     isApproved: form.isApproved,
                 });
-                toast.success('Template updated');
+                notify.success('Template saved');
             } else {
                 await api.post('/templates', {
                     name: form.name,
@@ -131,11 +137,11 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                     bodyPreview: form.bodyPreview || undefined,
                     isApproved: form.isApproved,
                 });
-                toast.success('Template registered');
+                notify.success('Template added');
             }
             await onSaved();
         } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Save failed');
+            notify.error(err?.response?.data?.message ?? "Oops, that didn't save. Let's try again.");
         } finally {
             setSubmitting(false);
         }
@@ -145,97 +151,90 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={existing ? 'Edit Template' : 'Register Template'}
+            title={existing ? 'Edit template' : 'Add a template'}
+            description="Use the exact details from WhatsApp Business Manager."
             maxWidth="max-w-lg"
         >
             <form onSubmit={submit} className="space-y-4">
                 <DashboardInput
-                    label="Meta template name"
+                    label="Template name (exactly as in WhatsApp)"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="booking_confirmation_v1"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     required
                     minLength={1}
                 />
 
                 <DashboardInput
-                    label="Language"
+                    label="Language code"
+                    hint="For example en_US or en_GB. It's shown next to the template in WhatsApp."
                     value={form.language}
                     onChange={(e) => setForm({ ...form, language: e.target.value })}
                     placeholder="en_US"
+                    autoCapitalize="none"
                     required
                     minLength={2}
                 />
 
-                <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Purpose
-                    </label>
-                    <select
-                        value={form.purpose}
-                        onChange={(e) => {
-                            const purpose = e.target.value as TemplatePurpose;
-                            setForm({
-                                ...form,
-                                purpose,
-                                // Auto-set variableCount from the expected order
-                                variableCount: TEMPLATE_VARIABLE_ORDER[purpose].length,
-                            });
-                        }}
-                        disabled={!!existing}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50"
-                    >
-                        {PURPOSES.map((p) => (
-                            <option key={p} value={p}>
-                                {p.replace(/_/g, ' ').toLowerCase()}
-                            </option>
-                        ))}
-                    </select>
-                    {existing && (
-                        <p className="text-xs text-slate-400">
-                            Purpose can&apos;t be changed after registration.
-                        </p>
-                    )}
-                </div>
+                <Select
+                    label="What it's for"
+                    value={form.purpose}
+                    onChange={(e) => {
+                        const purpose = e.target.value as TemplatePurpose;
+                        setForm({
+                            ...form,
+                            purpose,
+                            // Auto-set variableCount from the expected order
+                            variableCount: TEMPLATE_VARIABLE_ORDER[purpose].length,
+                        });
+                    }}
+                    disabled={!!existing}
+                    hint={existing ? "You can't change this after adding the template." : undefined}
+                >
+                    {PURPOSES.map((p) => (
+                        <option key={p} value={p}>
+                            {humanise(p)}
+                        </option>
+                    ))}
+                </Select>
 
                 {expectedOrder.length > 0 && (
-                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                        <p className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Expected variable order (must match your Meta template body):
+                    <div className="rounded-control border border-border bg-surface-2 p-4">
+                        <p className="text-small font-semibold text-text">
+                            Fill-ins, in this order (must match your WhatsApp template):
                         </p>
-                        <ol className="text-xs text-slate-500 dark:text-slate-400 list-decimal list-inside space-y-0.5">
+                        <ol className="mt-2 space-y-1 text-[15px] text-muted">
                             {expectedOrder.map((v, i) => (
-                                <li key={v}>
-                                    <code className="text-emerald-700 dark:text-emerald-300">
+                                <li key={v} className="flex items-center gap-2">
+                                    <code className="rounded bg-primary-soft px-1.5 py-0.5 font-mono text-[13px] font-semibold text-primary">
                                         {`{{${i + 1}}}`}
-                                    </code>{' '}
-                                    → {v}
+                                    </code>
+                                    <span>{v}</span>
                                 </li>
                             ))}
                         </ol>
                     </div>
                 )}
 
-                <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Category
-                    </label>
-                    <select
-                        value={form.category}
-                        onChange={(e) => setForm({ ...form, category: e.target.value as TemplateCategory })}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                    >
-                        {CATEGORIES.map((c) => (
-                            <option key={c} value={c}>
-                                {c}
-                            </option>
-                        ))}
-                    </select>
-                </div>
+                <Select
+                    label="WhatsApp category"
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value as TemplateCategory })}
+                >
+                    {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                            {humanise(c)}
+                        </option>
+                    ))}
+                </Select>
 
                 <DashboardInput
-                    label="Variable count"
+                    label="Number of fill-ins"
                     type="number"
+                    inputMode="numeric"
                     min={0}
                     max={20}
                     value={form.variableCount}
@@ -245,35 +244,32 @@ export function TemplateModal({ isOpen, onClose, existing, onSaved }: TemplateMo
                     required
                 />
 
-                <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Body preview (optional)
-                    </label>
-                    <textarea
-                        value={form.bodyPreview}
-                        onChange={(e) => setForm({ ...form, bodyPreview: e.target.value })}
-                        placeholder="Hi {{1}}, your {{2}} booking on {{3}} at {{4}} is confirmed. Ref: {{5}}"
-                        rows={3}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                <Textarea
+                    label="Message preview (optional)"
+                    value={form.bodyPreview}
+                    onChange={(e) => setForm({ ...form, bodyPreview: e.target.value })}
+                    placeholder="Hi {{1}}, your {{2}} booking on {{3}} at {{4}} is confirmed. Ref: {{5}}"
+                    rows={3}
+                />
+
+                <div className="flex items-start justify-between gap-4 rounded-control border border-border p-4">
+                    <div>
+                        <p className="font-semibold text-text">Approved by WhatsApp</p>
+                        <p className="text-small text-muted">Turn this on once WhatsApp shows the template as approved.</p>
+                    </div>
+                    <Switch
+                        checked={form.isApproved}
+                        onChange={(next) => setForm({ ...form, isApproved: next })}
+                        label="Approved by WhatsApp"
                     />
                 </div>
 
-                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                    <input
-                        type="checkbox"
-                        checked={form.isApproved}
-                        onChange={(e) => setForm({ ...form, isApproved: e.target.checked })}
-                        className="accent-emerald-600"
-                    />
-                    Approved by Meta (turn on once the template is approved in Business Manager)
-                </label>
-
-                <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+                <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+                    <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
                         Cancel
                     </Button>
-                    <Button type="submit" disabled={submitting}>
-                        {submitting ? 'Saving…' : existing ? 'Save changes' : 'Register'}
+                    <Button type="submit" isLoading={submitting} loadingText="Saving…">
+                        {existing ? 'Save changes' : 'Add template'}
                     </Button>
                 </div>
             </form>

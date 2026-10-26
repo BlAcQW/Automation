@@ -1,18 +1,28 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import toast from 'react-hot-toast';
-import {
-    Search, Filter, Package, Truck,
-    CheckCircle, XCircle, Clock, DollarSign, Eye, Link2, RefreshCw,
-} from 'lucide-react';
+import { Banknote, Clock, Link2, Package, RefreshCw, SearchX, ShoppingBag, Truck } from 'lucide-react';
 import { api } from '@/lib/api';
-import { paymentBadgeClass } from '@/lib/payment';
-import { Button, DashboardInput, StatCard, PageHeader } from '@bookingflow/ui';
+import { useTenantCurrency } from '@/lib/use-currency';
+import {
+    Button,
+    EmptyState,
+    FilterChips,
+    PageHeader,
+    ResponsiveTable,
+    SearchInput,
+    SkeletonList,
+    StatCard,
+    buttonVariants,
+    type Column,
+} from '@bookingflow/ui';
+import { notify as toast } from '@/components/brand/toast';
 import { OrderDetailsModal } from '@/components/orders/order-details-modal';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { OrderStatusPill, PaymentPill } from '@/components/orders/order-pills';
+import { displayMoney } from '@/components/primitives/money';
 import { useProductRouteGuard } from '@/lib/use-product-route-guard';
 import { QueryState } from '@/components/query-state';
 
@@ -32,28 +42,49 @@ interface Order {
     createdAt: string;
 }
 
+const STATUS_FILTERS = [
+    { value: 'ALL', label: 'All' },
+    { value: 'PENDING', label: 'New' },
+    { value: 'CONFIRMED', label: 'Confirmed' },
+    { value: 'PROCESSING', label: 'Getting ready' },
+    { value: 'SHIPPED', label: 'On the way' },
+    { value: 'DELIVERED', label: 'Delivered' },
+    { value: 'CANCELLED', label: 'Cancelled' },
+];
+
+const PAYMENT_FILTERS = [
+    { value: 'ANY', label: 'Any payment' },
+    { value: 'PAID', label: 'Paid' },
+    { value: 'UNPAID', label: 'Not paid' },
+];
+
+const LINK_BTN =
+    'inline-flex min-h-[44px] items-center gap-1.5 rounded-control px-2 text-[14px] font-semibold transition-colors duration-ui disabled:opacity-50';
+
 export default function OrdersPage() {
     // PRODUCT mode is parked — bounce to /dashboard until the flag flips.
     const productEnabled = useProductRouteGuard();
 
     const queryClient = useQueryClient();
+    const currency = useTenantCurrency();
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
+    const [paymentFilter, setPaymentFilter] = useState('ANY');
     const [resendingId, setResendingId] = useState<string | null>(null);
 
     const copyPaymentLink = async (order: Order, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!order.paymentAuthorizationUrl) {
-            toast.error('No payment link on this order yet');
+            toast.error('This order has no payment link yet. Tap "New link" to make one.');
             return;
         }
         try {
             await navigator.clipboard.writeText(order.paymentAuthorizationUrl);
-            toast.success('Payment link copied');
+            toast.success('Payment link copied. Paste it in WhatsApp.');
         } catch {
-            toast.error('Could not copy. Select the URL manually.');
+            toast.error("Couldn't copy the link. Open the order and copy it by hand.");
         }
     };
 
@@ -63,10 +94,10 @@ export default function OrdersPage() {
         try {
             const res = await api.post(`/payments/orders/${order.id}/initialize`);
             await navigator.clipboard.writeText(res.data.authorizationUrl).catch(() => undefined);
-            toast.success('New payment link copied');
+            toast.success('New payment link made and copied');
             await queryClient.invalidateQueries({ queryKey: ['orders'] });
         } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Could not generate a new link');
+            toast.error(err?.response?.data?.message ?? "Couldn't make a new link. Try again.");
         } finally {
             setResendingId(null);
         }
@@ -101,261 +132,156 @@ export default function OrdersPage() {
     };
 
     const filteredOrders = orders.filter((order: Order) =>
-        order.customerName.toLowerCase().includes(search.toLowerCase()) ||
-        (order.orderRef ?? order.orderNumber ?? '').toLowerCase().includes(search.toLowerCase()) ||
-        order.customerPhone.includes(search)
+        (paymentFilter === 'ANY' || order.paymentStatus === paymentFilter) && (
+            order.customerName.toLowerCase().includes(search.toLowerCase()) ||
+            (order.orderRef ?? order.orderNumber ?? '').toLowerCase().includes(search.toLowerCase()) ||
+            order.customerPhone.includes(search)
+        )
     );
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'PENDING': return 'text-yellow-600 bg-yellow-100 dark:bg-yellow-500/10 dark:text-yellow-400';
-            case 'CONFIRMED': return 'text-blue-600 bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400';
-            case 'PROCESSING': return 'text-purple-600 bg-purple-100 dark:bg-purple-500/10 dark:text-purple-400';
-            case 'SHIPPED': return 'text-indigo-600 bg-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400';
-            case 'DELIVERED': return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300';
-            case 'CANCELLED': return 'text-red-600 bg-red-100 dark:bg-red-500/10 dark:text-red-400';
-            default: return 'text-slate-600 bg-slate-100 dark:bg-slate-500/10 dark:text-slate-400';
-        }
-    };
 
     if (!productEnabled) return null;
 
+    const paymentCell = (order: Order) => (
+        <div className="flex flex-col items-end gap-0.5 md:items-start">
+            <PaymentPill status={order.paymentStatus} />
+            {order.paymentStatus === 'UNPAID' && (
+                <div className="-ml-2 flex flex-wrap items-center">
+                    {order.paymentAuthorizationUrl && (
+                        <button
+                            type="button"
+                            onClick={(e) => copyPaymentLink(order, e)}
+                            className={`${LINK_BTN} text-primary hover:bg-primary-soft`}
+                            aria-label="Copy payment link"
+                        >
+                            <Link2 className="h-4 w-4" aria-hidden /> Copy link
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={(e) => resendPaymentLink(order, e)}
+                        disabled={resendingId === order.id}
+                        className={`${LINK_BTN} text-muted hover:bg-surface-2 hover:text-text`}
+                        aria-label="Generate new payment link"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${resendingId === order.id ? 'animate-spin' : ''}`} aria-hidden />
+                        {resendingId === order.id ? 'Making…' : 'New link'}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+
+    const columns: Column<Order>[] = [
+        {
+            key: 'customer',
+            header: 'Customer',
+            render: (o) => (
+                <div className="min-w-0">
+                    <div className="font-semibold text-text">{o.customerName}</div>
+                    <div className="text-[14px] tabular-nums text-muted">{o.customerPhone}</div>
+                </div>
+            ),
+        },
+        {
+            key: 'total',
+            header: 'Total',
+            align: 'right',
+            render: (o) => <span className="font-semibold">{displayMoney(o.totalAmount, currency)}</span>,
+        },
+        { key: 'status', header: 'Order', render: (o) => <OrderStatusPill status={o.status} /> },
+        { key: 'payment', header: 'Payment', render: paymentCell },
+        {
+            key: 'date',
+            header: 'Date',
+            render: (o) => <span className="whitespace-nowrap tabular-nums text-muted">{format(new Date(o.createdAt), 'd MMM yyyy')}</span>,
+        },
+        {
+            key: 'ref',
+            header: 'Order no.',
+            hideOnMobile: true,
+            render: (o) => <span className="text-[14px] tabular-nums text-muted">{o.orderRef ?? o.orderNumber}</span>,
+        },
+        {
+            key: 'actions',
+            header: 'Details',
+            align: 'right',
+            render: (o) => (
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleViewOrder(o); }}>
+                    View
+                </Button>
+            ),
+        },
+    ];
+
+    const filtersActive = search.trim() !== '' || statusFilter !== 'ALL' || paymentFilter !== 'ANY';
+
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-6 lg:space-y-8">
             <PageHeader
-                title="Orders"
-                subtitle="Track and manage customer orders"
+                title="Your orders"
+                subtitle="Every order from your customers. Tap one to see what they bought and update it."
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard
-                    name="Total Orders"
-                    value={stats.total}
-                    icon={<Package className="w-6 h-6 text-blue-500" />}
-                    color="bg-blue-500/10"
-                    index={0}
-                />
-                <StatCard
-                    name="Pending"
-                    value={stats.pending}
-                    icon={<Clock className="w-6 h-6 text-yellow-500" />}
-                    color="bg-yellow-500/10"
-                    index={1}
-                />
-                <StatCard
-                    name="Revenue"
-                    value={`$${Number(stats.revenue).toFixed(0)}`}
-                    icon={<DollarSign className="w-6 h-6 text-emerald-500" />}
-                    color="bg-emerald-500/10"
-                    index={2}
-                />
-                <StatCard
-                    name="Delivered"
-                    value={stats.delivered}
-                    icon={<Truck className="w-6 h-6 text-purple-500" />}
-                    color="bg-purple-500/10"
-                    index={3}
-                />
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+                <StatCard name="All orders" value={stats.total} icon={<Package />} index={0} />
+                <StatCard name="New" value={stats.pending} icon={<Clock />} index={1} />
+                <StatCard name="Sales" value={displayMoney(stats.revenue, currency, { compact: true })} icon={<Banknote />} index={2} />
+                <StatCard name="Delivered" value={stats.delivered} icon={<Truck />} index={3} />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
-                <div className="relative flex-1 w-full sm:max-w-md group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                    <DashboardInput
-                        placeholder="Search orders..."
-                        className="pl-10 bg-transparent border-slate-200 dark:border-slate-700/50"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
-                </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <Filter className="w-4 h-4 text-slate-500" />
-                    <select
-                        className="bg-transparent border-none text-sm font-medium text-slate-700 dark:text-slate-300 focus:ring-0 cursor-pointer"
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                    >
-                        <option value="ALL">All Status</option>
-                        <option value="PENDING">Pending</option>
-                        <option value="CONFIRMED">Confirmed</option>
-                        <option value="PROCESSING">Processing</option>
-                        <option value="SHIPPED">Shipped</option>
-                        <option value="DELIVERED">Delivered</option>
-                        <option value="CANCELLED">Cancelled</option>
-                    </select>
-                </div>
+            <div className="space-y-3">
+                <SearchInput
+                    value={search}
+                    onChange={setSearch}
+                    label="Search orders"
+                    placeholder="Search by name, phone or order no."
+                    className="sm:max-w-md"
+                />
+                <FilterChips label="Filter orders by status" chips={STATUS_FILTERS} selected={[statusFilter]} onToggle={setStatusFilter} />
+                <FilterChips label="Filter orders by payment" chips={PAYMENT_FILTERS} selected={[paymentFilter]} onToggle={setPaymentFilter} />
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
-                            <tr>
-                                <th className="px-6 py-4">Order Ref</th>
-                                <th className="px-6 py-4">Customer</th>
-                                <th className="px-6 py-4">Date</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Payment</th>
-                                <th className="px-6 py-4">Amount</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                                                        {/* A failed request must never render as an empty table — the business
-                                would read it as data loss. */}
-                            {isError ? (
-                                <tr>
-                                    <td colSpan={7} className="p-0">
-                                        <QueryState isLoading={false} isError onRetry={() => window.location.reload()}>
-                                            <></>
-                                        </QueryState>
-                                    </td>
-                                </tr>
-                            ) : isLoading ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <BooklyDots size="sm" />
-                                            <p>Loading orders...</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : filteredOrders.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <Package className="w-8 h-8 text-slate-300" />
-                                            <p>No orders found</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredOrders.map((order: Order) => (
-                                    <tr key={order.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => handleViewOrder(order)}>
-                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-600 dark:text-slate-300 font-medium">
-                                            {order.orderRef ?? order.orderNumber}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="font-medium text-slate-900 dark:text-white">{order.customerName}</div>
-                                            <div className="text-xs text-slate-500">{order.customerPhone}</div>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-500">
-                                            {format(new Date(order.createdAt), 'MMM d, yyyy')}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium ${getStatusColor(order.status)}`}>
-                                                {order.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
-                                                {order.paymentStatus}
-                                            </span>
-                                            {order.paymentStatus === 'UNPAID' && (
-                                                <div className="flex items-center gap-1 mt-1.5">
-                                                    {order.paymentAuthorizationUrl && (
-                                                        <button
-                                                            onClick={(e) => copyPaymentLink(order, e)}
-                                                            className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300 hover:underline"
-                                                            aria-label="Copy payment link"
-                                                        >
-                                                            <Link2 className="w-3 h-3" /> Copy link
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={(e) => resendPaymentLink(order, e)}
-                                                        disabled={resendingId === order.id}
-                                                        className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline disabled:opacity-50"
-                                                        aria-label="Generate new payment link"
-                                                    >
-                                                        <RefreshCw className={`w-3 h-3 ${resendingId === order.id ? 'animate-spin' : ''}`} />
-                                                        {resendingId === order.id ? 'Generating…' : 'New link'}
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-900 dark:text-white font-medium">
-                                            ${Number(order.totalAmount).toFixed(2)}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-slate-100 dark:hover:bg-slate-700" onClick={(e) => { e.stopPropagation(); handleViewOrder(order); }}>
-                                                <Eye className="w-4 h-4 text-slate-500" />
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+            {/* A failed request must never render as an empty list — the business
+                would read it as data loss. */}
+            {isError ? (
+                <div className="rounded-card border border-border bg-surface shadow-card">
+                    <QueryState isLoading={false} isError onRetry={() => window.location.reload()}>
+                        <></>
+                    </QueryState>
                 </div>
-
-                {/* Mobile: stacked order cards */}
-                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
-                    {isLoading ? (
-                        <div className="px-4 py-12 text-center text-slate-500">
-                            <div className="flex flex-col items-center gap-2">
-                                <BooklyDots size="sm" />
-                                <p>Loading orders...</p>
-                            </div>
-                        </div>
-                    ) : filteredOrders.length === 0 ? (
-                        <div className="px-4 py-12 text-center text-slate-500">
-                            <div className="flex flex-col items-center gap-2">
-                                <Package className="w-8 h-8 text-slate-300" />
-                                <p>No orders found</p>
-                            </div>
-                        </div>
+            ) : isLoading ? (
+                <div aria-busy="true" className="rounded-card border border-border bg-surface px-4 shadow-card">
+                    <span className="sr-only">Loading your orders…</span>
+                    <SkeletonList rows={6} />
+                </div>
+            ) : filteredOrders.length === 0 ? (
+                <div className="rounded-card border border-border bg-surface shadow-card">
+                    {filtersActive ? (
+                        <EmptyState
+                            icon={<SearchX />}
+                            title="No orders match"
+                            description="Try another name, or show all orders."
+                            action={
+                                <Button
+                                    variant="secondary"
+                                    onClick={() => { setSearch(''); setStatusFilter('ALL'); setPaymentFilter('ANY'); }}
+                                >
+                                    Show all orders
+                                </Button>
+                            }
+                        />
                     ) : (
-                        filteredOrders.map((order: Order) => (
-                            <button
-                                key={order.id}
-                                onClick={() => handleViewOrder(order)}
-                                className="w-full text-left p-4 active:bg-slate-50 dark:active:bg-slate-700/30 transition-colors"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-slate-900 dark:text-white truncate">{order.customerName}</p>
-                                        <p className="text-xs text-slate-500 font-mono tabular-nums">{order.orderRef ?? order.orderNumber}</p>
-                                    </div>
-                                    <span className="font-mono tabular-nums text-sm font-medium text-slate-900 dark:text-white shrink-0">
-                                        ${Number(order.totalAmount).toFixed(2)}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-medium ${getStatusColor(order.status)}`}>
-                                        {order.status}
-                                    </span>
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-medium ${paymentBadgeClass(order.paymentStatus)}`}>
-                                        {order.paymentStatus}
-                                    </span>
-                                    <span className="text-[11px] text-slate-400 ml-auto">
-                                        {format(new Date(order.createdAt), 'MMM d, yyyy')}
-                                    </span>
-                                </div>
-                                {order.paymentStatus === 'UNPAID' && (
-                                    <div className="flex items-center gap-3 mt-2">
-                                        {order.paymentAuthorizationUrl && (
-                                            <span
-                                                onClick={(e) => copyPaymentLink(order, e)}
-                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"
-                                            >
-                                                <Link2 className="w-3 h-3" /> Copy link
-                                            </span>
-                                        )}
-                                        <span
-                                            onClick={(e) => resendPaymentLink(order, e)}
-                                            className="inline-flex items-center gap-1 text-xs text-slate-500"
-                                        >
-                                            <RefreshCw className={`w-3 h-3 ${resendingId === order.id ? 'animate-spin' : ''}`} />
-                                            {resendingId === order.id ? 'Generating…' : 'New link'}
-                                        </span>
-                                    </div>
-                                )}
-                            </button>
-                        ))
+                        <EmptyState
+                            icon={<ShoppingBag />}
+                            title="No orders yet"
+                            description="Share your WhatsApp link so customers can order from you. New orders land here."
+                            action={<Link href="/channels" className={buttonVariants()}>Get your WhatsApp link</Link>}
+                        />
                     )}
                 </div>
-            </div>
+            ) : (
+                <ResponsiveTable caption="Your orders" columns={columns} rows={filteredOrders} rowKey={(o) => o.id} />
+            )}
 
             <OrderDetailsModal
                 isOpen={isModalOpen}

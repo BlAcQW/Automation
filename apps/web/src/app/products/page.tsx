@@ -2,17 +2,25 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-    Plus, Search, Filter, MoreVertical, Edit, Trash2,
-    Box, CheckCircle, AlertCircle, Tag, Package
-} from 'lucide-react';
+import { Plus, Pencil, Trash2, Box, CheckCircle, AlertCircle, Tag, Package } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Button, DashboardInput, StatCard, PageHeader } from '@bookingflow/ui';
+import {
+    Button,
+    StatCard,
+    PageHeader,
+    SearchInput,
+    StatusPill,
+    EmptyState,
+    ErrorState,
+    SkeletonCard,
+    ConfirmDialog,
+    Stagger,
+    StaggerItem,
+} from '@bookingflow/ui';
 import { ProductModal } from '@/components/products/product-modal';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
 import { useProductRouteGuard } from '@/lib/use-product-route-guard';
-import { toast } from 'react-hot-toast';
-import { QueryState } from '@/components/query-state';
+import { notify } from '@/components/brand/toast';
+import { displayMoney } from '@/components/primitives/money';
 
 interface Product {
     id: string;
@@ -31,10 +39,11 @@ export default function ProductsPage() {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [deleting, setDeleting] = useState<Product | null>(null);
     const [search, setSearch] = useState('');
     const queryClient = useQueryClient();
 
-    const { data: products = [], isLoading, isError } = useQuery({
+    const { data: products = [], isLoading, isError, refetch, isRefetching } = useQuery({
         queryKey: ['products'],
         queryFn: async () => {
             const res = await api.get('/products');
@@ -48,20 +57,15 @@ export default function ProductsPage() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['products'] });
-            toast.success('Product deleted');
+            notify.success('Product deleted');
+            setDeleting(null);
         },
-        onError: () => toast.error('Failed to delete product'),
+        onError: () => notify.error("Oops, we couldn't delete that product. Let's try again."),
     });
 
     const handleEdit = (product: Product) => {
         setEditingProduct(product);
         setIsModalOpen(true);
-    };
-
-    const handleDelete = (id: string) => {
-        if (confirm('Are you sure you want to delete this product?')) {
-            deleteMutation.mutate(id);
-        }
     };
 
     const handleCloseModal = () => {
@@ -84,230 +88,152 @@ export default function ProductsPage() {
         categories: new Set(products.map((p: Product) => p.category).filter(Boolean)).size,
     };
 
+    const addButton = (
+        <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Add a product
+        </Button>
+    );
+
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-6 lg:space-y-8">
             <PageHeader
                 title="Products"
-                subtitle="Manage your product catalog and inventory"
-                actions={
-                    <Button onClick={() => setIsModalOpen(true)} className="shadow-[inset_0_1px_0_rgba(255,255,255,.14)]">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Product
-                    </Button>
-                }
+                subtitle="Everything customers can order from you on WhatsApp."
+                actions={addButton}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard
-                    name="Total Products"
-                    value={stats.total}
-                    icon={<Box className="w-6 h-6 text-blue-500" />}
-                    color="bg-blue-500/10"
-                    index={0}
-                />
-                <StatCard
-                    name="Active"
-                    value={stats.active}
-                    icon={<CheckCircle className="w-6 h-6 text-emerald-500" />}
-                    color="bg-emerald-500/10"
-                    index={1}
-                />
-                <StatCard
-                    name="Out of Stock"
-                    value={stats.outOfStock}
-                    icon={<AlertCircle className="w-6 h-6 text-red-500" />}
-                    color="bg-red-500/10"
-                    index={2}
-                />
-                <StatCard
-                    name="Categories"
-                    value={stats.categories}
-                    icon={<Tag className="w-6 h-6 text-purple-500" />}
-                    color="bg-purple-500/10"
-                    index={3}
-                />
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+                <StatCard name="All products" value={stats.total} icon={<Box />} index={0} />
+                <StatCard name="On sale" value={stats.active} icon={<CheckCircle />} index={1} />
+                <StatCard name="Sold out" value={stats.outOfStock} icon={<AlertCircle />} index={2} />
+                <StatCard name="Categories" value={stats.categories} icon={<Tag />} index={3} />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 items-center bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
-                <div className="relative flex-1 w-full sm:max-w-md group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                    <DashboardInput
-                        placeholder="Search products..."
-                        className="pl-10 bg-transparent border-slate-200 dark:border-slate-700/50"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+            <SearchInput
+                value={search}
+                onChange={setSearch}
+                label="Search products"
+                placeholder="Search by name or category…"
+                className="w-full sm:max-w-md"
+            />
+
+            {/* A failed request must never render as an empty list — the business
+                would read it as data loss. */}
+            {isError ? (
+                <div className="rounded-card border border-border bg-surface shadow-card">
+                    <ErrorState onRetry={() => refetch()} isRetrying={isRefetching} />
+                </div>
+            ) : isLoading ? (
+                <div aria-busy="true" className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
+                    <span className="sr-only">Loading…</span>
+                    {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+                </div>
+            ) : products.length === 0 ? (
+                <div className="rounded-card border border-border bg-surface shadow-card">
+                    <EmptyState
+                        icon={<Package />}
+                        title="No products yet"
+                        description="Add your first one so customers can order."
+                        action={addButton}
                     />
                 </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
-                            <tr>
-                                <th className="px-6 py-4">Product Name</th>
-                                <th className="px-6 py-4">Category</th>
-                                <th className="px-6 py-4">Price</th>
-                                <th className="px-6 py-4">Stock</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                                                        {/* A failed request must never render as an empty table — the business
-                                would read it as data loss. */}
-                            {isError ? (
-                                <tr>
-                                    <td colSpan={6} className="p-0">
-                                        <QueryState isLoading={false} isError onRetry={() => window.location.reload()}>
-                                            <></>
-                                        </QueryState>
-                                    </td>
-                                </tr>
-                            ) : isLoading ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <BooklyDots size="sm" />
-                                            <p>Loading products...</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : filteredProducts.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <Package className="w-8 h-8 text-slate-300" />
-                                            <p>No products found</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredProducts.map((product: Product) => (
-                                    <tr key={product.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
-                                            <div className="flex items-center gap-3">
-                                                {product.imageUrl ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img
-                                                        src={product.imageUrl}
-                                                        alt={product.name}
-                                                        className="w-10 h-10 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                                                    />
-                                                ) : (
-                                                    <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                                                        <Package className="w-5 h-5 text-slate-300" />
-                                                    </div>
-                                                )}
-                                                <span>{product.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-500">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
-                                                {product.category || 'Uncategorized'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                                            ${Number(product.price).toFixed(2)}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium border ${product.stock > 0
-                                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300'
-                                                    : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400'
-                                                }`}>
-                                                {product.stock} in stock
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className={`flex items-center gap-2 text-xs font-medium ${product.isActive ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-400'}`}>
-                                                <div className={`w-1.5 h-1.5 rounded-full ${product.isActive ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                                                {product.isActive ? 'Active' : 'Inactive'}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(product)}>
-                                                    <Edit className="w-4 h-4 text-slate-500 hover:text-emerald-500" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-red-50 dark:hover:bg-red-900/10" onClick={() => handleDelete(product.id)}>
-                                                    <Trash2 className="w-4 h-4 text-slate-500 hover:text-red-500" />
-                                                </Button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+            ) : filteredProducts.length === 0 ? (
+                <div className="rounded-card border border-border bg-surface shadow-card">
+                    <EmptyState
+                        icon={<Package />}
+                        title="Nothing matches that search"
+                        description="Try a different name or category."
+                        action={<Button variant="secondary" onClick={() => setSearch('')}>Clear search</Button>}
+                    />
                 </div>
-
-                {/* Mobile: stacked cards instead of a side-scrolling table */}
-                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
-                    {isLoading ? (
-                        <div className="px-4 py-12 text-center text-slate-500">
-                            <div className="flex flex-col items-center gap-2">
-                                <BooklyDots size="sm" />
-                                <p>Loading products...</p>
-                            </div>
-                        </div>
-                    ) : filteredProducts.length === 0 ? (
-                        <div className="px-4 py-12 text-center text-slate-500">
-                            <div className="flex flex-col items-center gap-2">
-                                <Package className="w-8 h-8 text-slate-300" />
-                                <p>No products found</p>
-                            </div>
-                        </div>
-                    ) : (
-                        filteredProducts.map((product: Product) => (
-                            <div key={product.id} className="flex items-center gap-3 p-4">
-                                {product.imageUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={product.imageUrl}
-                                        alt={product.name}
-                                        className="w-12 h-12 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                                    />
-                                ) : (
-                                    <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                                        <Package className="w-6 h-6 text-slate-300" />
-                                    </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-slate-900 dark:text-white truncate">{product.name}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="font-mono tabular-nums text-sm text-slate-600 dark:text-slate-300">
-                                            ${Number(product.price).toFixed(2)}
-                                        </span>
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-[3px] text-[11px] font-medium border ${product.stock > 0
-                                            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300'
-                                            : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400'
-                                            }`}>
-                                            {product.stock} in stock
-                                        </span>
-                                        {!product.isActive && (
-                                            <span className="text-[11px] font-medium text-slate-400">Inactive</span>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1 shrink-0">
-                                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleEdit(product)}>
-                                        <Edit className="w-4 h-4 text-slate-500" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-red-50 dark:hover:bg-red-900/10" onClick={() => handleDelete(product.id)}>
-                                        <Trash2 className="w-4 h-4 text-slate-500" />
-                                    </Button>
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
+            ) : (
+                <Stagger className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
+                    {filteredProducts.map((product: Product) => (
+                        <StaggerItem key={product.id}>
+                            <ProductCard
+                                product={product}
+                                onEdit={() => handleEdit(product)}
+                                onDelete={() => setDeleting(product)}
+                            />
+                        </StaggerItem>
+                    ))}
+                </Stagger>
+            )}
 
             <ProductModal
                 isOpen={isModalOpen}
                 onClose={handleCloseModal}
                 product={editingProduct}
             />
+
+            <ConfirmDialog
+                isOpen={!!deleting}
+                onClose={() => setDeleting(null)}
+                onConfirm={() => deleting && deleteMutation.mutate(deleting.id)}
+                title={`Delete ${deleting?.name ?? 'this product'}?`}
+                description="Customers won't be able to order it any more. This can't be undone."
+                confirmLabel="Delete product"
+                isLoading={deleteMutation.isPending}
+            />
         </div>
+    );
+}
+
+interface ProductCardProps {
+    product: Product;
+    onEdit: () => void;
+    onDelete: () => void;
+}
+
+function ProductCard({ product, onEdit, onDelete }: ProductCardProps) {
+    return (
+        <article className="flex h-full flex-col rounded-card border border-border bg-surface p-4 shadow-card transition-shadow duration-ui hover:shadow-card-hover">
+            <div className="flex items-start gap-3">
+                {product.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        loading="lazy"
+                        className="h-16 w-16 shrink-0 rounded-control border border-border object-cover"
+                    />
+                ) : (
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary" aria-hidden>
+                        <Package className="h-7 w-7" />
+                    </div>
+                )}
+                <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-[17px] font-bold text-text">{product.name}</h2>
+                    <p className="mt-0.5 truncate text-[14px] text-muted">{product.category || 'No category'}</p>
+                    <p className="mt-1.5 text-[17px] font-bold tabular-nums text-text">{displayMoney(product.price)}</p>
+                </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+                {product.stock > 0 ? (
+                    <StatusPill status="in_stock" tone="success" label={`${product.stock} in stock`} size="sm" />
+                ) : (
+                    <StatusPill status="sold_out" tone="error" label="Sold out" size="sm" />
+                )}
+                {!product.isActive && <StatusPill status="inactive" label="Hidden" size="sm" />}
+            </div>
+
+            <div className="mt-auto flex items-center justify-end gap-1 pt-3">
+                <Button variant="ghost" size="sm" onClick={onEdit} aria-label={`Edit ${product.name}`}>
+                    <Pencil className="h-4 w-4" aria-hidden />
+                    Edit
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onDelete}
+                    aria-label={`Delete ${product.name}`}
+                    className="text-muted hover:text-error-fg"
+                >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                </Button>
+            </div>
+        </article>
     );
 }

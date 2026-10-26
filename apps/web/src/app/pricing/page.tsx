@@ -1,108 +1,119 @@
 import Link from 'next/link';
 import { Check } from 'lucide-react';
-import { Nav, Footer, MobileCTA } from '@/components/marketing/site/chrome';
-import { PageHero, Section, ClosingCTA } from '@/components/marketing/site/pieces';
-import { Reveal, LiftCard } from '@/components/marketing/site/motion';
+import { cx as cn } from '@/components/marketing/cx';
+import { SiteShell } from '@/components/marketing/site-shell';
+import { ButtonLink, ClosingCTA, PageHero, Section, SectionTitle, motionStyles as m } from '@/components/marketing/primitives';
+import { FaqList } from '@/components/marketing/sections';
+import { PRICING_FAQ } from '@/components/marketing/content';
+import { breadcrumbJsonLd, faqJsonLd, pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
+import { LEGAL_EMAIL, supportWhatsAppUrl } from '@/lib/site';
 
-export const metadata = {
-    title: 'Pricing — Bookly',
-    description: 'Solo, Team and Enterprise. Prices announced shortly; free to start.',
-};
+const CRUMBS = [{ name: 'Pricing', path: '/pricing' }];
 
-/** Light tiers: a raised panel on the paper inset. */
-const PLAIN_CARD: React.CSSProperties = {
-    background: '#FBFAF7',
-    boxShadow: '0 14px 30px -22px rgba(20,26,22,0.45), 0 0 0 1px var(--border)',
-};
+export const metadata = pageMetadata({
+    title: 'Bookly pricing: Solo, Team and Enterprise plans',
+    description:
+        'Three plans for shops of every size in Ghana. Prices are coming soon, and you can start free today with no card and nothing to set up.',
+    path: '/pricing',
+});
 
-/**
- * The featured tier is a dark forest card. It re-scopes the text tokens so
- * the children (written against --foreground / --muted-foreground) read
- * cream-on-forest.
- */
-const FEATURED_CARD: React.CSSProperties = {
-    background: 'var(--forest-card)',
-    color: 'var(--forest-cream)',
-    boxShadow: '0 30px 50px -28px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)',
-    ['--foreground' as string]: 'var(--forest-cream)',
-    ['--muted-foreground' as string]: 'rgba(236,235,225,0.62)',
-    ['--border' as string]: 'rgba(236,235,225,0.12)',
-};
+const TIERS = [
+    { name: 'Solo', who: 'One person, one chair', points: ['Bookly on WhatsApp, Instagram and Messenger', 'Deposits and reminders', 'Mobile app', 'Your own diary'], featured: false },
+    { name: 'Team', who: '2 to 8 people', points: ['Everything in Solo', 'Staff logins', 'Customer numbers hidden from staff', 'Shared inbox'], featured: true },
+    { name: 'Enterprise', who: 'Groups and resellers', points: ['Everything in Team', 'Your own branding', 'Several locations', 'Priority support'], featured: false },
+] as const;
 
 /**
  * Pricing, deliberately unpriced. The tiers are named and shaped so a reader
- * can place themselves; the numbers wait until the product can show what it
- * recovers in no-shows.
+ * can place themselves; no GH₵ figures until real prices exist (and the
+ * SoftwareApplication JSON-LD has no `offers` for the same reason).
  */
 export default function PricingPage() {
-    const tiers = [
-        { name: 'Solo', who: 'One person, one chair', points: ['The assistant on all channels', 'Deposits and reminders', 'Mobile app', 'Your own diary'], featured: false },
-        { name: 'Team', who: '2–8 people', points: ['Everything in Solo', 'Staff logins', 'Customer numbers hidden from staff', 'Shared inbox'], featured: true },
-        { name: 'Enterprise', who: 'Groups and resellers', points: ['Everything in Team', 'Your own branding', 'Several locations', 'Priority support'], featured: false },
-    ];
+    const demoHref = supportWhatsAppUrl("Hi Bookly, I'd like a demo") ?? `mailto:${LEGAL_EMAIL}?subject=${encodeURIComponent('Bookly demo request')}`;
 
     return (
-        <main id="main" className="theme-site">
-            <Nav />
+        <SiteShell current="/pricing" jsonLd={[breadcrumbJsonLd(CRUMBS), softwareApplicationJsonLd(), faqJsonLd(PRICING_FAQ)]}>
             <PageHero
+                crumbs={CRUMBS}
                 eyebrow="Pricing"
-                title="Three plans. Numbers coming soon."
-                sub="We're still setting the prices. What we can tell you now is the shape — and that there's a free way to start."
+                title="Three plans. Prices coming soon."
+                sub="We're still setting the prices. What we can tell you now is the shape, and that there's a free way to start."
             />
 
-            <Section tint>
-                <Reveal className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
-                    {tiers.map((t) => (
-                        <LiftCard
+            <Section labelledBy="plans">
+                <h2 id="plans" className="sr-only">Plans</h2>
+                <ul className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
+                    {TIERS.map((t) => (
+                        <li
                             key={t.name}
-                            className="flex flex-col rounded-[6px] p-7"
-                            style={t.featured ? FEATURED_CARD : PLAIN_CARD}
+                            className={cn(
+                                'flex flex-col rounded-card-lg p-6 sm:p-7',
+                                m.lift,
+                                t.featured
+                                    ? 'bg-green text-cream shadow-card-lg'
+                                    : 'border border-border bg-surface text-text shadow-card hover:shadow-card-hover',
+                            )}
                         >
                             <div className="flex items-center justify-between gap-3">
-                                <h2 className="text-[26px] font-normal leading-none tracking-[-0.04em]" style={{ color: 'var(--foreground)' }}>{t.name}</h2>
+                                <h3 className="text-[1.5rem] font-bold">{t.name}</h3>
                                 {t.featured && (
-                                    // Inside the paper inset fs-badge turns night; pin it cream on the dark card.
-                                    <span className="fs-badge" style={{ background: 'var(--forest-cream)', color: 'var(--forest-night)' }}>
-                                        Most shops
-                                    </span>
+                                    <span className="rounded-full bg-accent px-3 py-1 text-small font-semibold text-accent-fg">Most shops</span>
                                 )}
                             </div>
-                            <p className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>{t.who}</p>
+                            <p className={cn('mt-1 text-body', t.featured ? 'text-cream/90' : 'text-muted')}>{t.who}</p>
 
-                            <p className="mt-8 text-[2.1rem] font-light leading-none tracking-[-0.045em]" style={{ color: 'var(--foreground)' }}>Coming soon</p>
-                            <p className="mt-2 text-sm" style={{ color: 'var(--muted-foreground)' }}>Pricing announced shortly</p>
+                            <p className="mt-6 font-display text-[2rem] font-semibold leading-none">Coming soon</p>
+                            <p className={cn('mt-2 text-small', t.featured ? 'text-cream/90' : 'text-muted')}>Prices in GH₵, announced shortly</p>
 
-                            <ul className="mt-6 flex-1 space-y-2.5 border-t pt-6" style={{ borderColor: 'var(--border)' }}>
+                            <ul className={cn('mt-6 flex-1 space-y-3 border-t pt-6', t.featured ? 'border-cream/20' : 'border-border')}>
                                 {t.points.map((p) => (
-                                    <li key={p} className="flex gap-2.5 text-[14px]" style={{ color: 'var(--foreground)' }}>
-                                        <Check
-                                            className="mt-0.5 h-4 w-4 shrink-0"
-                                            style={{ color: t.featured ? 'var(--forest-glow)' : 'var(--forest-brand)' }}
-                                        />
+                                    <li key={p} className="flex gap-2.5 text-body">
+                                        <Check className={cn('mt-1 h-4 w-4 shrink-0', t.featured ? 'text-accent' : 'text-primary')} strokeWidth={3} aria-hidden />
                                         {p}
                                     </li>
                                 ))}
                             </ul>
 
-                            <Link
+                            <ButtonLink
                                 href="/register"
-                                className={`fs-btn fs-btn--wide mt-8 ${t.featured ? 'fs-btn--cream' : 'fs-btn--brand'}`}
+                                event="Signup"
+                                variant={t.featured ? 'accent' : 'primary'}
+                                className="mt-8 w-full"
                             >
-                                Start free
-                            </Link>
-                        </LiftCard>
+                                Start free<span className="sr-only"> on {t.name}</span>
+                            </ButtonLink>
+                        </li>
                     ))}
-                </Reveal>
+                </ul>
 
-                <p className="mt-8 max-w-2xl text-sm leading-relaxed" style={{ color: 'var(--muted-foreground)' }}>
-                    You pay Meta&apos;s own message rates directly on WhatsApp — we add nothing on
-                    top. Instagram and Messenger cost nothing at all.
+                <p className="mt-8 max-w-2xl text-body text-muted">
+                    You pay Meta&apos;s own WhatsApp message rates directly. We add nothing on top. Instagram and
+                    Messenger cost nothing at all.
+                </p>
+
+                <div className="mt-10 flex flex-col gap-4 rounded-card border border-border bg-surface-2 p-6 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h3 className="text-[1.125rem] font-bold text-text">Not sure which plan fits?</h3>
+                        <p className="mt-1 text-body text-muted">We&apos;ll show you Bookly on your own services and hours.</p>
+                    </div>
+                    <ButtonLink href={demoHref} event="Demo Request" variant="secondary">Ask for a demo</ButtonLink>
+                </div>
+            </Section>
+
+            <Section tone="soft" labelledBy="pricing-faq">
+                <SectionTitle id="pricing-faq" eyebrow="Questions" title="Pricing questions." />
+                <div className="mt-8 max-w-3xl"><FaqList items={PRICING_FAQ} /></div>
+                <p className="mt-6 text-body text-muted">
+                    More on the <Link href="/faq" className="font-semibold text-primary underline underline-offset-4">questions page</Link>, or see{' '}
+                    <Link href="/features" className="font-semibold text-primary underline underline-offset-4">what Bookly does</Link>.
                 </p>
             </Section>
 
-            <ClosingCTA title="Start free while we finish the pricing." sub="No card, and nothing to set up first." />
-            <Footer />
-            <MobileCTA />
-        </main>
+            <ClosingCTA
+                title="Start free while we finish the prices."
+                sub="No card, and nothing to set up first."
+                secondary={{ href: '/features', label: 'See what it does' }}
+            />
+        </SiteShell>
     );
 }

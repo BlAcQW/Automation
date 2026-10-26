@@ -1,24 +1,26 @@
-import type { Metadata } from 'next';
-import { Nav, Footer } from '@/components/marketing/site/chrome';
-import { PageHero, Section } from '@/components/marketing/site/pieces';
+import { SiteShell } from '@/components/marketing/site-shell';
+import { PageHero } from '@/components/marketing/primitives';
+import { Clause, LegalArticle } from '@/components/marketing/legal';
+import { breadcrumbJsonLd, pageMetadata } from '@/lib/seo';
+import { LEGAL_EMAIL } from '@/lib/site';
 
-export const metadata: Metadata = {
+const CRUMBS = [{ name: 'Terms of Service', path: '/terms' }];
+
+export const metadata = pageMetadata({
     title: 'Terms of Service | Bookly',
-    description: 'Terms that govern your use of the Bookly platform.',
-};
+    description: 'The terms that govern your use of Bookly: accounts, acceptable use, WhatsApp policy, payments, data ownership and termination.',
+    path: '/terms',
+});
 
 const LAST_UPDATED = 'May 14, 2026';
-const CONTACT_EMAIL = 'support@bookly.ikieguy.online';
+const CONTACT_EMAIL = LEGAL_EMAIL;
 
 export default function TermsPage() {
     return (
-        <main id="main" className="theme-site">
-            <Nav />
-            <PageHero eyebrow="Terms" title="Terms of Service" sub="Terms that govern your use of the Bookly platform." />
+        <SiteShell jsonLd={[breadcrumbJsonLd(CRUMBS)]}>
+            <PageHero crumbs={CRUMBS} eyebrow="Terms" title="Terms of Service" sub="Terms that govern your use of the Bookly platform." />
 
-            <Section tint>
-                <article className="mx-auto max-w-[68ch]">
-                    <p className="fs-key">Last updated: {LAST_UPDATED}</p>
+            <LegalArticle updated={LAST_UPDATED}>
 
                     <Clause title="1. Acceptance">
                         <p>
@@ -138,27 +140,7 @@ export default function TermsPage() {
                             <a className="underline" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
                         </p>
                     </Clause>
-                </article>
-            </Section>
-
-            <Footer />
-        </main>
-    );
-}
-
-/** One numbered clause, set for long reading on the paper inset. */
-function Clause({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
-    return (
-        <section id={id} className="mt-10 scroll-mt-24 border-t pt-8" style={{ borderColor: 'var(--border)' }}>
-            <h2 className="mb-4 text-[22px] font-normal leading-tight tracking-[-0.03em] sm:text-[26px]" style={{ color: 'var(--foreground)' }}>
-                {title}
-            </h2>
-            <div
-                className="space-y-3 text-[15px] leading-[1.7] [&_a]:underline [&_a]:underline-offset-2 [&_strong]:font-medium"
-                style={{ color: 'color-mix(in srgb, var(--foreground) 86%, transparent)' }}
-            >
-                {children}
-            </div>
-        </section>
+            </LegalArticle>
+        </SiteShell>
     );
 }

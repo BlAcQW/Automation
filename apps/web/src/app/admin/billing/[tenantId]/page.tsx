@@ -7,9 +7,24 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button, DashboardInput } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import {
+    Button,
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    DashboardInput,
+    EmptyState,
+    ErrorState,
+    PageHeader,
+    Select,
+    SkeletonCard,
+    SkeletonLine,
+    StatusPill,
+    controlClasses,
+} from '@bookingflow/ui';
 import { formatMinor, parseMajorToMinor } from '../money';
+import { formatMinor as formatMoney } from '../../_components/format';
 
 interface Terms {
     currency: string;
@@ -42,8 +57,6 @@ const PRINT_CSS = `@media print {
   .statement-print, .statement-print * { visibility: visible !important; color: #000 !important; background: #fff !important; border-color: #ccc !important; }
   .statement-print { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
 }`;
-
-const SELECT_CLASS = 'w-full rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-60';
 
 export default function AdminTenantBillingPage() {
     const { tenantId } = useParams<{ tenantId: string }>();
@@ -106,7 +119,7 @@ export default function AdminTenantBillingPage() {
             toast.success('Billing terms saved');
             queryClient.invalidateQueries({ queryKey: ['admin', 'billing', tenantId] });
         },
-        onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Could not save the terms'),
+        onError: (err: any) => toast.error(err?.response?.data?.message ?? "Couldn't save the terms. Let's try again."),
     });
 
     const downloadCsv = async () => {
@@ -122,40 +135,53 @@ export default function AdminTenantBillingPage() {
             a.remove();
             URL.revokeObjectURL(url);
         } catch {
-            toast.error('Could not download the statement');
+            toast.error("Couldn't download the statement. Let's try again.");
         }
     };
 
     const statement = statementQuery.data;
     const selectedType = eventTypes.data?.data.find((e) => e.type === unitEventType);
 
+    const backLink = (
+        <Link href="/admin/billing" className="inline-flex min-h-[44px] items-center gap-1 text-[14px] font-medium text-muted hover:text-text">
+            <ArrowLeft className="h-4 w-4" aria-hidden /> All businesses
+        </Link>
+    );
+
     if (termsQuery.isLoading) {
-        return <div className="flex items-center justify-center h-64"><BooklyDots size="md" /></div>;
+        return (
+            <div className="space-y-6" aria-busy="true">
+                <span className="sr-only">Loading…</span>
+                <SkeletonCard />
+                <SkeletonCard />
+            </div>
+        );
     }
     if (!loaded) {
-        return <div className="p-10 text-center text-slate-400">Organisation not found.</div>;
+        return (
+            <div className="space-y-4">
+                {backLink}
+                <Card><EmptyState title="Business not found" description="It may have been deleted. Go back to the list and pick another." /></Card>
+            </div>
+        );
     }
 
     return (
         <div className="space-y-6">
             <style>{PRINT_CSS}</style>
-            <div>
-                <Link href="/admin/billing" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white">
-                    <ArrowLeft className="w-4 h-4" /> All organisations
-                </Link>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white mt-2">{loaded.tenant.name}</h1>
-                <p className="text-slate-400">
-                    {loaded.tenant.vertical === 'RIDES' ? 'Rides' : 'Appointments'} · {loaded.tenant.planId} plan · {loaded.tenant.timezone}
-                </p>
-            </div>
+            <PageHeader
+                eyebrow={backLink}
+                title={loaded.tenant.name}
+                subtitle={`${loaded.tenant.vertical === 'RIDES' ? 'Rides' : 'Appointments'} · ${loaded.tenant.planId} plan · ${loaded.tenant.timezone}`}
+            />
 
-            <Card className="glass-card border-white/5">
+            <Card>
                 <CardHeader>
                     <CardTitle>Custom billing terms</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {!canEdit && (
-                        <p className="mb-4 text-sm text-amber-300">Read only. Only an owner or finance admin can change billing terms.</p>
+                        <p className="mb-4 rounded-control bg-warning-soft px-3 py-2 text-[14px] text-warning-fg">View only. Only an owner or finance admin can change billing terms.</p>
                     )}
                     <form
                         onSubmit={(e) => { e.preventDefault(); if (valid) save.mutate(); }}
@@ -170,25 +196,22 @@ export default function AdminTenantBillingPage() {
                         <DashboardInput label="Monthly fee" inputMode="decimal" value={monthlyFee} disabled={!canEdit}
                             onChange={(e) => setMonthlyFee(e.target.value)}
                             error={monthly === null ? 'Enter an amount like 250 or 250.50' : undefined} />
-                        <label className="space-y-1.5">
-                            <span className="block text-[13px] font-medium text-slate-300">Billable unit (an event)</span>
-                            <select value={unitEventType} disabled={!canEdit} onChange={(e) => setUnitEventType(e.target.value)} className={SELECT_CLASS}>
-                                <option value="">No usage billing</option>
-                                {eventTypes.data?.data.map((e) => (
-                                    <option key={e.type} value={e.type}>{e.type}</option>
-                                ))}
-                            </select>
-                            {selectedType && (
-                                <span className="block text-xs text-slate-500">
-                                    {selectedType.description}.
-                                    {selectedType.highVolume ? ' These events are always stored for this organisation so the count is complete.' : ''}
-                                </span>
-                            )}
-                        </label>
+                        <Select
+                            label="Billable unit (an event)"
+                            value={unitEventType}
+                            disabled={!canEdit}
+                            onChange={(e) => setUnitEventType(e.target.value)}
+                            hint={selectedType ? `${selectedType.description}.${selectedType.highVolume ? ' These events are always stored for this business so the count is complete.' : ''}` : undefined}
+                        >
+                            <option value="">No usage billing</option>
+                            {eventTypes.data?.data.map((e) => (
+                                <option key={e.type} value={e.type}>{e.type}</option>
+                            ))}
+                        </Select>
                         <DashboardInput label="Price per unit" inputMode="decimal" value={unitPrice} disabled={!canEdit || !unitEventType}
                             onChange={(e) => setUnitPrice(e.target.value)}
                             error={unit === null ? 'Enter an amount like 0.25' : undefined} />
-                        <DashboardInput label="Note (internal)" value={notes} disabled={!canEdit} maxLength={500}
+                        <DashboardInput label="Note (only admins see it)" value={notes} disabled={!canEdit} maxLength={500}
                             onChange={(e) => setNotes(e.target.value)} placeholder="Agreed on a call, pilot rate" />
                         {canEdit && (
                             <div className="flex items-end">
@@ -196,78 +219,89 @@ export default function AdminTenantBillingPage() {
                             </div>
                         )}
                     </form>
-                    <p className="mt-4 text-xs text-slate-500">
+                    <p className="mt-4 text-[13px] text-muted">
                         Statements use the current terms for the whole month, so a change re-prices the month it is made in. The setup fee is charged in the month these terms were first saved.
                     </p>
                 </CardContent>
             </Card>
 
-            <Card className="glass-card border-white/5">
+            <Card>
                 <CardHeader>
                     <CardTitle>Statement</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex flex-wrap items-end gap-4 mb-6 print:hidden">
-                        <label className="space-y-1.5">
-                            <span className="block text-[13px] font-medium text-slate-300">Month</span>
+                    <div className="mb-6 flex flex-wrap items-end gap-3 print:hidden">
+                        <div className="w-full space-y-1.5 sm:w-56">
+                            <label htmlFor="statement-month" className="block text-[14px] font-medium text-text">Month</label>
                             <input
+                                id="statement-month"
                                 type="month"
                                 value={month}
                                 onChange={(e) => setMonth(e.target.value)}
-                                className="rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                                className={controlClasses}
                             />
-                        </label>
-                        <Button variant="ghost" onClick={() => window.print()} disabled={!statement}>
-                            <Printer className="w-4 h-4" /> Print
+                        </div>
+                        <Button variant="secondary" onClick={() => window.print()} disabled={!statement}>
+                            <Printer className="h-4 w-4" aria-hidden /> Print
                         </Button>
-                        <Button variant="ghost" onClick={downloadCsv} disabled={!statement}>
-                            <Download className="w-4 h-4" /> Download CSV
+                        <Button variant="secondary" onClick={downloadCsv} disabled={!statement}>
+                            <Download className="h-4 w-4" aria-hidden /> Download CSV
                         </Button>
                     </div>
 
                     {statementQuery.isLoading ? (
-                        <BooklyDots size="sm" />
+                        <div aria-busy="true" className="space-y-3">
+                            <span className="sr-only">Loading the statement…</span>
+                            <SkeletonLine width="w-1/2" />
+                            <SkeletonLine />
+                            <SkeletonLine width="w-4/5" />
+                        </div>
                     ) : statementQuery.isError || !statement ? (
-                        <p className="text-sm text-rose-300">Could not load the statement for that month.</p>
+                        <ErrorState
+                            title="We couldn't load the statement for that month"
+                            onRetry={() => statementQuery.refetch()}
+                            isRetrying={statementQuery.isRefetching}
+                        />
                     ) : (
                         <div className="statement-print space-y-4">
                             <div>
-                                <div className="text-lg font-medium tracking-[-0.02em] text-white">{statement.tenantName ?? loaded.tenant.name}</div>
-                                <div className="text-sm text-slate-400">
+                                <div className="text-section-heading text-text">{statement.tenantName ?? loaded.tenant.name}</div>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-[14px] text-muted">
                                     Statement for {statement.period.month} ({statement.period.timezone})
-                                    {' '}
-                                    {statement.isFinal ? null : <Badge variant="yellow">Month in progress</Badge>}
+                                    {statement.isFinal ? null : <StatusPill size="sm" status="pending" label="Month in progress" />}
                                 </div>
                             </div>
                             {statement.lines.length === 0 ? (
-                                <p className="text-sm text-slate-400">Nothing to bill for this month.</p>
+                                <p className="text-[15px] text-muted">Nothing to bill for this month.</p>
                             ) : (
-                                <table className="w-full">
-                                    <thead>
-                                        <tr className="text-left text-sm text-slate-400 border-b border-white/5">
-                                            <th className="py-3 font-medium">Item</th>
-                                            <th className="py-3 font-medium text-right">Qty</th>
-                                            <th className="py-3 font-medium text-right">Unit</th>
-                                            <th className="py-3 font-medium text-right">Amount</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {statement.lines.map((l) => (
-                                            <tr key={l.code} className="border-b border-white/5 text-sm text-slate-200 tabular-nums">
-                                                <td className="py-3">{l.description}</td>
-                                                <td className="py-3 text-right">{l.quantity.toLocaleString('en-GB')}</td>
-                                                <td className="py-3 text-right">{formatMinor(l.unitAmountMinor)}</td>
-                                                <td className="py-3 text-right">{formatMinor(l.amountMinor)}</td>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[20rem]">
+                                        <thead>
+                                            <tr className="border-b border-border text-left text-[13px] text-muted">
+                                                <th className="py-3 pr-3 font-semibold">Item</th>
+                                                <th className="py-3 pr-3 text-right font-semibold">Qty</th>
+                                                <th className="py-3 pr-3 text-right font-semibold">Unit</th>
+                                                <th className="py-3 text-right font-semibold">Amount</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {statement.lines.map((l) => (
+                                                <tr key={l.code} className="border-b border-border text-[15px] tabular-nums text-text">
+                                                    <td className="py-3 pr-3">{l.description}</td>
+                                                    <td className="py-3 pr-3 text-right">{l.quantity.toLocaleString('en-GB')}</td>
+                                                    <td className="whitespace-nowrap py-3 pr-3 text-right">{formatMoney(l.unitAmountMinor, statement.currency)}</td>
+                                                    <td className="whitespace-nowrap py-3 text-right">{formatMoney(l.amountMinor, statement.currency)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             )}
-                            <div className="flex justify-end text-white text-lg font-normal tracking-[-0.02em] tabular-nums">
-                                Total {statement.currency ?? ''} {formatMinor(statement.totalMinor)}
+                            <div className="flex justify-end text-section-heading tabular-nums text-text">
+                                Total {formatMoney(statement.totalMinor, statement.currency)}
                             </div>
                             {statement.notes.map((n) => (
-                                <p key={n} className="text-xs text-slate-500">{n}</p>
+                                <p key={n} className="text-[13px] text-muted">{n}</p>
                             ))}
                         </div>
                     )}

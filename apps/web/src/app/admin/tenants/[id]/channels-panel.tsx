@@ -3,14 +3,14 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Instagram, MessageCircle, Facebook, RefreshCw, Send, Unplug } from 'lucide-react';
-import { Badge, Button } from '@bookingflow/ui';
+import { Instagram, Phone, Facebook, RefreshCw, Send, Unplug } from 'lucide-react';
+import { Badge, Button, ErrorState, SkeletonList, StatusPill, type StatusTone } from '@bookingflow/ui';
 import { adminApi } from '@/lib/api';
 import { useAdmin } from '../../admin-context';
 import { Empty, Panel, ReasonModal } from '../../_components/parts';
 import { errorMessage, formatDate, formatDateTime, timeAgo } from '../../_components/format';
 
-type BadgeVariant = 'default' | 'blue' | 'yellow' | 'red' | 'purple' | 'orange' | 'slate';
+
 interface Person { id: string; name: string | null; email: string | null }
 
 interface ChannelsData {
@@ -40,15 +40,15 @@ interface ChannelsData {
 
 type Pending = { kind: 'whatsapp' } | { kind: 'facebook' } | { kind: 'instagram' } | null;
 
-const WA_STATE: Record<ChannelsData['whatsapp']['state'], { label: string; tone: string }> = {
-    CONNECTED: { label: 'Connected', tone: 'text-emerald-400' },
-    PROBLEM: { label: 'Problem', tone: 'text-red-400' },
-    PENDING_CODE: { label: 'Pending OTP', tone: 'text-amber-300' },
-    REGISTERING: { label: 'Code verified, registering', tone: 'text-amber-300' },
-    NOT_CONNECTED: { label: 'Not connected', tone: 'text-slate-400' },
+const WA_STATE: Record<ChannelsData['whatsapp']['state'], { label: string; tone: StatusTone }> = {
+    CONNECTED: { label: 'Connected', tone: 'success' },
+    PROBLEM: { label: 'Has a problem', tone: 'error' },
+    PENDING_CODE: { label: 'Waiting for the code', tone: 'warning' },
+    REGISTERING: { label: 'Code accepted, finishing setup', tone: 'warning' },
+    NOT_CONNECTED: { label: 'Not connected', tone: 'neutral' },
 };
 
-const QUALITY: Record<string, BadgeVariant> = { GREEN: 'default', YELLOW: 'yellow', RED: 'red' };
+const QUALITY: Record<string, StatusTone> = { GREEN: 'success', YELLOW: 'warning', RED: 'error' };
 
 const EVENT_LABEL: Record<string, string> = {
     'whatsapp.connected': 'WhatsApp connected',
@@ -75,22 +75,22 @@ function modeLabel(mode: ChannelsData['whatsapp']['mode'], tenantName: string): 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
     return (
         <div>
-            <dt className="text-xs text-slate-500">{label}</dt>
-            <dd className="mt-0.5 text-sm text-slate-200">{children}</dd>
+            <dt className="text-[13px] font-medium text-muted">{label}</dt>
+            <dd className="mt-0.5 break-words text-[15px] text-text">{children}</dd>
         </div>
     );
 }
 
 function ChannelRow({ icon, name, connected, detail, action }: { icon: ReactNode; name: string; connected: boolean; detail: ReactNode; action?: ReactNode }) {
     return (
-        <li className="flex flex-wrap items-center justify-between gap-4 px-6 py-4">
+        <li className="flex flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
             <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 text-slate-400">{icon}</span>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-surface-2 text-text">{icon}</span>
                 <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">
-                        {name} <Badge variant={connected ? 'default' : 'slate'}>{connected ? 'Connected' : 'Not connected'}</Badge>
+                    <p className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-text">
+                        {name} <StatusPill size="sm" status={connected ? 'connected' : 'inactive'} label={connected ? 'Connected' : 'Not connected'} />
                     </p>
-                    <div className="mt-1 text-xs text-slate-400">{detail}</div>
+                    <div className="mt-1 break-words text-[14px] text-muted">{detail}</div>
                 </div>
             </div>
             {action}
@@ -110,7 +110,7 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
     const queryKey = ['admin', 'tenant-channels', tenantId];
     const mayManage = can('channels:manage');
 
-    const { data, isLoading, isError, error } = useQuery({
+    const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
         queryKey,
         queryFn: async () => (await adminApi.get(`/admin/tenants/${tenantId}/channels`)).data.data as ChannelsData,
     });
@@ -122,24 +122,38 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
     const disconnect = useMutation({
         mutationFn: async (v: { channel: 'whatsapp' | 'facebook' | 'instagram'; reason: string }) =>
             (await adminApi.post(`/admin/tenants/${tenantId}/${v.channel}/disconnect`, { reason: v.reason })).data,
-        onSuccess: () => { toast.success('Disconnected; the organisation has been told'); setPending(null); refresh(); },
-        onError: (err) => toast.error(errorMessage(err, 'Could not disconnect')),
+        onSuccess: () => { toast.success("Disconnected. We've let the business know."); setPending(null); refresh(); },
+        onError: (err) => toast.error(errorMessage(err, "Couldn't disconnect. Let's try again.")),
     });
     const resend = useMutation({
         mutationFn: async (codeMethod: 'SMS' | 'VOICE') =>
             (await adminApi.post(`/admin/tenants/${tenantId}/whatsapp/hosted/resend`, { codeMethod })).data,
         onSuccess: () => { toast.success('Code sent again'); refresh(); },
-        onError: (err) => toast.error(errorMessage(err, 'Could not resend the code')),
+        onError: (err) => toast.error(errorMessage(err, "Couldn't resend the code. Let's try again.")),
     });
     const healthCheck = useMutation({
         mutationFn: async () => (await adminApi.post(`/admin/tenants/${tenantId}/whatsapp/health-check`)).data.data,
         onSuccess: (r: any) => { toast.success(r?.problem ? 'Checked: there is a problem' : r?.transient ? 'Meta did not answer; kept the last readings' : 'Checked: healthy'); refresh(); },
-        onError: (err) => toast.error(errorMessage(err, 'Health check failed')),
+        onError: (err) => toast.error(errorMessage(err, "The health check didn't finish. Let's try again.")),
     });
 
-    if (isLoading) return <div id="channels"><Panel title="Channels"><Empty>Loading…</Empty></Panel></div>;
+    if (isLoading) {
+        return (
+            <div id="channels">
+                <Panel title="Channels">
+                    <div aria-busy="true" className="px-4 sm:px-6"><span className="sr-only">Loading channels…</span><SkeletonList rows={3} /></div>
+                </Panel>
+            </div>
+        );
+    }
     if (isError || !data) {
-        return <div id="channels"><Panel title="Channels"><p className="px-6 py-4 text-sm text-red-400">{errorMessage(error, 'Could not load channels.')}</p></Panel></div>;
+        return (
+            <div id="channels">
+                <Panel title="Channels">
+                    <ErrorState title="We couldn't load the channels" description={errorMessage(error, 'Check your connection and try again.')} onRetry={() => refetch()} isRetrying={isRefetching} />
+                </Panel>
+            </div>
+        );
     }
 
     const wa = data.whatsapp;
@@ -151,16 +165,18 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
         <div id="channels" className="scroll-mt-24">
             <Panel title="Channels">
                 {/* WhatsApp: the channel that carries the business, so it gets the room. */}
-                <section className="border-b border-white/5 px-6 py-5">
+                <section className="border-b border-border px-4 py-5 sm:px-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="flex items-start gap-3">
-                            <MessageCircle className="mt-1 h-5 w-5 text-emerald-400" aria-hidden />
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
+                                <Phone className="h-5 w-5" aria-hidden />
+                            </span>
                             <div>
-                                <p className="text-xs font-medium text-slate-500">WhatsApp</p>
-                                <p className={`text-2xl font-light tracking-[-0.04em] ${state.tone}`}>{state.label}</p>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                    {mode && <Badge variant={wa.mode === 'BOOKLY_HOSTED' ? 'blue' : 'purple'}>{mode}</Badge>}
-                                    {wa.billedBy && <span className="text-xs text-slate-500">Meta bills {wa.billedBy === 'BOOKLY' ? 'Bookly' : tenantName}</span>}
+                                <p className="text-[15px] font-semibold text-text">WhatsApp</p>
+                                <StatusPill className="mt-1" status={wa.state} tone={state.tone} label={state.label} />
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {mode && <Badge variant="info">{mode}</Badge>}
+                                    {wa.billedBy && <span className="text-[14px] text-muted">Meta bills {wa.billedBy === 'BOOKLY' ? 'Bookly' : tenantName}</span>}
                                 </div>
                             </div>
                         </div>
@@ -168,48 +184,48 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
                             <div className="flex flex-wrap gap-2">
                                 {wa.state === 'PENDING_CODE' && (
                                     <>
-                                        <Button size="sm" variant="outline" isLoading={resend.isPending} onClick={() => resend.mutate('SMS')}><Send className="h-4 w-4" /> Resend OTP (SMS)</Button>
-                                        <Button size="sm" variant="outline" disabled={resend.isPending} onClick={() => resend.mutate('VOICE')}>By voice call</Button>
+                                        <Button size="sm" variant="secondary" isLoading={resend.isPending} onClick={() => resend.mutate('SMS')}><Send className="h-4 w-4" aria-hidden /> Resend code by SMS</Button>
+                                        <Button size="sm" variant="secondary" disabled={resend.isPending} onClick={() => resend.mutate('VOICE')}>By voice call</Button>
                                     </>
                                 )}
                                 {live && (
-                                    <Button size="sm" variant="outline" isLoading={healthCheck.isPending} onClick={() => healthCheck.mutate()}><RefreshCw className="h-4 w-4" /> Run health check</Button>
+                                    <Button size="sm" variant="secondary" isLoading={healthCheck.isPending} onClick={() => healthCheck.mutate()}><RefreshCw className="h-4 w-4" aria-hidden /> Run health check</Button>
                                 )}
                                 {wa.state !== 'NOT_CONNECTED' && (
-                                    <Button size="sm" variant="destructive" onClick={() => setPending({ kind: 'whatsapp' })}><Unplug className="h-4 w-4" /> Disconnect</Button>
+                                    <Button size="sm" variant="destructive" onClick={() => setPending({ kind: 'whatsapp' })}><Unplug className="h-4 w-4" aria-hidden /> Disconnect</Button>
                                 )}
                             </div>
                         )}
                     </div>
 
                     {wa.health.problem && (
-                        <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-300">
+                        <p role="alert" className="mt-4 rounded-control border border-error/40 bg-error-soft px-3 py-2 text-[14px] text-error-fg">
                             {wa.health.problemText ?? wa.health.problem}
                         </p>
                     )}
                     {wa.pending && (
-                        <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-200">
+                        <p className="mt-4 rounded-control border border-warning/40 bg-warning-soft px-3 py-2 text-[14px] text-warning-fg">
                             {wa.pending.step === 'CODE_VERIFIED'
-                                ? 'The code was accepted; registration with Meta has not finished. The owner can retry verify without a new code.'
+                                ? "The code was accepted, but Meta hasn't finished setting up the number. The owner can try again without a new code."
                                 : `Code sent by ${wa.pending.codeMethod === 'VOICE' ? 'voice call' : 'SMS'} ${timeAgo(wa.pending.codeSentAt)}. Waiting for the owner to enter it.`}
                         </p>
                     )}
 
                     {wa.state !== 'NOT_CONNECTED' && (
-                        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
+                        <dl className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 min-[400px]:grid-cols-2 sm:grid-cols-3">
                             <Fact label="Number">{wa.displayNumber ?? '—'}</Fact>
                             <Fact label="Display name">
                                 {wa.verifiedName ?? '—'}
-                                {wa.nameStatus && <span className="ml-1 text-xs text-slate-500">({wa.nameStatus.toLowerCase().replace(/_/g, ' ')})</span>}
+                                {wa.nameStatus && <span className="ml-1 text-[13px] text-muted">({wa.nameStatus.toLowerCase().replace(/_/g, ' ')})</span>}
                             </Fact>
                             <Fact label="Connected">
                                 {wa.connectedAt ? formatDate(wa.connectedAt) : '—'}
-                                {who(wa.connectedBy) && <span className="block text-xs text-slate-500">by {who(wa.connectedBy)}</span>}
+                                {who(wa.connectedBy) && <span className="block text-[13px] text-muted">by {who(wa.connectedBy)}</span>}
                             </Fact>
                             <Fact label="Quality">
                                 {wa.health.qualityRating
-                                    ? <Badge variant={QUALITY[wa.health.qualityRating] ?? 'slate'}>{wa.health.qualityRating}</Badge>
-                                    : <span className="text-slate-500">Not checked yet</span>}
+                                    ? <StatusPill size="sm" status={wa.health.qualityRating} tone={QUALITY[wa.health.qualityRating] ?? 'neutral'} />
+                                    : <span className="text-muted">Not checked yet</span>}
                             </Fact>
                             <Fact label="Messaging limit">{wa.health.messagingLimit?.replace(/^TIER_/, '') ?? '—'}</Fact>
                             <Fact label="Meta status">{wa.health.metaStatus ?? '—'}</Fact>
@@ -221,26 +237,26 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
                         </dl>
                     )}
                     {wa.state === 'NOT_CONNECTED' && (
-                        <p className="mt-3 text-sm text-slate-500">
-                            The owner connects from the dashboard or their own console.{!wa.hostedAvailable && ' Bookly-hosted numbers are not available on this server.'}
+                        <p className="mt-3 text-[15px] text-muted">
+                            The owner connects from their dashboard or their own console.{!wa.hostedAvailable && " Bookly-hosted numbers aren't available on this server."}
                         </p>
                     )}
                 </section>
 
-                <ul className="divide-y divide-white/5">
+                <ul className="divide-y divide-border">
                     <ChannelRow
-                        icon={<Instagram className="h-4 w-4" aria-hidden />}
+                        icon={<Instagram className="h-5 w-5" aria-hidden />}
                         name="Instagram"
                         connected={data.instagram.connected}
                         detail={data.instagram.connected
                             ? <>@{data.instagram.username} · connected {formatDate(data.instagram.connectedAt)}{who(data.instagram.connectedBy) ? ` by ${who(data.instagram.connectedBy)}` : ''} · last message {data.instagram.lastInboundAt ? timeAgo(data.instagram.lastInboundAt) : 'none yet'}</>
-                            : 'Rides on the Facebook Page; connected together with Messenger.'}
+                            : 'Works through the Facebook Page, so it connects together with Messenger.'}
                         action={mayManage && data.instagram.connected
                             ? <Button size="sm" variant="destructive" onClick={() => setPending({ kind: 'instagram' })}>Disconnect</Button>
                             : undefined}
                     />
                     <ChannelRow
-                        icon={<Facebook className="h-4 w-4" aria-hidden />}
+                        icon={<Facebook className="h-5 w-5" aria-hidden />}
                         name="Messenger"
                         connected={data.messenger.connected}
                         detail={data.messenger.connected
@@ -253,16 +269,16 @@ export function ChannelsPanel({ tenantId, tenantName }: { tenantId: string; tena
                 </ul>
 
                 {data.recentEvents.length > 0 && (
-                    <div className="border-t border-white/5 px-6 py-4">
-                        <p className="mb-2 text-xs font-medium text-slate-500">Recent channel events</p>
-                        <ul className="space-y-1.5">
+                    <div className="border-t border-border px-4 py-4 sm:px-6">
+                        <p className="mb-2 text-[14px] font-semibold text-text">Recent channel events</p>
+                        <ul className="space-y-2">
                             {data.recentEvents.slice(0, 8).map((e) => (
-                                <li key={e.id} className="flex flex-wrap gap-x-2 text-xs text-slate-400">
-                                    <span className="whitespace-nowrap text-slate-500">{formatDateTime(e.createdAt)}</span>
-                                    <span className="text-slate-200">{EVENT_LABEL[e.action] ?? e.action}</span>
+                                <li key={e.id} className="flex flex-wrap gap-x-2 text-[14px] text-muted">
+                                    <span className="whitespace-nowrap text-muted">{formatDateTime(e.createdAt)}</span>
+                                    <span className="text-text">{EVENT_LABEL[e.action] ?? e.action}</span>
                                     {e.metadata?.mode && <span>({e.metadata.mode === 'BOOKLY_HOSTED' ? 'hosted' : 'own account'})</span>}
                                     <span>by {e.actorType === 'ADMIN' ? `Bookly admin ${who(e.actor) ?? ''}` : who(e.actor) ?? e.actorType.toLowerCase()}</span>
-                                    {e.metadata?.reason && <span className="text-slate-500">· “{e.metadata.reason}”</span>}
+                                    {e.metadata?.reason && <span className="text-muted">· “{e.metadata.reason}”</span>}
                                 </li>
                             ))}
                         </ul>

@@ -1,9 +1,11 @@
 /** Small display helpers shared by the admin pages. */
+import { formatCedi } from '@bookingflow/ui';
 
-/** Minor units (pesewas/kobo/cents) as "GHS 1,234.50". */
+/** Minor units (pesewas/kobo/cents): cedis as "GH₵ 1,234.50", other currencies as "NGN 1,234.50". */
 export function formatMinor(amountMinor: number | null | undefined, currency: string | null | undefined): string {
     const value = (amountMinor ?? 0) / 100;
     const code = currency || '';
+    if (!code || code.toUpperCase() === 'GHS') return formatCedi(amountMinor ?? 0, { fromPesewas: true });
     try {
         return new Intl.NumberFormat('en-GB', { style: 'currency', currency: code || 'GHS', currencyDisplay: 'code' }).format(value);
     } catch {

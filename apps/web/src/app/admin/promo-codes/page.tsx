@@ -5,8 +5,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Copy, Ticket, Pause, Play } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Card, CardHeader, CardTitle, CardContent, Badge, Button, DashboardInput } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import {
+    Button,
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    DashboardInput,
+    EmptyState,
+    PageHeader,
+    Select,
+    SkeletonLine,
+    SkeletonTableRow,
+    StatusPill,
+} from '@bookingflow/ui';
+import { Table, THead, Td, Th, Tr } from '../_components/parts';
+import { formatDate, formatDateTime } from '../_components/format';
 
 interface PromoCode {
     id: string;
@@ -78,7 +92,7 @@ export default function AdminPromoCodesPage() {
             setCode(''); setPrefix(''); setDescription(''); setMaxRedemptions(''); setExpiresAt('');
             queryClient.invalidateQueries({ queryKey: ['admin', 'promo-codes'] });
         },
-        onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Could not create the code'),
+        onError: (err: any) => toast.error(err?.response?.data?.message ?? "Couldn't create the code. Let's try again."),
     });
 
     const toggle = useMutation({
@@ -88,11 +102,11 @@ export default function AdminPromoCodesPage() {
             toast.success(p.isActive ? `${p.code} is active` : `${p.code} paused`);
             queryClient.invalidateQueries({ queryKey: ['admin', 'promo-codes'] });
         },
-        onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Could not update the code'),
+        onError: (err: any) => toast.error(err?.response?.data?.message ?? "Couldn't update the code. Let's try again."),
     });
 
     const copy = async (c: string) => {
-        try { await navigator.clipboard.writeText(c); toast.success('Copied'); } catch { toast.error('Could not copy'); }
+        try { await navigator.clipboard.writeText(c); toast.success('Copied'); } catch { toast.error("Couldn't copy. Select the code and copy it by hand."); }
     };
 
     const describe = (p: PromoCode) =>
@@ -102,138 +116,149 @@ export default function AdminPromoCodesPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Promo codes</h1>
-                <p className="text-slate-400">
-                    A business owner types the code under Settings → Plan &amp; Usage. Extend a trial, or put them on a plan for a while, no card needed.
-                </p>
-            </div>
+            <PageHeader
+                title="Promo codes"
+                subtitle="A business owner types the code under Settings → Plan & usage. Extend a trial, or put them on a plan for a while. No card needed."
+            />
 
-            <Card className="glass-card border-white/5">
+            <Card>
                 <CardHeader>
                     <CardTitle>
-                        <Ticket className="w-5 h-5 text-emerald-400" />
+                        <Ticket className="h-5 w-5 text-primary" aria-hidden />
                         New code
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     <form
                         onSubmit={(e) => { e.preventDefault(); create.mutate(); }}
-                        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                        className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
                     >
-                        <label className="space-y-1.5">
-                            <span className="block text-[13px] font-medium text-slate-300">What it does</span>
-                            <select
-                                value={kind}
-                                onChange={(e) => setKind(e.target.value as PromoCode['kind'])}
-                                className="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                            >
-                                <option value="TRIAL_EXTENSION">Extend the trial by N days</option>
-                                <option value="PLAN_GRANT">Grant a plan for N days</option>
-                            </select>
-                        </label>
+                        <Select label="What it does" value={kind} onChange={(e) => setKind(e.target.value as PromoCode['kind'])}>
+                            <option value="TRIAL_EXTENSION">Extend the trial by N days</option>
+                            <option value="PLAN_GRANT">Grant a plan for N days</option>
+                        </Select>
                         {kind === 'PLAN_GRANT' && (
-                            <label className="space-y-1.5">
-                                <span className="block text-[13px] font-medium text-slate-300">Plan</span>
-                                <select
-                                    value={planId}
-                                    onChange={(e) => setPlanId(e.target.value as 'starter' | 'pro')}
-                                    className="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                                >
-                                    <option value="pro">Pro</option>
-                                    <option value="starter">Starter</option>
-                                </select>
-                            </label>
+                            <Select label="Plan" value={planId} onChange={(e) => setPlanId(e.target.value as 'starter' | 'pro')}>
+                                <option value="pro">Pro</option>
+                                <option value="starter">Starter</option>
+                            </Select>
                         )}
                         <DashboardInput label="Days" type="number" min={1} max={730} value={days} onChange={(e) => setDays(e.target.value)} required />
-                        <DashboardInput label="Code (leave blank to generate)" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="LAUNCH50" />
-                        <DashboardInput label="Prefix for generated codes" value={prefix} onChange={(e) => setPrefix(e.target.value.toUpperCase())} placeholder="LAUNCH" disabled={!!code} />
+                        <DashboardInput label="Code (leave blank to make one up)" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="LAUNCH50" />
+                        <DashboardInput label="Start made-up codes with" value={prefix} onChange={(e) => setPrefix(e.target.value.toUpperCase())} placeholder="LAUNCH" disabled={!!code} />
                         <DashboardInput label="Max uses (blank = unlimited)" type="number" min={1} value={maxRedemptions} onChange={(e) => setMaxRedemptions(e.target.value)} placeholder="100" />
                         <DashboardInput label="Expires on (blank = never)" type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
-                        <DashboardInput label="Note (internal)" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Instagram launch campaign" className="md:col-span-2" />
+                        <div className="md:col-span-2">
+                            <DashboardInput label="Note (only admins see it)" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Instagram launch campaign" />
+                        </div>
                         <div className="flex items-end">
-                            <Button type="submit" isLoading={create.isPending}>Create code</Button>
+                            <Button type="submit" isLoading={create.isPending} loadingText="Creating…">Create code</Button>
                         </div>
                     </form>
                 </CardContent>
             </Card>
 
-            <Card className="glass-card border-white/5">
+            <Card className="overflow-hidden">
                 {isLoading ? (
-                    <div className="flex items-center justify-center h-48"><BooklyDots size="md" /></div>
-                ) : !data?.data.length ? (
-                    <div className="p-10 text-center text-slate-400">No codes yet. Create the first one above.</div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead>
-                                <tr className="text-left text-sm text-slate-400 border-b border-white/5">
-                                    <th className="px-6 py-4 font-medium">Code</th>
-                                    <th className="px-6 py-4 font-medium">Does</th>
-                                    <th className="px-6 py-4 font-medium">Used</th>
-                                    <th className="px-6 py-4 font-medium">Expires</th>
-                                    <th className="px-6 py-4 font-medium">Status</th>
-                                    <th className="px-6 py-4 font-medium">Note</th>
-                                    <th className="px-6 py-4 font-medium w-1"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data.data.map((p) => {
-                                    const expired = p.expiresAt ? new Date(p.expiresAt).getTime() < Date.now() : false;
-                                    const exhausted = p.maxRedemptions !== null && p.redemptionCount >= p.maxRedemptions;
-                                    return (
-                                        <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.02]">
-                                            <td className="px-6 py-4">
-                                                <button onClick={() => copy(p.code)} className="inline-flex items-center gap-2 font-mono text-white hover:text-emerald-300" title="Copy">
-                                                    {p.code} <Copy className="w-3.5 h-3.5 text-slate-500" />
-                                                </button>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-300">{KIND_LABEL[p.kind]}: {describe(p)}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-300 tabular-nums">
-                                                <button onClick={() => setOpen(open === p.id ? null : p.id)} className="underline underline-offset-2 hover:text-white">
-                                                    {p.redemptionCount}{p.maxRedemptions !== null ? ` / ${p.maxRedemptions}` : ''}
-                                                </button>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-300">{p.expiresAt ? new Date(p.expiresAt).toLocaleDateString('en-GB') : 'Never'}</td>
-                                            <td className="px-6 py-4">
-                                                {!p.isActive ? <Badge variant="default">Paused</Badge>
-                                                    : expired ? <Badge variant="yellow">Expired</Badge>
-                                                    : exhausted ? <Badge variant="yellow">Used up</Badge>
-                                                    : <Badge variant="default" dot>Active</Badge>}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-400 max-w-[24ch] truncate">{p.description ?? ''}</td>
-                                            <td className="px-6 py-4">
-                                                <Button size="sm" variant="ghost" onClick={() => toggle.mutate(p)} disabled={toggle.isPending} aria-label={p.isActive ? 'Pause' : 'Resume'}>
-                                                    {p.isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                    <div aria-busy="true">
+                        <span className="sr-only">Loading codes…</span>
+                        {Array.from({ length: 4 }).map((_, i) => <SkeletonTableRow key={i} columns={6} />)}
                     </div>
+                ) : !data?.data.length ? (
+                    <EmptyState
+                        icon={<Ticket className="h-6 w-6" aria-hidden />}
+                        title="No codes yet"
+                        description="Create your first one with the form above."
+                    />
+                ) : (
+                    <Table>
+                        <THead>
+                            <tr>
+                                <Th>Code</Th>
+                                <Th>What it does</Th>
+                                <Th>Used</Th>
+                                <Th>Expires</Th>
+                                <Th>Status</Th>
+                                <Th>Note</Th>
+                                <Th className="w-1" />
+                            </tr>
+                        </THead>
+                        <tbody>
+                            {data.data.map((p) => {
+                                const expired = p.expiresAt ? new Date(p.expiresAt).getTime() < Date.now() : false;
+                                const exhausted = p.maxRedemptions !== null && p.redemptionCount >= p.maxRedemptions;
+                                return (
+                                    <Tr key={p.id}>
+                                        <Td>
+                                            <button
+                                                onClick={() => copy(p.code)}
+                                                className="inline-flex min-h-[44px] items-center gap-2 rounded-control font-mono font-semibold text-text hover:text-primary"
+                                                title="Copy"
+                                                aria-label={`Copy ${p.code}`}
+                                            >
+                                                {p.code} <Copy className="h-3.5 w-3.5 text-muted" aria-hidden />
+                                            </button>
+                                        </Td>
+                                        <Td label="What it does">{KIND_LABEL[p.kind]}: {describe(p)}</Td>
+                                        <Td label="Used" className="tabular-nums">
+                                            <button
+                                                onClick={() => setOpen(open === p.id ? null : p.id)}
+                                                className="min-h-[44px] rounded-control underline underline-offset-2 hover:text-primary"
+                                            >
+                                                {p.redemptionCount}{p.maxRedemptions !== null ? ` / ${p.maxRedemptions}` : ''}
+                                            </button>
+                                        </Td>
+                                        <Td label="Expires" className="whitespace-nowrap">{p.expiresAt ? formatDate(p.expiresAt) : 'Never'}</Td>
+                                        <Td label="Status">
+                                            {!p.isActive ? <StatusPill size="sm" status="paused" tone="neutral" />
+                                                : expired ? <StatusPill size="sm" status="expired" />
+                                                : exhausted ? <StatusPill size="sm" status="used_up" tone="warning" />
+                                                : <StatusPill size="sm" status="active" />}
+                                        </Td>
+                                        <Td label="Note" className="text-muted md:max-w-[24ch] md:truncate">{p.description ?? ''}</Td>
+                                        <Td>
+                                            <Button
+                                                size="sm"
+                                                variant="secondary"
+                                                onClick={() => toggle.mutate(p)}
+                                                disabled={toggle.isPending}
+                                                aria-label={p.isActive ? 'Pause' : 'Resume'}
+                                                className="w-full md:w-11 md:px-0"
+                                            >
+                                                {p.isActive ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
+                                                <span className="md:sr-only">{p.isActive ? 'Pause' : 'Resume'}</span>
+                                            </Button>
+                                        </Td>
+                                    </Tr>
+                                );
+                            })}
+                        </tbody>
+                    </Table>
                 )}
             </Card>
 
             {open && (
-                <Card className="glass-card border-white/5">
+                <Card>
                     <CardHeader>
-                        <CardTitle>Redemptions for {data?.data.find((p) => p.id === open)?.code}</CardTitle>
+                        <CardTitle>Who used {data?.data.find((p) => p.id === open)?.code}</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {!redemptions ? (
-                            <BooklyDots size="sm" />
+                            <div aria-busy="true" className="space-y-3">
+                                <span className="sr-only">Loading…</span>
+                                <SkeletonLine />
+                                <SkeletonLine width="w-2/3" />
+                            </div>
                         ) : redemptions.data.length === 0 ? (
-                            <p className="text-sm text-slate-400">Nobody has used this code yet.</p>
+                            <p className="text-[15px] text-muted">Nobody has used this code yet.</p>
                         ) : (
-                            <ul className="divide-y divide-white/5">
+                            <ul className="divide-y divide-border">
                                 {redemptions.data.map((r) => (
-                                    <li key={r.id} className="py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
-                                        <span className="text-white">{r.tenant.name}</span>
-                                        <span className="text-slate-400">
-                                            {new Date(r.redeemedAt).toLocaleString('en-GB')}
-                                            {r.effect?.to?.trialEndsAt ? ` · until ${new Date(r.effect.to.trialEndsAt).toLocaleDateString('en-GB')}` : ''}
+                                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-[15px]">
+                                        <span className="font-medium text-text">{r.tenant.name}</span>
+                                        <span className="text-muted">
+                                            {formatDateTime(r.redeemedAt)}
+                                            {r.effect?.to?.trialEndsAt ? ` · until ${formatDate(r.effect.to.trialEndsAt)}` : ''}
                                         </span>
                                     </li>
                                 ))}

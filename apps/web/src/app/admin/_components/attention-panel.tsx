@@ -3,9 +3,8 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
-import { Badge } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
-import { Empty, isUnavailable, Panel, Table, Td, Th, Unavailable } from './parts';
+import { Badge, ErrorState, SectionHeading, StatusPill, type StatusTone } from '@bookingflow/ui';
+import { Empty, isUnavailable, LoadingBlock, Panel, Table, THead, Td, Th, Tr, Unavailable } from './parts';
 import { formatMinor, timeAgo } from './format';
 
 interface Attention {
@@ -18,75 +17,88 @@ interface Attention {
     webhooks: any;
 }
 
-const SEVERITY_VARIANT: Record<string, 'red' | 'yellow' | 'blue'> = { critical: 'red', warning: 'yellow', info: 'blue' };
+/** Alert severity → pill tone (icon + word + colour). */
+export const SEVERITY_TONE: Record<string, StatusTone> = { critical: 'error', warning: 'warning', info: 'neutral' };
 
 const orgLink = (id: string, name: string | null) => (
-    <Link href={`/admin/tenants/${id}`} className="text-white hover:text-emerald-400 transition-colors">{name ?? id}</Link>
+    <Link href={`/admin/tenants/${id}`} className="font-medium text-text underline-offset-2 hover:text-primary hover:underline">{name ?? id}</Link>
+);
+
+const panelLink = (href: string, label: string) => (
+    <Link href={href} className="inline-flex min-h-[44px] items-center text-[14px] font-semibold text-primary hover:underline">{label} →</Link>
 );
 
 /** The home screen's answer to "what needs a person right now?". */
 export function AttentionPanel() {
-    const { data, isLoading, isError } = useQuery({
+    const { data, isLoading, isError, refetch, isRefetching } = useQuery({
         queryKey: ['admin', 'attention'],
         queryFn: async () => (await adminApi.get('/admin/attention')).data as Attention,
         refetchInterval: 60_000,
     });
 
-    if (isLoading) return <div className="flex h-40 items-center justify-center"><BooklyDots size="md" /></div>;
-    if (isError || !data) return <p className="text-sm text-red-400">Could not load the needs-attention list.</p>;
+    if (isLoading) return <LoadingBlock rows={5} label="Loading what needs attention…" />;
+    if (isError || !data) {
+        return (
+            <ErrorState
+                title="We couldn't load the needs-attention list"
+                onRetry={() => refetch()}
+                isRetrying={isRefetching}
+            />
+        );
+    }
 
     const { alerts, payouts, refunds, whatsapp, quota, handoffs, webhooks } = data;
     const alertBadges = !isUnavailable(alerts) ? alerts.bySeverity : null;
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-xl font-normal tracking-[-0.03em] text-white">Needs attention</h2>
-                {alertBadges && (
-                    <>
-                        <Badge variant="red">{alertBadges.critical} critical</Badge>
-                        <Badge variant="yellow">{alertBadges.warning} warning</Badge>
-                        <Badge variant="blue">{alertBadges.info} info</Badge>
-                    </>
+            <SectionHeading
+                title="Needs attention"
+                actions={alertBadges && (
+                    <div className="flex flex-wrap gap-2">
+                        <StatusPill status="critical" tone="error" label={`${alertBadges.critical} critical`} />
+                        <StatusPill status="warning" label={`${alertBadges.warning} warning`} />
+                        <StatusPill status="info" tone="neutral" label={`${alertBadges.info} info`} />
+                    </div>
                 )}
-            </div>
+            />
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <Panel title="Open alerts" action={<Link href="/admin/alerts" className="text-sm text-emerald-400 hover:underline">All alerts →</Link>}>
-                    {isUnavailable(alerts) ? <Unavailable /> : !alerts.top.length ? <Empty>No critical or warning alerts. </Empty> : (
+                <Panel title="Open alerts" action={panelLink('/admin/alerts', 'All alerts')}>
+                    {isUnavailable(alerts) ? <Unavailable /> : !alerts.top.length ? <Empty>No critical or warning alerts. All calm.</Empty> : (
                         <Table>
-                            <thead><tr><Th>Severity</Th><Th>Organisation</Th><Th>What happened</Th><Th>Seen</Th></tr></thead>
+                            <THead><tr><Th>Severity</Th><Th>Business</Th><Th>What happened</Th><Th>Seen</Th></tr></THead>
                             <tbody>
                                 {alerts.top.map((a: any) => (
-                                    <tr key={a.id} className="border-t border-white/5">
-                                        <Td><Badge variant={SEVERITY_VARIANT[a.severity] ?? 'slate'}>{a.severity}</Badge></Td>
-                                        <Td>{a.tenantId ? orgLink(a.tenantId, a.tenantName) : <span className="text-slate-500">Platform</span>}</Td>
-                                        <Td><p>{a.message}</p><p className="font-mono text-xs text-slate-500">{a.kind} × {a.count}</p></Td>
-                                        <Td className="whitespace-nowrap">{timeAgo(a.lastSeenAt)}</Td>
-                                    </tr>
+                                    <Tr key={a.id}>
+                                        <Td label="Severity"><StatusPill size="sm" status={a.severity} tone={SEVERITY_TONE[a.severity] ?? 'neutral'} /></Td>
+                                        <Td label="Business">{a.tenantId ? orgLink(a.tenantId, a.tenantName) : <span className="text-muted">Platform</span>}</Td>
+                                        <Td label="What happened"><p>{a.message}</p><p className="font-mono text-[13px] text-muted">{a.kind} × {a.count}</p></Td>
+                                        <Td label="Seen" className="whitespace-nowrap text-muted">{timeAgo(a.lastSeenAt)}</Td>
+                                    </Tr>
                                 ))}
                             </tbody>
                         </Table>
                     )}
                 </Panel>
 
-                <Panel title="Conversations waiting for a person">
+                <Panel title="Customers waiting for a person">
                     {isUnavailable(handoffs) ? <Unavailable /> : !handoffs.items.length ? (
                         <Empty>Nobody has waited more than {handoffs.olderThanMinutes} minutes.</Empty>
                     ) : (
                         <>
-                            <p className="px-6 pt-3 text-xs text-slate-500">
+                            <p className="px-4 pt-3 text-[14px] text-muted sm:px-6">
                                 {handoffs.count}{handoffs.capped ? '+' : ''} handed to staff more than {handoffs.olderThanMinutes} min ago with no reply.
                             </p>
                             <Table>
-                                <thead><tr><Th>Customer</Th><Th>Organisation</Th><Th>Waiting</Th></tr></thead>
+                                <THead><tr><Th>Customer</Th><Th>Business</Th><Th>Waiting</Th></tr></THead>
                                 <tbody>
                                     {handoffs.items.map((h: any) => (
-                                        <tr key={h.conversationId} className="border-t border-white/5">
-                                            <Td>{h.customer}{h.reason && <p className="text-xs text-slate-500">{h.reason}</p>}</Td>
-                                            <Td>{orgLink(h.tenantId, h.tenantName)}</Td>
-                                            <Td className="whitespace-nowrap text-amber-300">{h.waitingMinutes} min</Td>
-                                        </tr>
+                                        <Tr key={h.conversationId}>
+                                            <Td label="Customer">{h.customer}{h.reason && <p className="text-[13px] text-muted">{h.reason}</p>}</Td>
+                                            <Td label="Business">{orgLink(h.tenantId, h.tenantName)}</Td>
+                                            <Td label="Waiting" className="whitespace-nowrap"><StatusPill size="sm" status="pending" label={`${h.waitingMinutes} min`} /></Td>
+                                        </Tr>
                                     ))}
                                 </tbody>
                             </Table>
@@ -98,15 +110,15 @@ export function AttentionPanel() {
                     <Panel title="Payouts that failed or are stuck">
                         {isUnavailable(payouts) ? <Unavailable /> : !payouts.items.length ? <Empty>No failed or stuck payouts.</Empty> : (
                             <Table>
-                                <thead><tr><Th>Organisation</Th><Th>Amount</Th><Th>Status</Th><Th>Reason</Th></tr></thead>
+                                <THead><tr><Th>Business</Th><Th>Amount</Th><Th>Status</Th><Th>Reason</Th></tr></THead>
                                 <tbody>
                                     {payouts.items.map((p: any) => (
-                                        <tr key={p.id} className="border-t border-white/5">
-                                            <Td>{orgLink(p.tenantId, p.tenantName)}</Td>
-                                            <Td className="tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
-                                            <Td><Badge variant={p.status === 'FAILED' ? 'red' : 'yellow'}>{p.status}</Badge></Td>
-                                            <Td>{p.failureReason ?? '—'}</Td>
-                                        </tr>
+                                        <Tr key={p.id}>
+                                            <Td label="Business">{orgLink(p.tenantId, p.tenantName)}</Td>
+                                            <Td label="Amount" className="tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
+                                            <Td label="Status"><StatusPill size="sm" status={p.status} tone={p.status === 'FAILED' ? 'error' : 'warning'} /></Td>
+                                            <Td label="Reason">{p.failureReason ?? '—'}</Td>
+                                        </Tr>
                                     ))}
                                 </tbody>
                             </Table>
@@ -115,17 +127,17 @@ export function AttentionPanel() {
                 )}
 
                 {refunds !== null && (
-                    <Panel title="Refunds waiting to be retried" action={<Link href="/admin/money" className="text-sm text-emerald-400 hover:underline">Money →</Link>}>
+                    <Panel title="Refunds waiting to be retried" action={panelLink('/admin/money', 'Money')}>
                         {isUnavailable(refunds) ? <Unavailable /> : !refunds.items.length ? <Empty>No refunds are failing.</Empty> : (
                             <Table>
-                                <thead><tr><Th>Organisation</Th><Th>Attempts</Th><Th>Last error</Th></tr></thead>
+                                <THead><tr><Th>Business</Th><Th>Attempts</Th><Th>Last error</Th></tr></THead>
                                 <tbody>
                                     {refunds.items.map((r: any) => (
-                                        <tr key={r.bookingId} className="border-t border-white/5">
-                                            <Td>{orgLink(r.tenantId, r.tenantName)}</Td>
-                                            <Td className="tabular-nums">{r.attempts}</Td>
-                                            <Td>{r.lastError ?? '—'}</Td>
-                                        </tr>
+                                        <Tr key={r.bookingId}>
+                                            <Td label="Business">{orgLink(r.tenantId, r.tenantName)}</Td>
+                                            <Td label="Attempts" className="tabular-nums">{r.attempts}</Td>
+                                            <Td label="Last error">{r.lastError ?? '—'}</Td>
+                                        </Tr>
                                     ))}
                                 </tbody>
                             </Table>
@@ -137,39 +149,43 @@ export function AttentionPanel() {
                     {isUnavailable(whatsapp) ? <Unavailable /> : !whatsapp.notLive.length && !whatsapp.unapprovedTemplates.length ? (
                         <Empty>Every connected number is live and every template is approved.</Empty>
                     ) : (
-                        <ul className="divide-y divide-white/5">
+                        <ul className="divide-y divide-border">
                             {whatsapp.notLive.map((w: any) => (
-                                <li key={`wa-${w.tenantId}`} className="px-6 py-3 text-sm">
-                                    {orgLink(w.tenantId, w.tenantName)} <Badge variant="red">Not live</Badge>
-                                    <p className="text-xs text-slate-500">{w.reason}{w.displayNumber ? ` · ${w.displayNumber}` : ''}</p>
+                                <li key={`wa-${w.tenantId}`} className="space-y-1 px-4 py-3 text-[15px] sm:px-6">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {orgLink(w.tenantId, w.tenantName)} <StatusPill size="sm" status="failed" label="Not live" />
+                                    </div>
+                                    <p className="text-[13px] text-muted">{w.reason}{w.displayNumber ? ` · ${w.displayNumber}` : ''}</p>
                                 </li>
                             ))}
                             {whatsapp.unapprovedTemplates.map((t: any) => (
-                                <li key={`tp-${t.tenantId}`} className="px-6 py-3 text-sm">
-                                    {orgLink(t.tenantId, t.tenantName)} <Badge variant="yellow">{t.count} template{t.count === 1 ? '' : 's'} not approved</Badge>
-                                    <p className="text-xs text-slate-500">{t.purposes.join(', ')}</p>
+                                <li key={`tp-${t.tenantId}`} className="space-y-1 px-4 py-3 text-[15px] sm:px-6">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {orgLink(t.tenantId, t.tenantName)} <StatusPill size="sm" status="pending" label={`${t.count} template${t.count === 1 ? '' : 's'} not approved`} />
+                                    </div>
+                                    <p className="text-[13px] text-muted">{t.purposes.join(', ')}</p>
                                 </li>
                             ))}
                         </ul>
                     )}
                 </Panel>
 
-                <Panel title={isUnavailable(quota) ? 'Close to their message quota' : `At ${quota.thresholdPercent}%+ of their message quota`}>
+                <Panel title={isUnavailable(quota) ? 'Close to their message limit' : `At ${quota.thresholdPercent}%+ of their message limit`}>
                     {isUnavailable(quota) ? <Unavailable /> : !quota.nearLimit.length ? <Empty>Nobody is near their limit.</Empty> : (
                         <>
                             <Table>
-                                <thead><tr><Th>Organisation</Th><Th>Plan</Th><Th>Used</Th></tr></thead>
+                                <THead><tr><Th>Business</Th><Th>Plan</Th><Th>Used</Th></tr></THead>
                                 <tbody>
                                     {quota.nearLimit.map((q: any) => (
-                                        <tr key={q.tenantId} className="border-t border-white/5">
-                                            <Td>{orgLink(q.tenantId, q.tenantName)}</Td>
-                                            <Td>{q.planId}</Td>
-                                            <Td className="tabular-nums">{q.used.toLocaleString()} / {q.limit.toLocaleString()} ({q.percent}%)</Td>
-                                        </tr>
+                                        <Tr key={q.tenantId}>
+                                            <Td label="Business">{orgLink(q.tenantId, q.tenantName)}</Td>
+                                            <Td label="Plan"><Badge variant="neutral">{q.planId}</Badge></Td>
+                                            <Td label="Used" className="tabular-nums">{q.used.toLocaleString()} / {q.limit.toLocaleString()} ({q.percent}%)</Td>
+                                        </Tr>
                                     ))}
                                 </tbody>
                             </Table>
-                            {quota.truncated && <p className="px-6 pb-3 text-xs text-slate-500">Checked the {quota.scanned} newest active organisations.</p>}
+                            {quota.truncated && <p className="px-4 pb-3 text-[13px] text-muted sm:px-6">Checked the {quota.scanned} newest active businesses.</p>}
                         </>
                     )}
                 </Panel>
@@ -177,13 +193,13 @@ export function AttentionPanel() {
                 <Panel title="Webhook deliveries failing (24h)">
                     {isUnavailable(webhooks) ? <Unavailable /> : !webhooks.byTenant.length ? <Empty>No failed webhook deliveries.</Empty> : (
                         <Table>
-                            <thead><tr><Th>Organisation</Th><Th>Failed</Th></tr></thead>
+                            <THead><tr><Th>Business</Th><Th>Failed</Th></tr></THead>
                             <tbody>
                                 {webhooks.byTenant.map((w: any) => (
-                                    <tr key={w.tenantId} className="border-t border-white/5">
-                                        <Td>{orgLink(w.tenantId, w.tenantName)}</Td>
-                                        <Td className="tabular-nums">{w.count}</Td>
-                                    </tr>
+                                    <Tr key={w.tenantId}>
+                                        <Td label="Business">{orgLink(w.tenantId, w.tenantName)}</Td>
+                                        <Td label="Failed" className="tabular-nums">{w.count}</Td>
+                                    </Tr>
                                 ))}
                             </tbody>
                         </Table>

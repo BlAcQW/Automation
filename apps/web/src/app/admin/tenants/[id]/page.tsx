@@ -7,10 +7,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Check, Circle, Copy, Minus, PauseCircle, PlayCircle, LifeBuoy, Workflow } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Badge, Button } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { Badge, Button, ErrorState, PageHeader, Select, StatusPill, buttonVariants } from '@bookingflow/ui';
 import { useAdmin } from '../../admin-context';
-import { Empty, Panel, ReasonModal, Table, Td, Th, UsageBar } from '../../_components/parts';
+import { Empty, LoadingBlock, Panel, ReasonModal, THead, Table, Td, Th, Tr, UsageBar } from '../../_components/parts';
 import { errorMessage, formatDate, formatDateTime, formatMinor, timeAgo } from '../../_components/format';
 import { ApiKeysPanel } from './api-keys-panel';
 import { ChannelsPanel } from './channels-panel';
@@ -92,12 +91,12 @@ export default function OrganisationPage() {
         onError: (err) => toast.error(errorMessage(err, 'Could not hand over the conversation')),
     });
 
-    if (isLoading) return <div className="flex h-64 items-center justify-center"><BooklyDots size="md" /></div>;
+    if (isLoading) return <LoadingBlock />;
     if (isError || !data) {
         return (
             <div className="space-y-4">
                 <BackLink />
-                <p className="text-red-400">{errorMessage(error, 'Could not load this organisation.')}</p>
+                <ErrorState title="We couldn't load this business" description={errorMessage(error, 'Check your connection and try again.')} onRetry={refresh} />
             </div>
         );
     }
@@ -105,81 +104,80 @@ export default function OrganisationPage() {
     const { tenant, checklist, plan, switches, staff, usage, money, recentConversations, audit, supportSessions } = data;
     const live = supportSessions.filter((s) => !s.endedAt && new Date(s.expiresAt) > new Date());
     const pauseKinds = {
-        outbound: { label: 'Outbound messages', permission: 'outbound:switch', hint: 'Stops every WhatsApp, SMS, email and webhook send for this organisation. Inbound and bookings keep working.' },
+        outbound: { label: 'Outbound messages', permission: 'outbound:switch', hint: 'Stops every WhatsApp, SMS, email and webhook send for this business. Incoming messages and bookings keep working.' },
         payouts: { label: 'Payouts', permission: 'payouts:switch', hint: 'Stops withdrawals and automatic payouts. Balances keep accruing.' },
     } as const;
 
     return (
         <div className="space-y-6">
-            <BackLink />
-
-            <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">{tenant.name}</h1>
-                    <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-                        <Badge variant={tenant.isActive ? 'default' : 'red'}>{tenant.isActive ? 'Active' : 'Inactive'}</Badge>
-                        <Badge variant="slate">{tenant.vertical}</Badge>
-                        <Badge variant="slate">mode: {tenant.conversationMode ?? 'vertical default'}</Badge>
-                        {tenant.activeFlowKey && <Badge variant="purple">flow: {tenant.activeFlowKey}</Badge>}
-                        <span>Plan {tenant.planId}{tenant.subscriptionStatus ? ` · ${tenant.subscriptionStatus.toLowerCase()}` : ''}</span>
-                        <span>· created {formatDate(tenant.createdAt)}</span>
-                    </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    {can('flows:read') && (
-                        <Link href={`/admin/flows?tenantId=${tenant.id}`}>
-                            <Button variant="outline"><Workflow className="h-4 w-4" /> Workflows</Button>
-                        </Link>
-                    )}
-                    {can('support:access') && (
-                        <Button variant="outline" onClick={() => setPending({ kind: 'support' })}><LifeBuoy className="h-4 w-4" /> Support access</Button>
-                    )}
-                </div>
+            <PageHeader
+                eyebrow={<BackLink />}
+                title={tenant.name}
+                actions={
+                    <>
+                        {can('flows:read') && (
+                            <Link href={`/admin/flows?tenantId=${tenant.id}`} className={buttonVariants({ variant: 'secondary' })}>
+                                <Workflow className="h-4 w-4" aria-hidden /> Workflows
+                            </Link>
+                        )}
+                        {can('support:access') && (
+                            <Button variant="secondary" onClick={() => setPending({ kind: 'support' })}><LifeBuoy className="h-4 w-4" aria-hidden /> Support access</Button>
+                        )}
+                    </>
+                }
+            />
+            <div className="-mt-3 flex flex-wrap items-center gap-2 text-[14px] text-muted">
+                <StatusPill size="sm" status={tenant.isActive ? 'active' : 'inactive'} tone={tenant.isActive ? 'success' : 'error'} />
+                <Badge variant="neutral">{tenant.vertical}</Badge>
+                <Badge variant="neutral">mode: {tenant.conversationMode ?? 'vertical default'}</Badge>
+                {tenant.activeFlowKey && <Badge variant="info">flow: {tenant.activeFlowKey}</Badge>}
+                <span>Plan {tenant.planId}{tenant.subscriptionStatus ? ` · ${tenant.subscriptionStatus.toLowerCase()}` : ''}</span>
+                <span>· joined {formatDate(tenant.createdAt)}</span>
             </div>
 
             {grant && (
-                <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4">
-                    <p className="text-sm font-medium text-sky-200">
-                        Read-only support access is on until {formatDateTime(grant.expiresAt)}. Every request made with this token is audited.
+                <div role="status" className="rounded-card border border-warning/40 bg-warning-soft p-4">
+                    <p className="text-[15px] font-semibold text-warning-fg">
+                        View-only support access is on until {formatDateTime(grant.expiresAt)}. Every request made with this token is audited.
                     </p>
-                    <p className="mt-2 text-xs text-slate-400">
-                        The token is short-lived (15 min at most) and only works for GET requests to this organisation. It is shown once here; mint a fresh one from this page while the session lasts.
+                    <p className="mt-2 text-[14px] text-text">
+                        The token lasts 15 minutes at most and only reads this business&apos;s data. You&apos;ll only see it here once; make a fresh one from this page while the session lasts.
                     </p>
-                    <div className="mt-2 flex items-center gap-2">
-                        <code className="min-w-0 flex-1 truncate rounded bg-slate-900/70 px-2 py-1 text-xs text-slate-300">{grant.token}</code>
-                        <Button size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(grant.token).then(() => toast.success('Token copied'))}><Copy className="h-4 w-4" /> Copy</Button>
-                        <Button size="sm" variant="outline" onClick={() => mintToken.mutate(grant.sessionId)} isLoading={mintToken.isPending}>New token</Button>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <code className="min-w-0 basis-full truncate rounded-control bg-surface px-3 py-2 text-[13px] text-text sm:basis-auto sm:flex-1">{grant.token}</code>
+                        <Button size="sm" variant="secondary" onClick={() => navigator.clipboard?.writeText(grant.token).then(() => toast.success('Token copied'))}><Copy className="h-4 w-4" aria-hidden /> Copy</Button>
+                        <Button size="sm" variant="secondary" onClick={() => mintToken.mutate(grant.sessionId)} isLoading={mintToken.isPending}>New token</Button>
                         <Button size="sm" variant="destructive" onClick={() => endSupport.mutate(grant.sessionId)} isLoading={endSupport.isPending}>End session</Button>
                     </div>
                 </div>
             )}
 
             {live.length > 0 && !grant && (
-                <p className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-sm text-sky-200">
-                    {live.length} support session{live.length === 1 ? ' is' : 's are'} live for this organisation.
+                <p role="status" className="rounded-card border border-warning/40 bg-warning-soft px-4 py-3 text-[15px] text-warning-fg">
+                    {live.length} support session{live.length === 1 ? ' is' : 's are'} live for this business.
                 </p>
             )}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <Panel title="Emergency switches">
-                    <ul className="divide-y divide-white/5">
+                    <ul className="divide-y divide-border">
                         {(['outbound', 'payouts'] as const).map((which) => {
                             const at = switches[which].pausedAt;
                             const meta = pauseKinds[which];
                             return (
-                                <li key={which} className="flex items-center justify-between gap-4 px-6 py-4">
+                                <li key={which} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                                     <div>
-                                        <p className="text-sm font-medium text-white">
-                                            {meta.label} {at ? <Badge variant="red">Paused {timeAgo(at)}</Badge> : <Badge variant="default">Running</Badge>}
+                                        <p className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-text">
+                                            {meta.label} {at ? <StatusPill size="sm" status="paused" tone="error" label={`Paused ${timeAgo(at)}`} /> : <StatusPill size="sm" status="running" tone="success" />}
                                         </p>
-                                        {at && switches.reason && <p className="mt-1 text-xs text-slate-400">Reason: {switches.reason}</p>}
-                                        <p className="mt-1 text-xs text-slate-500">{meta.hint}</p>
+                                        {at && switches.reason && <p className="mt-1 text-[14px] text-muted">Reason: {switches.reason}</p>}
+                                        <p className="mt-1 text-[14px] text-muted">{meta.hint}</p>
                                     </div>
                                     {can(meta.permission) && (
                                         at ? (
-                                            <Button size="sm" variant="outline" isLoading={setSwitch.isPending} onClick={() => setSwitch.mutate({ which, paused: false })}><PlayCircle className="h-4 w-4" /> Resume</Button>
+                                            <Button size="sm" variant="secondary" isLoading={setSwitch.isPending} onClick={() => setSwitch.mutate({ which, paused: false })}><PlayCircle className="h-4 w-4" aria-hidden /> Resume</Button>
                                         ) : (
-                                            <Button size="sm" variant="destructive" onClick={() => setPending({ kind: 'pause', which })}><PauseCircle className="h-4 w-4" /> Pause</Button>
+                                            <Button size="sm" variant="destructive" onClick={() => setPending({ kind: 'pause', which })}><PauseCircle className="h-4 w-4" aria-hidden /> Pause</Button>
                                         )
                                     )}
                                 </li>
@@ -189,19 +187,19 @@ export default function OrganisationPage() {
                 </Panel>
 
                 <Panel title="Setup checklist">
-                    <ul className="divide-y divide-white/5">
+                    <ul className="divide-y divide-border">
                         {checklist.map((c) => (
-                            <li key={c.key} className="flex items-start gap-3 px-6 py-3">
-                                {c.status === 'done' ? <Check className="mt-0.5 h-4 w-4 text-emerald-400" aria-label="done" />
-                                    : c.status === 'todo' ? <Circle className="mt-0.5 h-4 w-4 text-amber-400" aria-label="to do" />
-                                        : <Minus className="mt-0.5 h-4 w-4 text-slate-600" aria-label="not applicable" />}
+                            <li key={c.key} className="flex items-start gap-3 px-4 py-3 sm:px-6">
+                                {c.status === 'done' ? <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-success-soft"><Check className="h-3.5 w-3.5 text-success-fg" strokeWidth={2.75} aria-label="done" /></span>
+                                    : c.status === 'todo' ? <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-warning-soft"><Circle className="h-3.5 w-3.5 text-warning-fg" aria-label="to do" /></span>
+                                        : <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-2"><Minus className="h-3.5 w-3.5 text-muted" aria-label="not applicable" /></span>}
                                 <div>
                                     {c.key === 'whatsapp' ? (
-                                        <a href="#channels" className="text-sm text-white underline-offset-2 hover:text-emerald-400 hover:underline">{c.label} →</a>
+                                        <a href="#channels" className="text-[15px] font-medium text-text underline-offset-2 hover:text-primary hover:underline">{c.label} →</a>
                                     ) : (
-                                        <p className={`text-sm ${c.status === 'na' ? 'text-slate-500' : 'text-white'}`}>{c.label}</p>
+                                        <p className={`text-[15px] ${c.status === 'na' ? 'text-muted' : 'text-text'}`}>{c.label}</p>
                                     )}
-                                    {c.detail && <p className="text-xs text-slate-500">{c.detail}</p>}
+                                    {c.detail && <p className="text-[14px] text-muted">{c.detail}</p>}
                                 </div>
                             </li>
                         ))}
@@ -209,20 +207,20 @@ export default function OrganisationPage() {
                 </Panel>
 
                 <Panel title="Plan and quota">
-                    <div className="space-y-3 px-6 py-5">
-                        <div className="flex items-baseline justify-between">
-                            <p className="text-sm text-slate-300">{plan.used.toLocaleString()} of {plan.limit.toLocaleString()} messages{plan.overridden ? ' (custom limit)' : ''}</p>
-                            <p className="text-sm tabular-nums text-white">{plan.percent}%</p>
+                    <div className="space-y-3 px-4 py-5 sm:px-6">
+                        <div className="flex items-baseline justify-between gap-3">
+                            <p className="text-[15px] text-text">{plan.used.toLocaleString()} of {plan.limit.toLocaleString()} messages{plan.overridden ? ' (custom limit)' : ''}</p>
+                            <p className="text-[15px] font-semibold tabular-nums text-text">{plan.percent}%</p>
                         </div>
                         <UsageBar percent={plan.percent} />
-                        <p className="text-xs text-slate-500">Cycle {formatDate(plan.cycleStart)} to {formatDate(plan.cycleEnd)}</p>
+                        <p className="text-[14px] text-muted">Cycle {formatDate(plan.cycleStart)} to {formatDate(plan.cycleEnd)}</p>
                     </div>
                     {usage.length > 0 && (
                         <Table>
-                            <thead><tr><Th>Cycle start</Th><Th>Messages</Th><Th>Platform SMS</Th></tr></thead>
+                            <THead><tr><Th>Cycle start</Th><Th>Messages</Th><Th>Platform SMS</Th></tr></THead>
                             <tbody>
                                 {usage.map((u) => (
-                                    <tr key={u.cycle} className="border-t border-white/5"><Td>{u.cycle}</Td><Td className="tabular-nums">{u.messages.toLocaleString()}</Td><Td className="tabular-nums">{u.platformSms.toLocaleString()}</Td></tr>
+                                    <Tr key={u.cycle}><Td>{u.cycle}</Td><Td label="Messages" className="tabular-nums">{u.messages.toLocaleString()}</Td><Td label="Platform SMS" className="tabular-nums">{u.platformSms.toLocaleString()}</Td></Tr>
                                 ))}
                             </tbody>
                         </Table>
@@ -232,18 +230,18 @@ export default function OrganisationPage() {
                 {money && (
                     <Panel title="Money">
                         {!money.wallet ? <Empty>No wallet yet.</Empty> : (
-                            <div className="grid grid-cols-2 gap-4 px-6 py-5">
-                                <div><p className="text-xs text-slate-500">Available</p><p className="text-lg font-normal tracking-[-0.02em] tabular-nums text-white">{formatMinor(money.wallet.availableMinor, money.wallet.currency)}</p></div>
-                                <div><p className="text-xs text-slate-500">Pending</p><p className="text-lg font-normal tracking-[-0.02em] tabular-nums text-white">{formatMinor(money.wallet.pendingMinor, money.wallet.currency)}</p></div>
+                            <div className="grid grid-cols-2 gap-4 px-4 py-5 sm:px-6">
+                                <div><p className="text-[14px] text-muted">Available</p><p className="text-section-heading tabular-nums text-text">{formatMinor(money.wallet.availableMinor, money.wallet.currency)}</p></div>
+                                <div><p className="text-[14px] text-muted">Pending</p><p className="text-section-heading tabular-nums text-text">{formatMinor(money.wallet.pendingMinor, money.wallet.currency)}</p></div>
                             </div>
                         )}
-                        <p className="px-6 pb-2 text-xs text-slate-500">Refunds waiting to retry: {money.refundsPending}</p>
+                        <p className="px-4 pb-2 text-[14px] text-muted sm:px-6">Refunds waiting to retry: {money.refundsPending}</p>
                         {money.payoutsByStatus.length > 0 && (
                             <Table>
-                                <thead><tr><Th>Payouts</Th><Th>Count</Th><Th>Total</Th></tr></thead>
+                                <THead><tr><Th>Payouts</Th><Th>Count</Th><Th>Total</Th></tr></THead>
                                 <tbody>
                                     {money.payoutsByStatus.map((p: any) => (
-                                        <tr key={p.status} className="border-t border-white/5"><Td>{p.status}</Td><Td className="tabular-nums">{p.count}</Td><Td className="tabular-nums">{formatMinor(p.totalMinor, money.wallet?.currency)}</Td></tr>
+                                        <Tr key={p.status}><Td><StatusPill size="sm" status={p.status} /></Td><Td label="Count" className="tabular-nums">{p.count}</Td><Td label="Total" className="tabular-nums">{formatMinor(p.totalMinor, money.wallet?.currency)}</Td></Tr>
                                     ))}
                                 </tbody>
                             </Table>
@@ -261,20 +259,20 @@ export default function OrganisationPage() {
             <Panel title="Recent conversations">
                 {!recentConversations.length ? <Empty>No conversations yet.</Empty> : (
                     <Table>
-                        <thead><tr><Th>Customer</Th><Th>Channel</Th><Th>State</Th><Th>Last message</Th><Th /></tr></thead>
+                        <THead><tr><Th>Customer</Th><Th>Channel</Th><Th>State</Th><Th>Last message</Th><Th /></tr></THead>
                         <tbody>
                             {recentConversations.map((c) => (
-                                <tr key={c.id} className="border-t border-white/5">
-                                    <Td className="text-white">{c.customerName ?? c.customer ?? 'Unknown'}{c.customerName && c.customer ? <span className="ml-2 text-xs text-slate-500">{c.customer}</span> : null}</Td>
-                                    <Td>{c.channel}</Td>
-                                    <Td><Badge variant={c.state === 'HUMAN_ACTIVE' ? 'yellow' : 'slate'}>{c.state === 'HUMAN_ACTIVE' ? 'With a person' : 'Bot'}</Badge></Td>
-                                    <Td>{timeAgo(c.lastInboundAt)}</Td>
+                                <Tr key={c.id}>
+                                    <Td><span className="font-semibold">{c.customerName ?? c.customer ?? 'Unknown'}</span>{c.customerName && c.customer ? <span className="ml-2 text-[13px] text-muted">{c.customer}</span> : null}</Td>
+                                    <Td label="Channel">{c.channel}</Td>
+                                    <Td label="State"><Badge variant={c.state === 'HUMAN_ACTIVE' ? 'warning' : 'neutral'}>{c.state === 'HUMAN_ACTIVE' ? 'With a person' : 'Automatic replies'}</Badge></Td>
+                                    <Td label="Last message">{timeAgo(c.lastInboundAt)}</Td>
                                     <Td>
                                         {c.state !== 'HUMAN_ACTIVE' && can('conversations:handoff') && (
-                                            <Button size="sm" variant="outline" onClick={() => setPending({ kind: 'handoff', conversationId: c.id })}>Hand to a person</Button>
+                                            <Button size="sm" variant="secondary" className="w-full md:w-auto" onClick={() => setPending({ kind: 'handoff', conversationId: c.id })}>Hand to a person</Button>
                                         )}
                                     </Td>
-                                </tr>
+                                </Tr>
                             ))}
                         </tbody>
                     </Table>
@@ -286,25 +284,25 @@ export default function OrganisationPage() {
             {supportSessions.length > 0 && (
                 <Panel title="Support sessions">
                     <Table>
-                        <thead><tr><Th>Started</Th><Th>Reason</Th><Th>Until</Th><Th /></tr></thead>
+                        <THead><tr><Th>Started</Th><Th>Reason</Th><Th>Until</Th><Th /></tr></THead>
                         <tbody>
                             {supportSessions.map((s) => {
                                 const isLive = !s.endedAt && new Date(s.expiresAt) > new Date();
                                 const mine = s.adminId === admin?.id;
                                 return (
-                                    <tr key={s.id} className="border-t border-white/5">
+                                    <Tr key={s.id}>
                                         <Td className="whitespace-nowrap">{formatDateTime(s.createdAt)}</Td>
-                                        <Td>{s.reason}</Td>
-                                        <Td className="whitespace-nowrap">{s.endedAt ? `Ended ${timeAgo(s.endedAt)}` : isLive ? formatDateTime(s.expiresAt) : 'Expired'}</Td>
+                                        <Td label="Reason">{s.reason}</Td>
+                                        <Td label="Until" className="whitespace-nowrap">{s.endedAt ? `Ended ${timeAgo(s.endedAt)}` : isLive ? formatDateTime(s.expiresAt) : 'Expired'}</Td>
                                         <Td>
                                             {isLive && mine && (
-                                                <div className="flex gap-2 justify-end">
-                                                    <Button size="sm" variant="outline" onClick={() => mintToken.mutate(s.id)} isLoading={mintToken.isPending}>New token</Button>
+                                                <div className="flex flex-wrap gap-2 md:justify-end">
+                                                    <Button size="sm" variant="secondary" onClick={() => mintToken.mutate(s.id)} isLoading={mintToken.isPending}>New token</Button>
                                                     <Button size="sm" variant="destructive" onClick={() => endSupport.mutate(s.id)}>End</Button>
                                                 </div>
                                             )}
                                         </Td>
-                                    </tr>
+                                    </Tr>
                                 );
                             })}
                         </tbody>
@@ -312,17 +310,17 @@ export default function OrganisationPage() {
                 </Panel>
             )}
 
-            <Panel title="Audit trail" action={can('audit:read') ? <Link href={`/admin/audit?tenantId=${tenant.id}`} className="text-sm text-emerald-400 hover:underline">Full log →</Link> : undefined}>
+            <Panel title="Audit trail" action={can('audit:read') ? <Link href={`/admin/audit?tenantId=${tenant.id}`} className="inline-flex min-h-[44px] items-center text-[14px] font-semibold text-primary hover:underline">Full log →</Link> : undefined}>
                 {!audit.length ? <Empty>Nothing recorded yet.</Empty> : (
                     <Table>
-                        <thead><tr><Th>When</Th><Th>Action</Th><Th>Actor</Th></tr></thead>
+                        <THead><tr><Th>When</Th><Th>Action</Th><Th>Actor</Th></tr></THead>
                         <tbody>
                             {audit.map((a) => (
-                                <tr key={a.id} className="border-t border-white/5">
+                                <Tr key={a.id}>
                                     <Td className="whitespace-nowrap">{formatDateTime(a.createdAt)}</Td>
-                                    <Td className="font-mono text-xs">{a.action}</Td>
-                                    <Td>{a.actorType}</Td>
-                                </tr>
+                                    <Td label="Action" className="font-mono text-[13px]">{a.action}</Td>
+                                    <Td label="Who">{a.actorType}</Td>
+                                </Tr>
                             ))}
                         </tbody>
                     </Table>
@@ -342,15 +340,13 @@ export default function OrganisationPage() {
             />
             <ReasonModal
                 isOpen={pending?.kind === 'support'}
-                title="Start read-only support access"
+                title="Start view-only support access"
                 description={
-                    <div className="space-y-2">
-                        <p>You will get a short-lived read-only token for {tenant.name}. Everything you open is recorded against your name and this reason.</p>
-                        <label className="flex items-center gap-2 text-slate-300">Duration
-                            <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} className="rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-1 text-sm text-white">
-                                {[15, 30, 45, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}
-                            </select>
-                        </label>
+                    <div className="space-y-3">
+                        <p>You&apos;ll get a short-lived, view-only token for {tenant.name}. Everything you open is recorded against your name and this reason.</p>
+                        <Select id="support-minutes" label="How long" value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+                            {[15, 30, 45, 60].map((m) => <option key={m} value={m}>{m} minutes</option>)}
+                        </Select>
                     </div>
                 }
                 confirmLabel="Start access"
@@ -361,7 +357,7 @@ export default function OrganisationPage() {
             <ReasonModal
                 isOpen={pending?.kind === 'handoff'}
                 title="Hand this conversation to a person"
-                description="The bot stops replying and the conversation appears in the organisation's staff queue."
+                description="Automatic replies stop and the conversation moves to the business's staff inbox."
                 confirmLabel="Hand over"
                 minLength={3}
                 busy={handoff.isPending}
@@ -374,8 +370,8 @@ export default function OrganisationPage() {
 
 function BackLink() {
     return (
-        <Link href="/admin/tenants" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-white">
-            <ArrowLeft className="h-4 w-4" /> All tenants
+        <Link href="/admin/tenants" className="inline-flex min-h-[44px] items-center gap-1 text-[14px] font-medium text-muted hover:text-text">
+            <ArrowLeft className="h-4 w-4" aria-hidden /> All businesses
         </Link>
     );
 }

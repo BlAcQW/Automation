@@ -2,12 +2,13 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
-import { Building2, Users, Calendar, MessageSquare, TrendingUp } from 'lucide-react';
+import { Building2, Users, Calendar, MessageSquare, TrendingUp, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { StatCard, Card, CardHeader, CardTitle, CardContent, Badge, Button } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { StatCard, Card, PageHeader, SkeletonCard, StatusPill, buttonVariants } from '@bookingflow/ui';
 import { useAdmin } from './admin-context';
 import { AttentionPanel } from './_components/attention-panel';
+import { Empty, Table, THead, Td, Th, Tr } from './_components/parts';
+import { formatDate } from './_components/format';
 
 export default function AdminDashboardPage() {
     const { can } = useAdmin();
@@ -29,127 +30,92 @@ export default function AdminDashboardPage() {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <BooklyDots size="md" />
+            <div className="space-y-6" aria-busy="true">
+                <span className="sr-only">Loading…</span>
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+                    {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
+                </div>
             </div>
         );
     }
 
     const statCards = [
-        {
-            name: 'Total Tenants',
-            value: stats?.tenants?.total || 0,
-            subValue: `${stats?.tenants?.active || 0} active`,
-            icon: Building2,
-            color: 'bg-blue-500',
-        },
-        {
-            name: 'Total Users',
-            value: stats?.users?.total || 0,
-            icon: Users,
-            color: 'bg-purple-500',
-        },
-        {
-            name: 'Total Bookings',
-            value: stats?.bookings?.total || 0,
-            subValue: `${stats?.bookings?.today || 0} today`,
-            icon: Calendar,
-            color: 'bg-green-500',
-        },
-        {
-            name: 'Conversations',
-            value: stats?.conversations?.total || 0,
-            icon: MessageSquare,
-            color: 'bg-orange-500',
-        },
-        {
-            name: 'New This Month',
-            value: stats?.tenants?.newThisMonth || 0,
-            subValue: 'tenants',
-            icon: TrendingUp,
-            color: 'bg-cyan-500',
-        },
+        { name: 'Businesses', value: stats?.tenants?.total || 0, icon: Building2 },
+        { name: 'Users', value: stats?.users?.total || 0, icon: Users },
+        { name: 'Bookings', value: stats?.bookings?.total || 0, icon: Calendar },
+        { name: 'Conversations', value: stats?.conversations?.total || 0, icon: MessageSquare },
+        { name: 'New this month', value: stats?.tenants?.newThisMonth || 0, icon: TrendingUp },
     ];
 
     return (
         <div className="space-y-8">
-            {/* Header */}
-            <div>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Platform Overview</h1>
-                <p className="text-slate-400">Monitor and manage all tenants from here.</p>
-            </div>
+            <PageHeader
+                title="Platform overview"
+                subtitle={`${stats?.tenants?.active || 0} businesses active · ${stats?.bookings?.today || 0} bookings today`}
+            />
 
             {/* What needs a person right now */}
             {can('attention:read') && <AttentionPanel />}
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
                 {statCards.map((stat, index) => (
                     <StatCard
-                        key={index}
+                        key={stat.name}
                         name={stat.name}
                         value={stat.value}
-                        icon={<stat.icon className="w-6 h-6 text-white" />}
-                        color={stat.color}
+                        icon={<stat.icon aria-hidden />}
                         index={index}
-                        className="rounded-xl border-white/5 bg-forest-card shadow-[0_30px_50px_-28px_rgba(0,0,0,.6),inset_0_1px_0_rgba(255,255,255,.06)] [&>p:first-of-type]:font-light [&>p:first-of-type]:tracking-[-0.04em]"
                     />
                 ))}
             </div>
 
-            {/* Recent Tenants */}
-            <Card className="glass-card border-white/5">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 pb-4">
-                    <CardTitle className="text-lg font-medium tracking-[-0.02em] text-white">Recent Tenants</CardTitle>
-                    <Link href="/admin/tenants">
-                        <Button variant="ghost" className="text-sm h-8">
-                            View All →
-                        </Button>
+            <Card className="overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-4 sm:px-6">
+                    <h2 className="text-section-heading text-text">Newest businesses</h2>
+                    <Link href="/admin/tenants" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+                        See all <ArrowRight className="h-4 w-4" aria-hidden />
                     </Link>
-                </CardHeader>
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead>
-                            <tr className="text-left text-sm text-slate-400 border-b border-white/5">
-                                <th className="px-6 py-4 font-medium">Name</th>
-                                <th className="px-6 py-4 font-medium">Users</th>
-                                <th className="px-6 py-4 font-medium">Bookings</th>
-                                <th className="px-6 py-4 font-medium">WhatsApp</th>
-                                <th className="px-6 py-4 font-medium">Status</th>
-                                <th className="px-6 py-4 font-medium">Created</th>
+                </div>
+                {recentTenants && recentTenants.length === 0 ? (
+                    <Empty>No businesses have signed up yet.</Empty>
+                ) : (
+                    <Table>
+                        <THead>
+                            <tr>
+                                <Th>Name</Th>
+                                <Th>Users</Th>
+                                <Th>Bookings</Th>
+                                <Th>WhatsApp</Th>
+                                <Th>Status</Th>
+                                <Th>Joined</Th>
                             </tr>
-                        </thead>
+                        </THead>
                         <tbody>
                             {recentTenants?.map((tenant: any) => (
-                                <tr key={tenant.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <Link
-                                            href={`/admin/tenants/${tenant.id}`}
-                                            className="font-medium text-white hover:text-emerald-400 transition-colors"
-                                        >
+                                <Tr key={tenant.id}>
+                                    <Td>
+                                        <Link href={`/admin/tenants/${tenant.id}`} className="font-semibold text-text hover:text-primary">
                                             {tenant.name}
                                         </Link>
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-300">{tenant.usersCount}</td>
-                                    <td className="px-6 py-4 text-slate-300">{tenant.bookingsCount}</td>
-                                    <td className="px-6 py-4">
-                                        <Badge variant={tenant.whatsappConnected ? 'default' : 'slate'}>
-                                            {tenant.whatsappConnected ? 'Connected' : 'Not Connected'}
-                                        </Badge>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <Badge variant={tenant.isActive ? 'default' : 'red'}>
-                                            {tenant.isActive ? 'Active' : 'Inactive'}
-                                        </Badge>
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-400 text-sm">
-                                        {new Date(tenant.createdAt).toLocaleDateString()}
-                                    </td>
-                                </tr>
+                                    </Td>
+                                    <Td label="Users" className="tabular-nums">{tenant.usersCount}</Td>
+                                    <Td label="Bookings" className="tabular-nums">{tenant.bookingsCount}</Td>
+                                    <Td label="WhatsApp">
+                                        <StatusPill
+                                            size="sm"
+                                            status={tenant.whatsappConnected ? 'connected' : 'inactive'}
+                                            label={tenant.whatsappConnected ? 'Connected' : 'Not connected'}
+                                        />
+                                    </Td>
+                                    <Td label="Status">
+                                        <StatusPill size="sm" status={tenant.isActive ? 'active' : 'inactive'} tone={tenant.isActive ? 'success' : 'error'} />
+                                    </Td>
+                                    <Td label="Joined" className="text-muted">{formatDate(tenant.createdAt)}</Td>
+                                </Tr>
                             ))}
                         </tbody>
-                    </table>
-                </div>
+                    </Table>
+                )}
             </Card>
         </div>
     );

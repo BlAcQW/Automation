@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Bot, Check } from 'lucide-react';
-import { Badge, Button } from '@bookingflow/ui';
+import { Check, Workflow } from 'lucide-react';
+import { Badge, Button, ErrorState, SkeletonList, StatusPill } from '@bookingflow/ui';
 import { adminApi } from '@/lib/api';
 import { useAdmin } from '../../admin-context';
 import { Empty, Panel } from '../../_components/parts';
@@ -38,7 +38,7 @@ export function BotsPanel({ tenantId, tenantName }: { tenantId: string; tenantNa
     const queryKey = ['admin', 'tenant-packs', tenantId];
     const mayInstall = can('flows:write');
 
-    const { data, isLoading, isError, error } = useQuery({
+    const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
         queryKey,
         queryFn: async () => (await adminApi.get(`/admin/tenants/${tenantId}/packs`)).data.data as Pack[],
     });
@@ -56,49 +56,64 @@ export function BotsPanel({ tenantId, tenantName }: { tenantId: string; tenantNa
             queryClient.invalidateQueries({ queryKey });
             queryClient.invalidateQueries({ queryKey: ['admin', 'tenant-overview', tenantId] });
         },
-        onError: (err) => toast.error(errorMessage(err, 'Could not install the bot')),
+        onError: (err) => toast.error(errorMessage(err, "Couldn't install it. Let's try again.")),
     });
 
-    if (isLoading) return <Panel title="Bot"><Empty>Loading…</Empty></Panel>;
-    if (isError) return <Panel title="Bot"><Empty>{errorMessage(error, 'Could not load bots')}</Empty></Panel>;
+    if (isLoading) {
+        return (
+            <Panel title="Automatic replies">
+                <div aria-busy="true" className="px-4 sm:px-6"><span className="sr-only">Loading…</span><SkeletonList rows={1} /></div>
+            </Panel>
+        );
+    }
+    if (isError) {
+        return (
+            <Panel title="Automatic replies">
+                <ErrorState title="We couldn't load the reply packs" description={errorMessage(error, 'Check your connection and try again.')} onRetry={() => refetch()} isRetrying={isRefetching} />
+            </Panel>
+        );
+    }
 
     return (
-        <Panel title="Bot">
-            <ul className="divide-y divide-white/5">
+        <Panel title="Automatic replies">
+            {!(data ?? []).length && <Empty>No reply packs are available for this business.</Empty>}
+            <ul className="divide-y divide-border">
                 {(data ?? []).map((p) => (
-                    <li key={p.key} className="flex flex-col gap-3 px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+                    <li key={p.key} className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
                         <div className="flex gap-3">
-                            <Bot className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
+                                <Workflow className="h-5 w-5" aria-hidden />
+                            </span>
                             <div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-medium text-white">{p.name}</span>
+                                    <span className="font-semibold text-text">{p.name}</span>
                                     {p.installed
-                                        ? <Badge variant="default" dot>Installed</Badge>
+                                        ? <StatusPill size="sm" status="installed" tone="success" />
                                         : p.compatible
-                                            ? <Badge variant="slate">Not installed</Badge>
-                                            : <Badge variant="yellow">Needs a {p.vertical} organisation</Badge>}
+                                            ? <StatusPill size="sm" status="not_installed" tone="neutral" label="Not installed" />
+                                            : <Badge variant="warning">Needs a {p.vertical} business</Badge>}
                                 </div>
-                                <p className="mt-1 max-w-xl text-sm text-slate-400">{p.description}</p>
+                                <p className="mt-1 max-w-xl text-[15px] text-muted">{p.description}</p>
                             </div>
                         </div>
                         {mayInstall && p.compatible && (
                             confirming === p.key ? (
                                 <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-                                    <span className="text-sm text-slate-300">
+                                    <span className="text-[15px] text-text">
                                         {p.installed
                                             ? `Update ${tenantName}'s bot to the latest wording? Their settings stay as they are.`
-                                            : `Switch ${tenantName} to ${p.name}? Customers will get this bot on their next message.`}
+                                            : `Switch ${tenantName} to ${p.name}? Customers get these replies from their next message.`}
                                     </span>
-                                    <div className="flex gap-2">
-                                        <Button variant="ghost" size="sm" onClick={() => setConfirming(null)} disabled={install.isPending}>Cancel</Button>
-                                        <Button size="sm" onClick={() => install.mutate(p.key)} disabled={install.isPending}>
-                                            <Check className="h-4 w-4" /> {install.isPending ? 'Installing…' : 'Yes, install'}
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button variant="secondary" size="sm" onClick={() => setConfirming(null)} disabled={install.isPending}>Cancel</Button>
+                                        <Button size="sm" onClick={() => install.mutate(p.key)} isLoading={install.isPending} loadingText="Installing…">
+                                            <Check className="h-4 w-4" aria-hidden /> Yes, install
                                         </Button>
                                     </div>
                                 </div>
                             ) : (
-                                <Button size="sm" variant={p.installed ? 'ghost' : 'default'} onClick={() => setConfirming(p.key)}>
-                                    {p.installed ? 'Update bot' : `Install ${p.name}`}
+                                <Button size="sm" variant={p.installed ? 'secondary' : 'primary'} onClick={() => setConfirming(p.key)}>
+                                    {p.installed ? 'Update wording' : `Install ${p.name}`}
                                 </Button>
                             )
                         )}

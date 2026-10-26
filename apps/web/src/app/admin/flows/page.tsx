@@ -6,10 +6,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Badge, Button, Input } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { Button, ConfirmDialog, ErrorState, Input, PageHeader, Select, StatusPill, Textarea } from '@bookingflow/ui';
 import { useAdmin } from '../admin-context';
-import { Empty, Panel } from '../_components/parts';
+import { Empty, LoadingBlock, Panel } from '../_components/parts';
 import { errorMessage, formatDateTime } from '../_components/format';
 
 const VERTICALS = ['APPOINTMENTS', 'RIDES'] as const;
@@ -22,7 +21,7 @@ interface FlowSummary {
 }
 
 export default function AdminFlowsPage() {
-    return <Suspense fallback={<div className="flex h-32 items-center justify-center"><BooklyDots size="md" /></div>}><FlowEditor /></Suspense>;
+    return <Suspense fallback={<LoadingBlock />}><FlowEditor /></Suspense>;
 }
 
 function FlowEditor() {
@@ -51,6 +50,8 @@ function FlowEditor() {
     const [flowKey, setFlowKey] = useState('');
     const [errors, setErrors] = useState<string[]>([]);
     const [validated, setValidated] = useState(false);
+    // Activation (publish or roll back) is confirmed in a dialog first.
+    const [confirmActivate, setConfirmActivate] = useState<{ key: string; version: number; rollback: boolean } | null>(null);
 
     const jsonError = useMemo(() => {
         if (!text.trim()) return null;
@@ -99,6 +100,7 @@ function FlowEditor() {
             (await adminApi.post(`/admin/flows/${v.key}/activate`, { ...scopeBody, version: v.version })).data as { rollback: boolean; activeVersion: number },
         onSuccess: (d, v) => {
             toast.success(d.rollback ? `Rolled back to version ${v.version}` : `Version ${v.version} is live`);
+            setConfirmActivate(null);
             queryClient.invalidateQueries({ queryKey: ['admin', 'flows'] });
         },
         onError: (err: any) => {
@@ -116,33 +118,25 @@ function FlowEditor() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Workflows</h1>
-                <p className="text-slate-400">
-                    Edit wording, options and prices as JSON. A change is always saved as a <em>new</em> version; nothing is edited in place. Activate a version to publish it, or activate an older one to roll back.
-                </p>
-            </div>
+            <PageHeader
+                title="Workflows"
+                subtitle="Edit wording, options and prices as JSON. Every change is saved as a new version, never edited in place. Activate a version to publish it, or activate an older one to roll back."
+            />
 
             <form
-                className="flex flex-wrap items-end gap-3 rounded-xl border border-white/5 p-4 glass-card"
+                className="grid grid-cols-1 items-end gap-3 rounded-card border border-border bg-surface p-4 shadow-card sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:p-5"
                 onSubmit={(e) => { e.preventDefault(); if (ready) { setLoadedScope(scopeQuery); setSelected(null); setText(''); setErrors([]); } }}
             >
-                <div className="space-y-1.5">
-                    <label htmlFor="scope-mode" className="block text-sm font-medium text-ink-100">Edit</label>
-                    <select id="scope-mode" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)} className="rounded-xl border border-ink-700 bg-ink-900 px-3 py-3 text-base text-ink-50">
-                        <option value="tenant">One organisation&apos;s workflows</option>
-                        <option value="vertical">Platform default for a vertical</option>
-                    </select>
-                </div>
+                <Select id="scope-mode" label="Edit" value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
+                    <option value="tenant">One business&apos;s workflows</option>
+                    <option value="vertical">Platform default for a vertical</option>
+                </Select>
                 {mode === 'tenant' ? (
-                    <div className="min-w-[16rem]"><Input label="Organisation id" value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="Copy from the organisation page URL" /></div>
+                    <Input label="Business id" value={tenantId} onChange={(e) => setTenantId(e.target.value)} placeholder="Copy it from the business page address" />
                 ) : (
-                    <div className="space-y-1.5">
-                        <label htmlFor="scope-vertical" className="block text-sm font-medium text-ink-100">Vertical</label>
-                        <select id="scope-vertical" value={vertical} onChange={(e) => setVertical(e.target.value as typeof vertical)} className="rounded-xl border border-ink-700 bg-ink-900 px-3 py-3 text-base text-ink-50">
-                            {VERTICALS.map((v) => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                    </div>
+                    <Select id="scope-vertical" label="Vertical" value={vertical} onChange={(e) => setVertical(e.target.value as typeof vertical)}>
+                        {VERTICALS.map((v) => <option key={v} value={v}>{v}</option>)}
+                    </Select>
                 )}
                 <Button type="submit" disabled={!ready}>Load workflows</Button>
             </form>
@@ -150,26 +144,33 @@ function FlowEditor() {
             {loadedScope && (
                 <div className="grid grid-cols-1 gap-6 xl:grid-cols-[22rem_1fr]">
                     <Panel title="Workflows and versions">
-                        {flows.isLoading ? <div className="flex h-24 items-center justify-center"><BooklyDots size="md" /></div>
-                            : flows.isError ? <p className="px-6 py-6 text-sm text-red-400">{errorMessage(flows.error, 'Could not load workflows.')}</p>
-                                : !flows.data?.length ? <Empty>No workflows here yet. Load a platform default, edit it, and save it under this organisation.</Empty> : (
-                                    <ul className="divide-y divide-white/5">
+                        {flows.isLoading ? <LoadingBlock />
+                            : flows.isError ? (
+                                <ErrorState
+                                    title="We couldn't load the workflows"
+                                    description={errorMessage(flows.error, 'Check the business id and try again.')}
+                                    onRetry={() => flows.refetch()}
+                                    isRetrying={flows.isRefetching}
+                                />
+                            )
+                                : !flows.data?.length ? <Empty>No workflows here yet. Load a platform default, edit it, and save it under this business.</Empty> : (
+                                    <ul className="divide-y divide-border">
                                         {flows.data.map((f) => (
                                             <li key={f.key} className="px-4 py-3">
-                                                <p className="text-sm font-medium text-white">{f.key} <span className="text-xs text-slate-500">{f.activeVersion ? `live: v${f.activeVersion}` : 'no live version'}</span></p>
+                                                <p className="text-[15px] font-semibold text-text">{f.key} <span className="text-[13px] font-normal text-muted">{f.activeVersion ? `live: v${f.activeVersion}` : 'no live version'}</span></p>
                                                 <ul className="mt-2 space-y-1">
                                                     {f.versions.map((v) => {
                                                         const isSel = selected?.key === f.key && selected.version === v.version;
                                                         return (
-                                                            <li key={v.id} className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 ${isSel ? 'bg-slate-700/60' : 'hover:bg-white/5'}`}>
-                                                                <button type="button" className="flex-1 text-left text-sm text-slate-300" onClick={() => loadVersion.mutate({ key: f.key, version: v.version })}>
-                                                                    v{v.version} {v.isActive && <Badge variant="default">live</Badge>}
-                                                                    <span className="block text-xs text-slate-500">{formatDateTime(v.createdAt)}</span>
+                                                            <li key={v.id} className={`flex items-center justify-between gap-2 rounded-control px-2 py-1.5 ${isSel ? 'bg-primary-soft' : 'hover:bg-surface-2'}`}>
+                                                                <button type="button" aria-current={isSel ? 'true' : undefined} className="min-h-[44px] flex-1 rounded-control text-left text-[15px] text-text" onClick={() => loadVersion.mutate({ key: f.key, version: v.version })}>
+                                                                    v{v.version} {v.isActive && <StatusPill size="sm" status="live" tone="success" />}
+                                                                    <span className="block text-[13px] text-muted">{formatDateTime(v.createdAt)}</span>
                                                                 </button>
                                                                 {canWrite && !v.isActive && (
-                                                                    <Button size="sm" variant="outline" disabled={busy}
-                                                                        onClick={() => { if (window.confirm(f.activeVersion && v.version < f.activeVersion ? `Roll back to version ${v.version}? Newer versions stop being live (they are kept).` : `Make version ${v.version} live?`)) activate.mutate({ key: f.key, version: v.version }); }}>
-                                                                        {f.activeVersion && v.version < f.activeVersion ? <><RotateCcw className="h-3 w-3" /> Roll back</> : 'Activate'}
+                                                                    <Button size="sm" variant="secondary" disabled={busy}
+                                                                        onClick={() => setConfirmActivate({ key: f.key, version: v.version, rollback: !!(f.activeVersion && v.version < f.activeVersion) })}>
+                                                                        {f.activeVersion && v.version < f.activeVersion ? <><RotateCcw className="h-4 w-4" aria-hidden /> Roll back</> : 'Activate'}
                                                                     </Button>
                                                                 )}
                                                             </li>
@@ -186,34 +187,46 @@ function FlowEditor() {
                         {!text && !loadVersion.isPending ? <Empty>Pick a version on the left to load it here.</Empty> : (
                             <div className="space-y-3 p-4">
                                 <Input label="Workflow key" value={flowKey} onChange={(e) => setFlowKey(e.target.value)} disabled={!canWrite} />
-                                <textarea
+                                <Textarea
                                     aria-label="Workflow definition (JSON)"
                                     value={text}
                                     onChange={(e) => setText(e.target.value)}
                                     spellCheck={false}
                                     readOnly={!canWrite}
                                     rows={24}
-                                    className="w-full rounded-lg border border-slate-700 bg-slate-950/70 p-3 font-mono text-xs leading-relaxed text-slate-100 focus:border-emerald-500 focus:outline-none"
+                                    className="font-mono text-[13px]"
                                 />
-                                {jsonError && <p className="flex items-center gap-2 text-sm text-amber-300"><AlertTriangle className="h-4 w-4" /> Not valid JSON yet: {jsonError}</p>}
+                                {jsonError && <p className="flex items-start gap-2 text-[14px] text-warning-fg"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> Not valid JSON yet: {jsonError}</p>}
                                 {errors.length > 0 && (
-                                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-3" role="alert">
-                                        <p className="text-sm font-medium text-rose-300">{errors.length} problem{errors.length === 1 ? '' : 's'} to fix</p>
-                                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-rose-200">{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                                    <div className="rounded-card border border-error/40 bg-error-soft p-3" role="alert">
+                                        <p className="text-[14px] font-medium text-error-fg">{errors.length} problem{errors.length === 1 ? '' : 's'} to fix</p>
+                                        <ul className="mt-2 list-disc space-y-1 pl-5 text-[14px] text-error-fg">{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
                                     </div>
                                 )}
-                                {validated && errors.length === 0 && <p className="flex items-center gap-2 text-sm text-emerald-300"><CheckCircle2 className="h-4 w-4" /> Valid. Safe to save.</p>}
+                                {validated && errors.length === 0 && <p className="flex items-center gap-2 text-[14px] font-medium text-success-fg"><CheckCircle2 className="h-4 w-4" aria-hidden /> Valid. Safe to save.</p>}
                                 <div className="flex flex-wrap gap-2">
-                                    <Button variant="outline" onClick={() => validate.mutate()} isLoading={validate.isPending} disabled={!!jsonError || !text.trim() || busy}>Validate</Button>
+                                    <Button variant="secondary" onClick={() => validate.mutate()} isLoading={validate.isPending} disabled={!!jsonError || !text.trim() || busy}>Validate</Button>
                                     {canWrite && <Button onClick={() => save.mutate()} isLoading={save.isPending} disabled={!!jsonError || !flowKey.trim() || busy}>Save as new version</Button>}
-                                    {!canWrite && <p className="self-center text-sm text-slate-500">Your role can read and validate workflows but not save them.</p>}
+                                    {!canWrite && <p className="self-center text-[14px] text-muted">Your role can read and validate workflows but not save them.</p>}
                                 </div>
-                                <p className="text-xs text-slate-500">A saved version is a draft until you activate it. Tenants keep running the live version until then.</p>
+                                <p className="text-[14px] text-muted">A saved version is a draft until you activate it. Businesses keep running the live version until then.</p>
                             </div>
                         )}
                     </Panel>
                 </div>
             )}
+
+            <ConfirmDialog
+                isOpen={confirmActivate !== null}
+                onClose={() => setConfirmActivate(null)}
+                onConfirm={() => confirmActivate && activate.mutate({ key: confirmActivate.key, version: confirmActivate.version })}
+                title={confirmActivate?.rollback ? `Roll back to version ${confirmActivate.version}?` : `Make version ${confirmActivate?.version ?? ''} live?`}
+                description={confirmActivate?.rollback ? 'Newer versions stop being live, but they are kept.' : 'Customers start seeing this version straight away.'}
+                confirmLabel={confirmActivate?.rollback ? 'Roll back' : 'Make it live'}
+                cancelLabel="Not now"
+                destructive={!!confirmActivate?.rollback}
+                isLoading={activate.isPending}
+            />
         </div>
     );
 }

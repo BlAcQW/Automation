@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { adminApi } from '@/lib/api';
-import { Shield, Receipt } from 'lucide-react';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { Receipt, Menu, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import clsx from 'clsx';
 import {
@@ -24,6 +23,7 @@ import {
     ScrollText,
     Siren,
 } from 'lucide-react';
+import { BrandLogo, Button, Drawer, Skeleton, SkeletonCard } from '@bookingflow/ui';
 import { AdminContext, type Admin } from './admin-context';
 import { ROLE_LABEL } from './_components/format';
 
@@ -34,7 +34,7 @@ import { ROLE_LABEL } from './_components/format';
  */
 const navigation = [
     { name: 'Overview', href: '/admin', icon: LayoutDashboard, permission: 'attention:read' },
-    { name: 'Tenants', href: '/admin/tenants', icon: Building2, permission: 'tenants:read' },
+    { name: 'Businesses', href: '/admin/tenants', icon: Building2, permission: 'tenants:read' },
     { name: 'Users', href: '/admin/users', icon: Users, permission: 'users:read' },
     { name: 'Bookings', href: '/admin/bookings', icon: Calendar, permission: 'bookings:read' },
     { name: 'Statistics', href: '/admin/stats', icon: BarChart3, permission: 'stats:read' },
@@ -46,9 +46,69 @@ const navigation = [
     { name: 'Safety switches', href: '/admin/safety', icon: Siren, permission: 'attention:read' },
     { name: 'Promo codes', href: '/admin/promo-codes', icon: Ticket, permission: 'promos:read' },
     { name: 'Billing', href: '/admin/billing', icon: Receipt, permission: 'billing:read' },
-    { name: 'Manage Admins', href: '/admin/admins', icon: UserCog, permission: 'admins:manage' },
+    { name: 'Manage admins', href: '/admin/admins', icon: UserCog, permission: 'admins:manage' },
     { name: 'My account', href: '/admin/account', icon: KeyRound, permission: 'self' },
 ];
+
+type NavItem = (typeof navigation)[number];
+
+function AdminNav({ items, pathname, onNavigate }: { items: NavItem[]; pathname: string; onNavigate?: () => void }) {
+    return (
+        <nav aria-label="Admin" className="space-y-1">
+            {items.map((item) => {
+                const isActive = pathname === item.href ||
+                    (item.href !== '/admin' && pathname.startsWith(item.href));
+                return (
+                    <Link
+                        key={item.name}
+                        href={item.href}
+                        onClick={onNavigate}
+                        aria-current={isActive ? 'page' : undefined}
+                        className={clsx(
+                            'relative flex min-h-[44px] items-center gap-3 rounded-control px-3 text-[15px] font-medium transition-colors duration-ui',
+                            isActive
+                                ? 'bg-primary-soft text-primary before:absolute before:left-0 before:top-2.5 before:bottom-2.5 before:w-[3px] before:rounded-full before:bg-accent'
+                                : 'text-muted hover:bg-surface-2 hover:text-text'
+                        )}
+                    >
+                        <item.icon className="h-5 w-5 shrink-0" aria-hidden />
+                        {item.name}
+                    </Link>
+                );
+            })}
+        </nav>
+    );
+}
+
+function AdminIdentity({ admin }: { admin: Admin }) {
+    return (
+        <div className="rounded-control bg-surface-2 px-3 py-2.5">
+            <p className="text-[13px] text-muted">Signed in as</p>
+            <p className="truncate font-semibold text-text">{admin.name}</p>
+            <span className="mt-1 inline-block rounded-full bg-primary-soft px-2 py-0.5 text-[13px] font-medium text-primary">
+                {ROLE_LABEL[admin.role] ?? admin.role}
+            </span>
+        </div>
+    );
+}
+
+function SignOutButton({ onClick }: { onClick: () => void }) {
+    return (
+        <Button variant="ghost" fullWidth onClick={onClick} className="justify-start text-muted hover:bg-error-soft hover:text-error-fg">
+            <LogOut className="h-5 w-5" aria-hidden />
+            Sign out
+        </Button>
+    );
+}
+
+function AdminLogo() {
+    return (
+        <Link href="/admin" className="flex items-center gap-2.5 rounded-control">
+            <BrandLogo size="sm" />
+            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[13px] font-semibold text-primary">Admin</span>
+        </Link>
+    );
+}
 
 export default function AdminLayout({
     children,
@@ -59,6 +119,7 @@ export default function AdminLayout({
     const pathname = usePathname();
     const [admin, setAdmin] = useState<Admin | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [menuOpen, setMenuOpen] = useState(false);
 
     const fetchAdmin = useCallback(async () => {
         try {
@@ -106,8 +167,21 @@ export default function AdminLayout({
     // Loading state
     if (isLoading) {
         return (
-            <div className="dark min-h-screen bg-ink-950 flex items-center justify-center">
-                <BooklyDots size="lg" />
+            <div className="min-h-screen bg-bg text-text" aria-busy="true">
+                <span className="sr-only">Loading the admin console…</span>
+                <div className="fixed inset-y-0 left-0 hidden w-64 border-r border-border bg-surface p-4 lg:block">
+                    <Skeleton className="h-8 w-28" />
+                    <div className="mt-8 space-y-3">
+                        {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-9 w-full rounded-control" />)}
+                    </div>
+                </div>
+                <div className="space-y-6 px-4 py-6 lg:ml-64 lg:p-8">
+                    <Skeleton className="h-10 w-64" />
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <SkeletonCard />
+                        <SkeletonCard />
+                    </div>
+                </div>
             </div>
         );
     }
@@ -125,76 +199,53 @@ export default function AdminLayout({
 
     return (
         <AdminContext.Provider value={{ admin, isLoading, logout, can, reload: fetchAdmin }}>
-            {/* The console is always night forest: its pages are written for a dark
-                surface, so it scopes the dark tokens itself instead of following the
-                app theme (light by default). */}
-            <div className="dark min-h-screen bg-slate-900 text-slate-100 flex">
-                {/* Sidebar */}
-                <aside className="fixed left-0 top-0 bottom-0 w-64 bg-slate-800 border-r border-slate-700 flex flex-col z-40">
-                    {/* Logo */}
-                    <div className="h-16 flex items-center px-6 border-b border-slate-700">
-                        <Link href="/admin" className="flex items-center space-x-2">
-                            <div className="w-8 h-8 bg-forest-brand rounded-[5px] flex items-center justify-center shadow-[inset_0_1px_0_rgba(255,255,255,.14)]">
-                                <Shield className="w-5 h-5 text-forest-cream" />
-                            </div>
-                            <span className="text-lg font-medium tracking-[-0.03em] text-white">Admin Panel</span>
-                        </Link>
+            {/* The console follows the app theme (cream by default, charcoal in dark):
+                every colour below is a semantic token. */}
+            <div className="min-h-screen bg-bg text-text">
+                {/* Desktop sidebar */}
+                <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-border bg-surface lg:flex">
+                    <div className="flex h-16 items-center border-b border-border px-5">
+                        <AdminLogo />
                     </div>
-
-                    {/* Admin Info */}
-                    <div className="px-4 py-4 border-b border-slate-700">
-                        <div className="bg-slate-700/50 rounded-[5px] px-3 py-2">
-                            <p className="text-xs text-slate-400">Logged in as</p>
-                            <p className="font-medium text-white truncate">{admin.name}</p>
-                            <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-forest-glow/15 text-forest-glow rounded-[3px]">
-                                {ROLE_LABEL[admin.role] ?? admin.role}
-                            </span>
-                        </div>
+                    <div className="border-b border-border px-4 py-4">
+                        <AdminIdentity admin={admin} />
                     </div>
-
-                    {/* Navigation */}
-                    <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-                        {allNavigation.map((item) => {
-                            const isActive = pathname === item.href ||
-                                (item.href !== '/admin' && pathname.startsWith(item.href));
-
-                            return (
-                                <Link
-                                    key={item.name}
-                                    href={item.href}
-                                    className={clsx(
-                                        'relative flex items-center px-3 py-2.5 rounded-[5px] text-sm font-medium transition-colors',
-                                        isActive
-                                            ? 'bg-slate-700/70 text-white before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:rounded-full before:bg-emerald-300'
-                                            : 'text-slate-400 hover:bg-slate-700/40 hover:text-white'
-                                    )}
-                                >
-                                    <item.icon className="w-5 h-5 mr-3" />
-                                    {item.name}
-                                </Link>
-                            );
-                        })}
-                    </nav>
-
-                    {/* Logout */}
-                    <div className="p-4 border-t border-slate-700">
-                        <button
-                            onClick={logout}
-                            className="flex items-center w-full px-3 py-2.5 rounded-[5px] text-sm font-medium text-slate-400 hover:bg-slate-700/40 hover:text-rose-300 transition-colors"
-                        >
-                            <LogOut className="w-5 h-5 mr-3" />
-                            Sign Out
-                        </button>
+                    <div className="flex-1 overflow-y-auto px-3 py-4">
+                        <AdminNav items={allNavigation} pathname={pathname} />
+                    </div>
+                    <div className="border-t border-border p-3">
+                        <SignOutButton onClick={logout} />
                     </div>
                 </aside>
 
+                {/* Mobile top bar */}
+                <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-surface/95 px-4 backdrop-blur lg:hidden">
+                    <AdminLogo />
+                    <Button variant="ghost" size="icon" aria-label="Open menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
+                        <Menu className="h-5 w-5" aria-hidden />
+                    </Button>
+                </header>
+
+                <Drawer isOpen={menuOpen} onClose={() => setMenuOpen(false)} title="Admin menu" side="left">
+                    <div className="space-y-4">
+                        <AdminIdentity admin={admin} />
+                        <AdminNav items={allNavigation} pathname={pathname} onNavigate={() => setMenuOpen(false)} />
+                        <div className="border-t border-border pt-3">
+                            <SignOutButton onClick={logout} />
+                        </div>
+                    </div>
+                </Drawer>
+
                 {/* Content */}
-                <main className="flex-1 ml-64 p-8">
+                <main className="min-w-0 px-4 py-6 lg:ml-64 lg:p-8">
                     {mustEnrol && (
-                        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                            Two-factor sign-in is required for all admins. Until you set it up under{' '}
-                            <Link href="/admin/account" className="font-medium underline">My account</Link>,
-                            the rest of the console is locked.
+                        <div role="status" className="mb-6 flex items-start gap-3 rounded-card border border-warning/40 bg-warning-soft px-4 py-3 text-[15px] text-warning-fg">
+                            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+                            <p>
+                                Every admin needs two-step sign-in. Set it up under{' '}
+                                <Link href="/admin/account" className="font-semibold underline">My account</Link>;
+                                until then, the rest of the console stays locked.
+                            </p>
                         </div>
                     )}
                     {children}

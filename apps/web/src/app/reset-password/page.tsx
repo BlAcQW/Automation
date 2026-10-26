@@ -3,20 +3,14 @@
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Lock, ArrowRight } from 'lucide-react';
+import { Lock, ArrowRight, LinkIcon } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Input } from '@bookingflow/ui';
-import {
-    AuthFrame,
-    authErrorBox,
-    authFormClass,
-    authHeading,
-    authInputClass,
-    authInputErrorClass,
-    authPrimaryBtn,
-    authPrimaryBtnInline,
-    authSub,
-} from '@/components/auth/auth-frame';
+import { Button, Input, TickPop } from '@bookingflow/ui';
+import { AuthAlert, AuthFrame, AuthTitle, authLink } from '@/components/auth/auth-frame';
+import { useInlineValidation } from '@/components/auth/use-inline-validation';
+
+const primaryLink =
+    'inline-flex min-h-[48px] items-center justify-center gap-2 rounded-control bg-primary px-6 font-semibold text-primary-fg shadow-soft transition-colors duration-ui hover:bg-primary-hover';
 
 /** Landing page for the link in the reset email. */
 export default function ResetPasswordPage() {
@@ -35,6 +29,11 @@ function ResetPasswordForm() {
     const [done, setDone] = useState(false);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const { field } = useInlineValidation();
+    const passwordField = field('password', {
+        missing: 'Please choose a new password.',
+        short: 'Use at least 8 characters.',
+    });
 
     const mismatch = confirm.length > 0 && password !== confirm;
 
@@ -59,63 +58,63 @@ function ResetPasswordForm() {
                 <Expired />
             ) : done ? (
                 <div>
-                    <h1 className={`${authHeading} mb-4`}>Password updated.</h1>
-                    <p className={`${authSub} max-w-[42ch]`}>
-                        You can sign in with your new password now.
-                    </p>
-                    <div className="mt-8">
-                        <Link href="/login" className={authPrimaryBtnInline}>
-                            Sign in <ArrowRight className="w-4 h-4" />
-                        </Link>
-                    </div>
+                    <TickPop size={64} label="Password updated" className="mb-6" />
+                    <AuthTitle sub="All set. You can log in with your new password now.">Password updated</AuthTitle>
+                    <Link href="/login" className={primaryLink}>
+                        Log in <ArrowRight className="h-5 w-5" aria-hidden />
+                    </Link>
                 </div>
             ) : (
                 <>
-                    <h1 className={`${authHeading} mb-3`}>Choose a new password.</h1>
-                    <p className={`${authSub} mb-8`}>At least 8 characters.</p>
+                    <AuthTitle sub="Pick something you'll remember. At least 8 characters.">Choose a new password</AuthTitle>
 
                     {error && (
-                        <div role="alert" className={`${authErrorBox} mb-5`}>
+                        <AuthAlert>
                             {error}{' '}
-                            <Link href="/forgot-password" className="underline underline-offset-2 font-medium">
+                            <Link href="/forgot-password" className={authLink}>
                                 Request a new link
                             </Link>
-                        </div>
+                        </AuthAlert>
                     )}
 
-                    <form onSubmit={handleSubmit} className={authFormClass}>
+                    <form onSubmit={handleSubmit} className="space-y-5">
                         <Input
                             type="password"
                             label="New password"
-                            icon={<Lock className="w-[18px] h-[18px]" />}
+                            icon={<Lock />}
                             value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="••••••••"
+                            onChange={(e) => {
+                                setPassword(e.target.value);
+                                passwordField.recheck(e.target);
+                            }}
+                            placeholder="At least 8 characters"
                             autoComplete="new-password"
                             minLength={8}
-                            className={authInputClass}
                             required
+                            {...passwordField.props}
                         />
                         <Input
                             type="password"
                             label="Type it again"
-                            icon={<Lock className="w-[18px] h-[18px]" />}
+                            icon={<Lock />}
                             value={confirm}
                             onChange={(e) => setConfirm(e.target.value)}
-                            placeholder="••••••••"
+                            placeholder="Same password again"
                             autoComplete="new-password"
                             minLength={8}
-                            error={mismatch ? 'These do not match.' : undefined}
-                            className={mismatch ? `${authInputClass} ${authInputErrorClass}` : authInputClass}
+                            error={mismatch ? "These don't match yet. Check both boxes." : undefined}
                             required
                         />
-                        <button
+                        <Button
                             type="submit"
-                            disabled={isLoading || password.length < 8 || password !== confirm}
-                            className={authPrimaryBtn}
+                            size="lg"
+                            fullWidth
+                            isLoading={isLoading}
+                            loadingText="Saving…"
+                            disabled={password.length < 8 || password !== confirm}
                         >
-                            {isLoading ? 'Saving…' : (<>Save new password <ArrowRight className="w-4 h-4" /></>)}
-                        </button>
+                            Save new password <ArrowRight className="h-5 w-5" aria-hidden />
+                        </Button>
                     </form>
                 </>
             )}
@@ -126,15 +125,18 @@ function ResetPasswordForm() {
 function Expired() {
     return (
         <div>
-            <h1 className={`${authHeading} mb-4`}>This link is not valid.</h1>
-            <p className={`${authSub} max-w-[42ch]`}>
-                Reset links work for one hour and only once. Ask for a fresh one and use it straight away.
-            </p>
-            <div className="mt-8">
-                <Link href="/forgot-password" className={authPrimaryBtnInline}>
-                    Request a new link
-                </Link>
+            <div
+                className="mb-6 flex h-14 w-14 items-center justify-center rounded-card bg-warning-soft text-warning-fg"
+                aria-hidden
+            >
+                <LinkIcon className="h-7 w-7" />
             </div>
+            <AuthTitle sub="Reset links work for one hour and only once. Ask for a fresh one and use it straight away.">
+                This link has expired
+            </AuthTitle>
+            <Link href="/forgot-password" className={primaryLink}>
+                Send me a new link
+            </Link>
         </div>
     );
 }

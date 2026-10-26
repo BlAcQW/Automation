@@ -1,17 +1,18 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Logo } from '@/components/marketing/site/chrome';
-import { Satin } from '@/components/marketing/site/satin';
+import Link from 'next/link';
+import { AlertCircle, Info } from 'lucide-react';
+import { AwningDivider, BrandLogo, StatusPill, cn } from '@bookingflow/ui';
 
 /**
- * Auth frame — the "Forest ledger" split from the marketing reference.
+ * Auth frame: the cream page every sign-in / sign-up / reset screen sits on.
  *
- * The whole viewport is the forest frame (`.theme-site`: 14px padding, 8px
- * on phones). Inside it, a paper panel holds the form; on lg+ a night satin
- * panel sits to the right with a short statement and one piece of product
- * proof. `.theme-site` / `.fs-paper` re-scope the ink tokens, so these pages
- * look the same whether or not `.dark` is on <html>.
+ * Phones get one column: the wordmark, then the form. From `lg` a green panel
+ * sits on the right with a short Clash statement and one small piece of
+ * product proof, topped by the gold awning (the one gold moment on screen).
+ * The panel is decoration only (aria-hidden); everything that matters lives
+ * in the form column.
  */
 export function AuthFrame({
     children,
@@ -23,28 +24,34 @@ export function AuthFrame({
     proof?: ReactNode;
 }) {
     return (
-        <main id="main" className="theme-site">
-            <div className="mb-2 grid min-h-[calc(100dvh-16px)] gap-2 sm:mb-[14px] sm:min-h-[calc(100dvh-28px)] sm:gap-[14px] lg:grid-cols-2">
-                <section className="fs-paper relative flex flex-col overflow-hidden rounded-[4px]">
-                    <header className="p-3 sm:p-4">
-                        <div className="fs-logo-pill w-fit" style={{ paddingRight: 12 }}>
-                            <Logo />
-                        </div>
+        <main id="main" className="min-h-[100dvh] bg-bg text-text">
+            <div className="mx-auto grid min-h-[100dvh] max-w-[1440px] lg:grid-cols-2 lg:gap-6 lg:p-6">
+                <section className="flex flex-col">
+                    <header className="px-4 pt-6 sm:px-8 lg:px-6 lg:pt-2">
+                        <Link
+                            href="/"
+                            className="inline-flex min-h-[44px] items-center rounded-control"
+                            aria-label="Bookly home"
+                        >
+                            <BrandLogo size="md" labelled={false} />
+                        </Link>
                     </header>
-                    <div className="flex flex-1 items-center justify-center px-5 pb-12 pt-6 sm:px-10">
-                        <div className="fs-in w-full max-w-[400px]">{children}</div>
+                    <div className="flex flex-1 items-start justify-center px-4 pb-12 pt-8 sm:items-center sm:px-8 sm:pt-6">
+                        <div className="w-full max-w-[440px]">{children}</div>
                     </div>
                 </section>
 
                 <aside
                     aria-hidden
-                    className="relative hidden overflow-hidden rounded-[4px] bg-forest-night text-forest-cream lg:block"
+                    className="relative hidden overflow-hidden rounded-card-lg bg-green text-cream shadow-card-lg lg:flex lg:flex-col"
                 >
-                    <Satin variant={1} />
-                    <div className="relative z-10 flex h-full flex-col justify-between p-10 xl:p-12">
-                        <p className="fs-key">/bookly/</p>
+                    <AwningDivider size="lg" />
+                    <div className="flex flex-1 flex-col justify-between p-10 xl:p-12">
+                        <p className="text-small font-semibold uppercase tracking-[0.12em] text-cream/80">
+                            Your shop, always open.
+                        </p>
                         <div className="flex flex-col gap-8">
-                            <p className="max-w-[16ch] text-[clamp(32px,3.2vw,48px)] font-normal leading-[1.02] tracking-[-0.05em] text-forest-cream">
+                            <p className="max-w-[18ch] font-display text-[clamp(2rem,1.2rem+1.8vw,3rem)] font-semibold leading-[1.08] tracking-[-0.015em]">
                                 {statement}
                             </p>
                             {proof}
@@ -58,58 +65,85 @@ export function AuthFrame({
 
 const DEFAULT_STATEMENT = (
     <>
-        Your front desk,{' '}
-        <span className="text-forest-cream/50">answering on WhatsApp while you work.</span>
+        Your customers book on WhatsApp.{' '}
+        <span className="text-cream/70">You get on with your day.</span>
     </>
 );
 
-/** Light panel on the satin: an illustration of a deposit landing, not a claim. */
+/** A small card on the green panel: an illustration of a deposit landing, not a claim. */
 function DepositProof() {
     return (
-        <div className="fs-panel">
-            <p className="fs-panel-k">Deposit received · Glow Hair Studio</p>
-            <p className="fs-panel-v">GHS 50.00</p>
-            <p className="fs-panel-g">Booked for Sat, 10:30 · held for you</p>
+        <div className="max-w-sm rounded-card bg-surface p-5 text-text shadow-card">
+            <div className="flex items-center justify-between gap-3">
+                <p className="text-small font-medium text-muted">Glow Hair Studio</p>
+                <StatusPill status="paid" label="Deposit paid" size="sm" />
+            </div>
+            <p className="mt-3 text-[28px] font-bold leading-none tabular-nums">GH₵ 50.00</p>
+            <p className="mt-2 text-small text-muted">Saturday, 10:30 · Braids with Akosua</p>
         </div>
     );
 }
 
-/* ---- shared form styling -------------------------------------------------
-   Applied on top of the shared `Input` (packages/ui) without changing it:
-   classes go through tailwind-merge, labels/error text are reached from the
-   form with arbitrary variants. Colours are pinned forest values on purpose. */
+/* ---- shared pieces for the auth pages ------------------------------------ */
 
-export const AUTH_ERROR_RED = '#B03A2E';
+/** The page's one h1, in Clash, plus an optional friendly line under it. */
+export function AuthTitle({ children, sub, className }: { children: ReactNode; sub?: ReactNode; className?: string }) {
+    return (
+        <div className={cn('mb-8', className)}>
+            <h1 className="font-display text-page-title text-text">{children}</h1>
+            {sub && <p className="mt-3 max-w-[42ch] text-body leading-relaxed text-muted">{sub}</p>}
+        </div>
+    );
+}
 
-export const authFormClass = [
-    'space-y-4',
-    '[&_label.block]:text-[12px] [&_label.block]:font-medium [&_label.block]:text-forest-ink',
-].join(' ');
+export const FRIENDLY_ERROR_TITLE = "Oops, that didn't work. Let's try again.";
 
-export const authInputClass = [
-    'h-11 py-0 rounded-[5px] bg-[#FBFAF7] text-base text-forest-ink placeholder:text-forest-muted',
-    'border-forest-ink/[.14] hover:border-forest-ink/25',
-    'focus:border-forest-brand focus:ring-[3px] focus:ring-forest-brand/[.18]',
-    'dark:focus:border-forest-brand dark:focus:ring-forest-brand/[.18]',
-].join(' ');
+/**
+ * Form-level message. `error` uses the friendly Bookly headline, then says
+ * what happened and what to do next; `notice` is a calm heads-up.
+ */
+export function AuthAlert({
+    tone = 'error',
+    title,
+    children,
+    className,
+}: {
+    tone?: 'error' | 'notice';
+    title?: ReactNode;
+    children?: ReactNode;
+    className?: string;
+}) {
+    const isError = tone === 'error';
+    const Icon = isError ? AlertCircle : Info;
+    return (
+        <div
+            role={isError ? 'alert' : 'status'}
+            className={cn(
+                'mb-6 flex items-start gap-3 rounded-control border px-4 py-3 text-[15px] leading-snug',
+                isError ? 'border-error/30 bg-error-soft text-text' : 'border-border bg-surface-2 text-text',
+                className,
+            )}
+        >
+            <Icon className={cn('mt-0.5 h-5 w-5 shrink-0', isError ? 'text-error-fg' : 'text-primary')} aria-hidden />
+            <div className="min-w-0">
+                {(title ?? (isError ? FRIENDLY_ERROR_TITLE : null)) && (
+                    <p className="font-semibold">{title ?? FRIENDLY_ERROR_TITLE}</p>
+                )}
+                {children && <div className={cn(isError || title ? 'mt-1 text-muted' : '')}>{children}</div>}
+            </div>
+        </div>
+    );
+}
 
-export const authInputErrorClass =
-    'border-[#B03A2E]/60 hover:border-[#B03A2E]/60 focus:border-[#B03A2E] focus:ring-[#B03A2E]/15 dark:focus:border-[#B03A2E] dark:focus:ring-[#B03A2E]/15';
-
-const focusRing =
-    'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-forest-brand/30';
-
-export const authPrimaryBtn = `fs-btn fs-btn--brand fs-btn--lg fs-btn--wide ${focusRing} disabled:pointer-events-none disabled:opacity-55`;
-export const authPrimaryBtnInline = `fs-btn fs-btn--brand fs-btn--lg ${focusRing} disabled:pointer-events-none disabled:opacity-55`;
-export const authGhostBtn = `fs-btn fs-btn--ghost fs-btn--lg ${focusRing}`;
-
-export const authHeading =
-    'text-[34px] sm:text-[40px] font-normal leading-[1] tracking-[-0.05em] text-forest-ink';
-export const authSub = 'text-[15px] leading-relaxed text-[#5F675E]';
+/** Inline text link in the brand green (AA on cream and white). */
 export const authLink =
-    'font-medium text-forest-brand underline-offset-2 hover:underline transition-colors';
-export const authMutedLink = 'text-[13px] text-[#5F675E] hover:text-forest-ink transition-colors';
-export const authErrorBox =
-    'rounded-[5px] border border-[#B03A2E]/25 bg-[#B03A2E]/[.06] px-3.5 py-2.5 text-[13px] leading-snug text-[#B03A2E]';
-export const authNoticeBox =
-    'rounded-[5px] border border-forest-ink/[.12] bg-[#ECEBE1] px-3.5 py-2.5 text-[13px] leading-snug text-forest-ink';
+    'font-semibold text-primary underline-offset-4 hover:underline rounded-sm transition-colors duration-ui';
+
+/** Quiet secondary link (back links, "forgot password"). At least 44px tall. */
+export const authMutedLink =
+    'inline-flex min-h-[44px] items-center gap-1.5 rounded-control text-[15px] font-medium text-muted hover:text-text transition-colors duration-ui';
+
+/** Footer line under a form ("New to Bookly? Start free"). */
+export function AuthFootnote({ children }: { children: ReactNode }) {
+    return <p className="mt-8 text-center text-[15px] text-muted">{children}</p>;
+}

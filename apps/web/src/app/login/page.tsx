@@ -4,26 +4,12 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight } from 'lucide-react';
-import { Input } from '@bookingflow/ui';
-import {
-    AuthFrame,
-    authErrorBox,
-    authFormClass,
-    authHeading,
-    authInputClass,
-    authLink,
-    authMutedLink,
-    authNoticeBox,
-    authPrimaryBtn,
-    authSub,
-} from '@/components/auth/auth-frame';
+import { Button, Input } from '@bookingflow/ui';
+import { AuthAlert, AuthFootnote, AuthFrame, AuthTitle, authLink, authMutedLink } from '@/components/auth/auth-frame';
+import { useInlineValidation } from '@/components/auth/use-inline-validation';
 
-/**
- * Login — forest-frame split: paper form panel left, night satin right.
- * Paper panel only below `lg`.
- */
+/** Log in. Cream form on the left; on large screens a green panel on the right. */
 export default function LoginPage() {
     const router = useRouter();
     const { login } = useAuth();
@@ -35,11 +21,17 @@ export default function LoginPage() {
     // effect (not useSearchParams) so the page still prerenders.
     const [notice, setNotice] = useState('');
     const [nextPath, setNextPath] = useState('/dashboard');
+    const { field } = useInlineValidation();
+    const emailField = field('email', {
+        missing: 'Please enter your email.',
+        format: "That email doesn't look right. Check for a missing @ or dot.",
+    });
+    const passwordField = field('password', { missing: 'Please enter your password.' });
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get('reason') === 'expired') {
-            setNotice('You were signed out after a while away. Sign in to carry on.');
+            setNotice('You were signed out after a while away. Log in again to carry on.');
         }
         const next = params.get('next');
         // Only same-site paths: never bounce someone to another domain.
@@ -65,69 +57,72 @@ export default function LoginPage() {
             statement={
                 <>
                     While you were away,{' '}
-                    <span className="text-forest-cream/50">your customers still got an answer.</span>
+                    <span className="text-cream/70">your customers still got an answer.</span>
                 </>
             }
         >
-            <h1 className={`${authHeading} mb-3`}>Welcome back.</h1>
-            <p className={`${authSub} mb-8`}>Sign in to your Bookly account.</p>
+            <AuthTitle sub="Log in to see your bookings, chats and payments.">Welcome back</AuthTitle>
 
-            {notice && !error && (
-                <div role="status" className={`${authNoticeBox} mb-5`}>
-                    {notice}
-                </div>
-            )}
+            {notice && !error && <AuthAlert tone="notice">{notice}</AuthAlert>}
 
             {error && (
-                <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`${authErrorBox} mb-5`}
-                >
-                    {error}
-                </motion.div>
+                <AuthAlert>
+                    {error.replace(/\.\s*$/, '')}. Check your email and password, or{' '}
+                    <Link href="/forgot-password" className={authLink}>
+                        reset your password
+                    </Link>
+                    .
+                </AuthAlert>
             )}
 
-            <form onSubmit={handleSubmit} className={authFormClass}>
+            <form onSubmit={handleSubmit} className="space-y-5">
                 <Input
                     type="email"
                     label="Email"
-                    icon={<Mail className="w-[18px] h-[18px]" />}
+                    icon={<Mail />}
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                        setEmail(e.target.value);
+                        emailField.recheck(e.target);
+                    }}
                     placeholder="you@example.com"
-                    className={authInputClass}
+                    autoComplete="email"
+                    inputMode="email"
                     required
+                    {...emailField.props}
                 />
-                <Input
-                    type="password"
-                    label="Password"
-                    icon={<Lock className="w-[18px] h-[18px]" />}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    className={authInputClass}
-                    required
-                />
-                <div className="flex justify-end -mt-1">
-                    <Link href="/forgot-password" className={`${authMutedLink} py-1`}>
-                        Forgot your password?
-                    </Link>
+                <div>
+                    <Input
+                        type="password"
+                        label="Password"
+                        icon={<Lock />}
+                        value={password}
+                        onChange={(e) => {
+                            setPassword(e.target.value);
+                            passwordField.recheck(e.target);
+                        }}
+                        placeholder="Your password"
+                        autoComplete="current-password"
+                        required
+                        {...passwordField.props}
+                    />
+                    <div className="flex justify-end">
+                        <Link href="/forgot-password" className={authMutedLink}>
+                            Forgot your password?
+                        </Link>
+                    </div>
                 </div>
-                <button type="submit" disabled={isLoading} className={authPrimaryBtn}>
-                    {isLoading ? 'Signing in…' : (
-                        <>Sign in <ArrowRight className="w-4 h-4" /></>
-                    )}
-                </button>
+                <Button type="submit" size="lg" fullWidth isLoading={isLoading} loadingText="Logging you in…">
+                    Log in <ArrowRight className="h-5 w-5" aria-hidden />
+                </Button>
             </form>
 
-            <p className="mt-8 text-center text-[13px] text-[#5F675E]">
-                Don&apos;t have an account?{' '}
+            <AuthFootnote>
+                New to Bookly?{' '}
                 <Link href="/register" className={authLink}>
                     Start free
                 </Link>
-            </p>
+            </AuthFootnote>
         </AuthFrame>
     );
 }

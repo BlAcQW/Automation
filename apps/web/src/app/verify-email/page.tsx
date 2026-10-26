@@ -2,16 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, MailWarning } from 'lucide-react';
+import { AlertCircle, MailWarning } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import {
-    AuthFrame,
-    AUTH_ERROR_RED,
-    authHeading,
-    authPrimaryBtnInline,
-    authSub,
-} from '@/components/auth/auth-frame';
+import { Button, TickPop } from '@bookingflow/ui';
+import { AuthFrame, AuthTitle } from '@/components/auth/auth-frame';
+
+const primaryLink =
+    'inline-flex min-h-[48px] items-center justify-center gap-2 rounded-control bg-primary px-6 font-semibold text-primary-fg shadow-soft transition-colors duration-ui hover:bg-primary-hover';
 
 /** Where the link in the confirmation email lands, via the API redirect. */
 export default function VerifyEmailPage() {
@@ -43,47 +41,47 @@ export default function VerifyEmailPage() {
         <AuthFrame>
             {status === 'ok' && (
                 <>
-                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-[5px] bg-forest-night text-forest-glow">
-                        <CheckCircle2 className="h-5 w-5" aria-hidden />
-                    </div>
-                    <h1 className={`mt-6 ${authHeading}`}>Email confirmed.</h1>
-                    <p className={`mt-4 ${authSub} max-w-[42ch]`}>
-                        Thanks. We can now reach you about your bookings and your account.
-                    </p>
-                    <div className="mt-8">
-                        <Link href={isAuthenticated ? '/dashboard' : '/login'} className={authPrimaryBtnInline}>
-                            {isAuthenticated ? 'Back to dashboard' : 'Sign in'}
-                        </Link>
-                    </div>
+                    <TickPop size={64} label="Email confirmed" className="mb-6" />
+                    <AuthTitle sub="Thanks! We can now reach you about your bookings and your account.">
+                        Email confirmed
+                    </AuthTitle>
+                    <Link href={isAuthenticated ? '/dashboard' : '/login'} className={primaryLink}>
+                        {isAuthenticated ? 'Go to my dashboard' : 'Log in'}
+                    </Link>
                 </>
             )}
 
             {status === 'invalid' && (
                 <>
-                    <div className="inline-flex h-11 w-11 items-center justify-center rounded-[5px] bg-[#E0A43A]/15 text-[#8A5A12]">
-                        <MailWarning className="h-5 w-5" aria-hidden />
+                    <div
+                        className="mb-6 flex h-14 w-14 items-center justify-center rounded-card bg-warning-soft text-warning-fg"
+                        aria-hidden
+                    >
+                        <MailWarning className="h-7 w-7" />
                     </div>
-                    <h1 className={`mt-6 ${authHeading}`}>This link has expired.</h1>
-                    <p className={`mt-4 ${authSub} max-w-[42ch]`}>
-                        Confirmation links work for 7 days. Ask for a new one and use it straight away.
-                    </p>
-                    <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                        {isAuthenticated ? (
-                            <button
-                                type="button"
-                                onClick={resend}
-                                disabled={resent === 'sending' || resent === 'sent'}
-                                className={authPrimaryBtnInline}
-                            >
-                                {resent === 'sent' ? 'Sent, check your inbox' : resent === 'sending' ? 'Sending…' : 'Send a new link'}
-                            </button>
-                        ) : (
-                            <Link href="/login" className={authPrimaryBtnInline}>Sign in to resend</Link>
-                        )}
-                    </div>
+                    <AuthTitle sub="Confirmation links work for 7 days. Ask for a new one and use it straight away.">
+                        This link has expired
+                    </AuthTitle>
+                    {isAuthenticated ? (
+                        <Button
+                            type="button"
+                            size="lg"
+                            onClick={resend}
+                            isLoading={resent === 'sending'}
+                            loadingText="Sending…"
+                            disabled={resent === 'sent'}
+                        >
+                            {resent === 'sent' ? 'Sent! Check your inbox' : 'Send me a new link'}
+                        </Button>
+                    ) : (
+                        <Link href="/login" className={primaryLink}>
+                            Log in to get a new link
+                        </Link>
+                    )}
                     {resent === 'failed' && (
-                        <p className="mt-3 text-[13px]" style={{ color: AUTH_ERROR_RED }}>
-                            We could not send it right now. Try again in a few minutes.
+                        <p role="alert" className="mt-4 flex items-start gap-1.5 text-[15px] font-medium text-error-fg">
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                            Oops, that didn&apos;t work. Wait a few minutes, then tap the button again.
                         </p>
                     )}
                 </>

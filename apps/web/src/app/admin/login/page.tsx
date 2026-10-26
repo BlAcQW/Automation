@@ -2,25 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { adminApi } from '@/lib/api';
-import { ShieldCheck, Loader2 } from 'lucide-react';
-import { Input } from '@bookingflow/ui';
-import {
-    AuthFrame,
-    authErrorBox,
-    authFormClass,
-    authHeading,
-    authInputClass,
-    authMutedLink,
-    authPrimaryBtn,
-    authSub,
-} from '@/components/auth/auth-frame';
-
-const LABEL = 'block text-[12px] font-medium text-forest-ink';
+import { ArrowLeft, KeyRound, Lock, Mail, ShieldCheck } from 'lucide-react';
+import { Button, Input } from '@bookingflow/ui';
+import { AuthAlert, AuthFrame, AuthTitle, authMutedLink } from '@/components/auth/auth-frame';
+import { useInlineValidation } from '@/components/auth/use-inline-validation';
 
 export default function AdminLoginPage() {
-    const router = useRouter();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     // Second factor: shown once the API says this admin has 2FA on.
@@ -28,6 +16,12 @@ export default function AdminLoginPage() {
     const [needCode, setNeedCode] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const { field } = useInlineValidation();
+    const emailField = field('email', {
+        missing: 'Please enter your email.',
+        format: "That email doesn't look right. Check for a missing @ or dot.",
+    });
+    const passwordField = field('password', { missing: 'Please enter your password.' });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -71,83 +65,85 @@ export default function AdminLoginPage() {
             statement={
                 <>
                     Platform admin.{' '}
-                    <span className="text-forest-cream/50">Every action here is recorded in the audit log.</span>
+                    <span className="text-cream/70">Every action here is recorded in the audit log.</span>
                 </>
             }
             proof={null}
         >
-            <div className="mb-6 inline-flex h-11 w-11 items-center justify-center rounded-[5px] bg-forest-night text-forest-glow">
-                <ShieldCheck className="w-5 h-5" />
+            <div
+                className="mb-6 flex h-14 w-14 items-center justify-center rounded-card bg-primary-soft text-primary"
+                aria-hidden
+            >
+                <ShieldCheck className="h-7 w-7" />
             </div>
-            <h1 className={`${authHeading} mb-3`}>Admin access.</h1>
-            <p className={`${authSub} mb-8`}>Enter your credentials to continue</p>
+            <AuthTitle sub="For the Bookly team only. Log in with your admin account.">Admin log in</AuthTitle>
 
-            <form onSubmit={handleSubmit} className={authFormClass}>
-                {error && (
-                    <div className={authErrorBox}>
-                        {error}
-                    </div>
-                )}
-                <div className="space-y-1.5">
-                    <label className={LABEL}>Email</label>
-                    <Input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className={authInputClass}
-                        placeholder="name@company.com"
-                        required
-                    />
-                </div>
-                <div className="space-y-1.5">
-                    <label className={LABEL}>Password</label>
-                    <Input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className={authInputClass}
-                        placeholder="••••••••"
-                        required
-                    />
-                </div>
+            {error && (
+                <AuthAlert>
+                    {error.replace(/\.\s*$/, '')}. Check your details and try again.
+                </AuthAlert>
+            )}
+
+            {needCode && !error && (
+                <AuthAlert tone="notice">One more step: enter the code from your authenticator app.</AuthAlert>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <Input
+                    type="email"
+                    label="Email"
+                    icon={<Mail />}
+                    value={email}
+                    onChange={(e) => {
+                        setEmail(e.target.value);
+                        emailField.recheck(e.target);
+                    }}
+                    placeholder="name@company.com"
+                    autoComplete="username"
+                    inputMode="email"
+                    required
+                    {...emailField.props}
+                />
+                <Input
+                    type="password"
+                    label="Password"
+                    icon={<Lock />}
+                    value={password}
+                    onChange={(e) => {
+                        setPassword(e.target.value);
+                        passwordField.recheck(e.target);
+                    }}
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    required
+                    {...passwordField.props}
+                />
                 {needCode && (
-                    <div className="space-y-1.5">
-                        <label className={LABEL} htmlFor="admin-2fa-code">Two-factor code</label>
-                        <Input
-                            id="admin-2fa-code"
-                            value={code}
-                            onChange={(e) => setCode(e.target.value)}
-                            className={`${authInputClass} tracking-widest`}
-                            placeholder="123456 or a recovery code"
-                            autoComplete="one-time-code"
-                            inputMode="text"
-                            autoFocus
-                            required
-                        />
-                        <p className="text-[12px] text-[#5F675E]">From your authenticator app. Lost your device? Use one of your recovery codes.</p>
-                    </div>
+                    <Input
+                        id="admin-2fa-code"
+                        label="Two-factor code"
+                        icon={<KeyRound />}
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        className="tracking-widest"
+                        placeholder="123456 or a recovery code"
+                        autoComplete="one-time-code"
+                        inputMode="text"
+                        hint="From your authenticator app. Lost your phone? Use one of your recovery codes."
+                        autoFocus
+                        required
+                    />
                 )}
-                <button
-                    type="submit"
-                    className={authPrimaryBtn}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Signing in...
-                        </>
-                    ) : (
-                        'Sign In'
-                    )}
-                </button>
+                <Button type="submit" size="lg" fullWidth isLoading={loading} loadingText="Logging you in…">
+                    Log in
+                </Button>
             </form>
 
-            <div className="mt-6 text-center">
-                <Link href="/login" className={`${authMutedLink} inline-flex items-center min-h-[44px]`}>
-                    ← Back to User Login
+            <p className="mt-6 text-center">
+                <Link href="/login" className={authMutedLink}>
+                    <ArrowLeft className="h-4 w-4" aria-hidden /> Back to business log in
                 </Link>
-            </div>
+            </p>
         </AuthFrame>
     );
 }

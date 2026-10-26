@@ -9,6 +9,15 @@
  */
 
 import type { TemplatePurpose } from '@prisma/client';
+import {
+    emailButton,
+    emailDetails,
+    emailLink,
+    emailParagraph,
+    escapeHtml,
+    renderEmailLayout,
+    renderEmailText,
+} from './email-layout.js';
 
 export interface TextBundle {
     sms: string;
@@ -17,17 +26,44 @@ export interface TextBundle {
     emailHtml: string;
 }
 
-function escapeHtml(input: string): string {
-    return input
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+/** Structured email content; rendered into the branded layout at the end. */
+interface EmailContent {
+    heading: string;
+    preheader: string;
+    /** Already-escaped HTML paragraphs. */
+    paragraphs: string[];
+    details?: Array<[string, string]>;
 }
 
-function htmlBundle(parts: string[]): string {
-    return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.5; color: #1f2937;">${parts.join('')}</div>`;
+interface BaseBundle {
+    sms: string;
+    emailSubject: string;
+    /** Plain-text body without the sign-off (links are appended before it). */
+    emailText: string;
+    email: EmailContent;
+}
+
+const CUSTOMER_FOOTER_NOTE = 'You got this email because you booked or ordered with a business that uses Bookly.';
+
+function renderBundle(base: BaseBundle, extraText: string[] = [], extraHtml: string[] = []): TextBundle {
+    const { email } = base;
+    const body = [
+        ...email.paragraphs.map((p) => emailParagraph(p)),
+        email.details ? emailDetails(email.details) : '',
+        ...extraHtml,
+    ].filter(Boolean);
+    return {
+        sms: base.sms,
+        emailSubject: base.emailSubject,
+        emailText: renderEmailText([base.emailText, ...extraText]),
+        emailHtml: renderEmailLayout({
+            title: base.emailSubject,
+            preheader: email.preheader,
+            heading: email.heading,
+            bodyHtml: body.join('\n'),
+            footerNote: CUSTOMER_FOOTER_NOTE,
+        }),
+    };
 }
 
 /**
@@ -53,7 +89,7 @@ export function buildTextBundle(
 ): TextBundle | null {
     const base = baseTextBundle(purpose, variables);
     if (!base) return base;
-    if (!links) return base;
+    if (!links) return renderBundle(base);
 
     // Order purposes get the tracking link; booking reminders get the cancel link.
     const isOrderPurpose =
@@ -62,145 +98,146 @@ export function buildTextBundle(
         purpose === 'ORDER_DELIVERED';
 
     if (isOrderPurpose && links.trackUrl) {
-        return {
-            sms: `${base.sms}\n\nTrack your order: ${links.trackUrl}`,
-            emailSubject: base.emailSubject,
-            emailText: `${base.emailText}\n\nTrack your order: ${links.trackUrl}`,
-            emailHtml: base.emailHtml.replace(
-                '</div>',
-                `<p><a href="${escapeHtml(links.trackUrl)}">Track your order</a></p></div>`,
-            ),
-        };
+        return renderBundle(
+            { ...base, sms: `${base.sms}\n\nTrack your order: ${links.trackUrl}` },
+            ['', `Track your order: ${links.trackUrl}`],
+            [emailButton('Track your order', links.trackUrl)],
+        );
     }
     if (purpose === 'BOOKING_REMINDER' && links.cancelUrl) {
-        return {
-            sms: `${base.sms}\n\nNeed to cancel? ${links.cancelUrl}`,
-            emailSubject: base.emailSubject,
-            emailText: `${base.emailText}\n\nNeed to cancel? ${links.cancelUrl}`,
-            emailHtml: base.emailHtml.replace(
-                '</div>',
-                `<p><a href="${escapeHtml(links.cancelUrl)}">Cancel this appointment</a></p></div>`,
-            ),
-        };
+        return renderBundle(
+            { ...base, sms: `${base.sms}\n\nNeed to cancel? ${links.cancelUrl}` },
+            ['', `Need to cancel? ${links.cancelUrl}`],
+            [emailParagraph(`Can&#39;t make it? ${emailLink('Cancel this appointment', links.cancelUrl)}`, { small: true, muted: true })],
+        );
     }
-    return base;
+    return renderBundle(base);
 }
 
 function baseTextBundle(
     purpose: TemplatePurpose,
     variables: string[],
-): TextBundle | null {
+): BaseBundle | null {
     switch (purpose) {
         case 'BOOKING_CONFIRMATION': {
             if (variables.length !== 5) return null;
             const [name, svc, date, time, ref] = variables;
-            const eName = escapeHtml(name);
-            const eSvc = escapeHtml(svc);
-            const eDate = escapeHtml(date);
-            const eTime = escapeHtml(time);
-            const eRef = escapeHtml(ref);
             return {
                 sms: `Hi ${name}, your ${svc} booking on ${date} at ${time} is confirmed. Ref: ${ref}.`,
                 emailSubject: `Booking confirmed: ${svc}`,
                 emailText:
                     `Hi ${name},\n\n` +
-                    `Your ${svc} appointment is confirmed for ${date} at ${time}.\n` +
-                    `Reference: ${ref}\n`,
-                emailHtml: htmlBundle([
-                    `<p>Hi ${eName},</p>`,
-                    `<p>Your <strong>${eSvc}</strong> appointment is confirmed for <strong>${eDate}</strong> at <strong>${eTime}</strong>.</p>`,
-                    `<p>Reference: <code>${eRef}</code></p>`,
-                ]),
+                    `You're booked in! Your ${svc} appointment is confirmed for ${date} at ${time}.\n` +
+                    `Reference: ${ref}`,
+                email: {
+                    heading: "You're booked in!",
+                    preheader: `${svc} on ${date} at ${time}. See you soon.`,
+                    paragraphs: [
+                        `Hi ${escapeHtml(name)},`,
+                        `Your <strong>${escapeHtml(svc)}</strong> appointment is confirmed. See you soon!`,
+                    ],
+                    details: [['Service', svc], ['Date', date], ['Time', time], ['Reference', ref]],
+                },
             };
         }
 
         case 'BOOKING_REMINDER': {
             if (variables.length !== 2) return null;
             const [svc, time] = variables;
-            const eSvc = escapeHtml(svc);
-            const eTime = escapeHtml(time);
             return {
                 sms: `Reminder: your ${svc} appointment is at ${time}.`,
                 emailSubject: `Reminder: ${svc} at ${time}`,
-                emailText: `Reminder: your ${svc} appointment is at ${time}.`,
-                emailHtml: htmlBundle([
-                    `<p>Reminder: your <strong>${eSvc}</strong> appointment is at <strong>${eTime}</strong>.</p>`,
-                ]),
+                emailText: `Reminder: your ${svc} appointment is at ${time}. See you soon!`,
+                email: {
+                    heading: 'See you soon',
+                    preheader: `Your ${svc} appointment is at ${time}.`,
+                    paragraphs: [
+                        `Just a friendly reminder: your <strong>${escapeHtml(svc)}</strong> appointment is at <strong>${escapeHtml(time)}</strong>.`,
+                    ],
+                    details: [['Service', svc], ['Time', time]],
+                },
             };
         }
 
         case 'BOOKING_CANCELLED': {
             if (variables.length !== 2) return null;
             const [svc, date] = variables;
-            const eSvc = escapeHtml(svc);
-            const eDate = escapeHtml(date);
             return {
                 sms: `Your ${svc} booking on ${date} has been cancelled.`,
                 emailSubject: `Booking cancelled: ${svc}`,
-                emailText: `Your ${svc} booking on ${date} has been cancelled.`,
-                emailHtml: htmlBundle([
-                    `<p>Your <strong>${eSvc}</strong> booking on <strong>${eDate}</strong> has been cancelled.</p>`,
-                ]),
+                emailText: `Your ${svc} booking on ${date} has been cancelled. Want a new time? Just message the business.`,
+                email: {
+                    heading: 'Your booking is cancelled',
+                    preheader: `Your ${svc} booking on ${date} has been cancelled.`,
+                    paragraphs: [
+                        `Your <strong>${escapeHtml(svc)}</strong> booking on <strong>${escapeHtml(date)}</strong> has been cancelled.`,
+                        'Want a new time? Just message the business and they will sort you out.',
+                    ],
+                },
             };
         }
 
         case 'BOOKING_RESCHEDULED': {
             if (variables.length !== 3) return null;
             const [svc, newDate, newTime] = variables;
-            const eSvc = escapeHtml(svc);
-            const eDate = escapeHtml(newDate);
-            const eTime = escapeHtml(newTime);
             return {
                 sms: `Your ${svc} booking is rescheduled to ${newDate} at ${newTime}.`,
                 emailSubject: `Booking rescheduled: ${svc}`,
                 emailText: `Your ${svc} booking has been rescheduled to ${newDate} at ${newTime}.`,
-                emailHtml: htmlBundle([
-                    `<p>Your <strong>${eSvc}</strong> booking has been rescheduled to <strong>${eDate}</strong> at <strong>${eTime}</strong>.</p>`,
-                ]),
+                email: {
+                    heading: 'New time, all set',
+                    preheader: `${svc} is now on ${newDate} at ${newTime}.`,
+                    paragraphs: [
+                        `Your <strong>${escapeHtml(svc)}</strong> booking has been moved. Here are the new details:`,
+                    ],
+                    details: [['Service', svc], ['New date', newDate], ['New time', newTime]],
+                },
             };
         }
 
         case 'ORDER_CONFIRMATION': {
             if (variables.length !== 2) return null;
             const [ref, total] = variables;
-            const eRef = escapeHtml(ref);
-            const eTotal = escapeHtml(total);
             return {
                 sms: `Order #${ref} confirmed. Total: ${total}.`,
                 emailSubject: `Order #${ref} confirmed`,
-                emailText: `Your order #${ref} is confirmed. Total: ${total}.`,
-                emailHtml: htmlBundle([
-                    `<p>Your order <code>${eRef}</code> is confirmed.</p>`,
-                    `<p>Total: <strong>${eTotal}</strong></p>`,
-                ]),
+                emailText: `Thanks for your order! Your order #${ref} is confirmed. Total: ${total}.`,
+                email: {
+                    heading: 'Thanks for your order!',
+                    preheader: `Order #${ref} is confirmed. Total: ${total}.`,
+                    paragraphs: [`Your order <strong>#${escapeHtml(ref)}</strong> is confirmed. We will let you know when it is on its way.`],
+                    details: [['Order', `#${ref}`], ['Total', total]],
+                },
             };
         }
 
         case 'ORDER_SHIPPED': {
             if (variables.length !== 1) return null;
             const [ref] = variables;
-            const eRef = escapeHtml(ref);
             return {
                 sms: `Your order #${ref} has shipped.`,
                 emailSubject: `Order #${ref} shipped`,
-                emailText: `Your order #${ref} has shipped.`,
-                emailHtml: htmlBundle([
-                    `<p>Your order <code>${eRef}</code> has shipped.</p>`,
-                ]),
+                emailText: `Good news! Your order #${ref} has shipped.`,
+                email: {
+                    heading: 'Your order is on its way',
+                    preheader: `Order #${ref} has shipped.`,
+                    paragraphs: [`Good news! Your order <strong>#${escapeHtml(ref)}</strong> has shipped.`],
+                },
             };
         }
 
         case 'ORDER_DELIVERED': {
             if (variables.length !== 1) return null;
             const [ref] = variables;
-            const eRef = escapeHtml(ref);
             return {
                 sms: `Your order #${ref} has been delivered.`,
                 emailSubject: `Order #${ref} delivered`,
-                emailText: `Your order #${ref} has been delivered.`,
-                emailHtml: htmlBundle([
-                    `<p>Your order <code>${eRef}</code> has been delivered.</p>`,
-                ]),
+                emailText: `Your order #${ref} has been delivered. Enjoy!`,
+                email: {
+                    heading: 'Delivered!',
+                    preheader: `Order #${ref} has been delivered.`,
+                    paragraphs: [`Your order <strong>#${escapeHtml(ref)}</strong> has been delivered. Enjoy!`],
+                },
             };
         }
     }

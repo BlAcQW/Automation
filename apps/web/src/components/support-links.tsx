@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Mail, MessageCircle } from 'lucide-react';
+import { Mail, Phone } from 'lucide-react';
 import { SUPPORT_EMAIL, hasSupportContact, supportMailto, supportWhatsAppUrl } from '@/lib/site';
 import { cn } from '@bookingflow/ui';
 
@@ -23,21 +23,21 @@ export function SupportLinks({ topic, className, inline }: Props) {
 
     if (!hasSupportContact) {
         return (
-            <Link href="/support" className={cn('text-forest-brand hover:text-bookly-emerald-800 dark:text-bookly-emerald-300 dark:hover:text-bookly-emerald-200 underline underline-offset-2', className)}>
+            <Link href="/support" className={cn('font-semibold text-primary underline underline-offset-2 hover:text-primary-hover', className)}>
                 Get help
             </Link>
         );
     }
 
     const base = inline
-        ? 'inline-flex items-center gap-1.5 text-forest-brand hover:text-bookly-emerald-800 dark:text-bookly-emerald-300 dark:hover:text-bookly-emerald-200 underline underline-offset-2'
-        : 'inline-flex min-h-[44px] items-center gap-2 rounded bg-white dark:bg-ink-800 px-4 text-sm font-medium tracking-[-0.01em] text-ink-50 shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.1),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-[0_0_0_1px_rgb(var(--ink-50-rgb)/0.18),0_8px_22px_-12px_rgba(0,0,0,0.35)] dark:hover:bg-ink-700 transition-[box-shadow,background-color]';
+        ? 'inline-flex min-h-[44px] items-center gap-1.5 font-semibold text-primary underline underline-offset-2 hover:text-primary-hover'
+        : 'inline-flex min-h-[44px] items-center gap-2 rounded-control border border-border bg-surface px-4 text-[15px] font-semibold text-text shadow-soft transition-colors duration-ui hover:border-text/30 hover:bg-surface-2';
 
     return (
         <div className={cn(inline ? 'inline-flex flex-wrap gap-x-4 gap-y-1' : 'flex flex-wrap gap-3', className)}>
             {wa && (
                 <a href={wa} target="_blank" rel="noreferrer" className={base}>
-                    <MessageCircle className="h-4 w-4" aria-hidden />
+                    <Phone className="h-4 w-4" aria-hidden />
                     Message us on WhatsApp
                 </a>
             )}

@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Loader2, Lock } from 'lucide-react';
-import { Card, CardContent } from '@bookingflow/ui';
+import { ArrowLeft, Lock } from 'lucide-react';
+import { Card, CardContent, PageHeader, SkeletonCard } from '@bookingflow/ui';
 import { useAuth } from '@/lib/auth';
 import { ApiKeysCard } from '@/components/developer/api-keys-card';
 import { ExternalAppCard } from '@/components/developer/external-app-card';
@@ -16,26 +16,32 @@ export default function DeveloperSettingsPage() {
 
     return (
         <div className="mx-auto max-w-5xl space-y-6">
-            <div>
-                <Link href="/settings" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white">
-                    <ArrowLeft className="h-4 w-4" /> Settings
-                </Link>
-                <h1 className="mt-2 text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">Developer</h1>
-                <p className="mt-1 text-slate-500 dark:text-slate-400">
-                    Connect your own systems to Bookly with API keys and webhooks.
-                </p>
-            </div>
+            <PageHeader
+                eyebrow={
+                    <Link href="/settings" className="inline-flex min-h-[44px] items-center gap-1.5 rounded-control text-muted hover:text-text">
+                        <ArrowLeft className="h-4 w-4" aria-hidden /> Settings
+                    </Link>
+                }
+                title="Developer tools"
+                subtitle="Connect your own systems to Bookly with API keys and webhooks."
+            />
 
             {isLoading || !user ? (
-                <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
+                <div aria-busy="true" className="space-y-4">
+                    <span className="sr-only">Loading…</span>
+                    <SkeletonCard />
+                    <SkeletonCard />
+                </div>
             ) : user.role !== 'OWNER' ? (
                 <Card>
-                    <CardContent className="flex items-start gap-3 py-6">
-                        <Lock className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-400" aria-hidden />
+                    <CardContent className="flex items-start gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-surface-2 text-muted" aria-hidden>
+                            <Lock className="h-5 w-5" />
+                        </span>
                         <div>
-                            <p className="font-medium text-slate-900 dark:text-white">Only the account owner can manage developer settings</p>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                                An API key can read customer details and send messages as your business, so creating and rotating
+                            <p className="text-base font-semibold text-text">Only the account owner can manage developer tools</p>
+                            <p className="mt-1 text-[15px] leading-relaxed text-muted">
+                                An API key can read customer details and send messages as your business, so creating and changing
                                 keys is kept to the owner. Ask them if you need a key for a system.
                             </p>
                         </div>
@@ -45,9 +51,9 @@ export default function DeveloperSettingsPage() {
                 <>
                     <ApiKeysCard />
                     <ExternalAppCard />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Rotating a key without downtime: rotate it with a grace period, deploy the new key everywhere, then let the old
-                        key expire (or stop it early). API reference: docs/API.md.
+                    <p className="text-[15px] leading-relaxed text-muted">
+                        Changing a key without downtime: rotate it with a grace period, put the new key everywhere, then let the
+                        old key expire (or stop it early). API reference: docs/API.md.
                     </p>
                 </>
             )}

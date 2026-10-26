@@ -270,7 +270,9 @@ export default function ConversationsPage() {
             </aside>
 
             {/* Chat thread */}
-            <div className={cn('flex min-w-0 flex-1 flex-col', !selectedConvo && 'hidden md:flex')}>
+            <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', !selectedConvo && 'hidden md:flex')}>
+                {/* On phones the list (and its h1) is hidden while a chat is open. */}
+                {selectedConvo && <h1 className="sr-only md:hidden">Inbox</h1>}
                 {selectedConvo ? (
                     <ChatThread
                         conversation={selectedConvo}

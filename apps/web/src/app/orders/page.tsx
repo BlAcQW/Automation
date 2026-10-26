@@ -17,6 +17,7 @@ import {
     SkeletonList,
     StatCard,
     buttonVariants,
+    formatGhanaPhone,
     type Column,
 } from '@bookingflow/ui';
 import { notify as toast } from '@/components/brand/toast';
@@ -178,7 +179,7 @@ export default function OrdersPage() {
             render: (o) => (
                 <div className="min-w-0">
                     <div className="font-semibold text-text">{o.customerName}</div>
-                    <div className="text-[14px] tabular-nums text-muted">{o.customerPhone}</div>
+                    <div className="text-[14px] tabular-nums text-muted">{formatGhanaPhone(o.customerPhone)}</div>
                 </div>
             ),
         },
@@ -223,7 +224,7 @@ export default function OrdersPage() {
             />
 
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                <StatCard name="All orders" value={stats.total} icon={<Package />} index={0} />
+                <StatCard name="All" value={stats.total} icon={<Package />} index={0} />
                 <StatCard name="New" value={stats.pending} icon={<Clock />} index={1} />
                 <StatCard name="Sales" value={displayMoney(stats.revenue, currency, { compact: true })} icon={<Banknote />} index={2} />
                 <StatCard name="Delivered" value={stats.delivered} icon={<Truck />} index={3} />
@@ -234,7 +235,7 @@ export default function OrdersPage() {
                     value={search}
                     onChange={setSearch}
                     label="Search orders"
-                    placeholder="Search by name, phone or order no."
+                    placeholder="Name, phone or order no."
                     className="sm:max-w-md"
                 />
                 <FilterChips label="Filter orders by status" chips={STATUS_FILTERS} selected={[statusFilter]} onToggle={setStatusFilter} />

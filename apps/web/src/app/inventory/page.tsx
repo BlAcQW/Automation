@@ -160,7 +160,7 @@ export default function InventoryPage() {
             <PageHeader title="Stock" subtitle="See what's running low and top it up in a tap." />
 
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                <StatCard name="Items in stock" value={stats.totalItems} icon={<Boxes />} index={0} />
+                <StatCard name="In stock" value={stats.totalItems} icon={<Boxes />} index={0} />
                 <StatCard name="Products" value={stats.totalProducts} icon={<PackageCheck />} index={1} />
                 <StatCard name="Running low" value={stats.lowStock} icon={<AlertTriangle />} index={2} />
                 <StatCard name="Sold out" value={stats.outOfStock} icon={<PackageX />} index={3} />

@@ -57,7 +57,7 @@ export function ChatThread({
     const seen = seenRef.current;
 
     return (
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {/* Header */}
             <div className="flex items-center gap-2 border-b border-border bg-surface px-2 py-2 sm:gap-3 sm:px-4">
                 <Button variant="ghost" size="icon" onClick={onBack} aria-label="Back to conversations" className="md:hidden">
@@ -116,7 +116,7 @@ export function ChatThread({
             </div>
 
             {/* Messages */}
-            <div className="flex-1 space-y-2.5 overflow-y-auto bg-bg p-3 sm:p-4" aria-busy={loading || undefined}>
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain bg-bg p-3 sm:p-4" aria-busy={loading || undefined}>
                 {loading ? (
                     <div className="space-y-3" aria-label="Loading messages">
                         {[52, 68, 40, 60].map((w, i) => (

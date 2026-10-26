@@ -113,8 +113,8 @@ export default function DashboardPage() {
                         </>
                     ) : (
                         <>
-                            <StatCard name="Bookings today" value={stats?.todayBookings ?? 0} icon={<Clock />} index={0} />
-                            <StatCard name="All bookings" value={stats?.totalBookings ?? 0} icon={<Calendar />} index={1} />
+                            <StatCard name="Today" value={stats?.todayBookings ?? 0} icon={<Clock />} index={0} />
+                            <StatCard name="Bookings" value={stats?.totalBookings ?? 0} icon={<Calendar />} index={1} />
                             <StatCard name="Open chats" value={stats?.activeConversations ?? 0} icon={<MessageCircle />} index={2} />
                             <StatCard name="Customers" value={stats?.totalCustomers ?? 0} icon={<Users />} index={3} />
                         </>

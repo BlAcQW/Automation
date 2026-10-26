@@ -118,7 +118,7 @@ export default function CustomersPage() {
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
                 <StatCard name="Customers" value={stats.totalCustomers} icon={<Users />} index={0} />
-                <StatCard name="Active this month" value={stats.activeThisMonth} icon={<MessageSquare />} index={1} />
+                <StatCard name="This month" value={stats.activeThisMonth} icon={<MessageSquare />} index={1} />
                 <StatCard name="Orders" value={stats.totalOrders} icon={<ShoppingBag />} index={2} className="col-span-2 sm:col-span-1" />
             </div>
 

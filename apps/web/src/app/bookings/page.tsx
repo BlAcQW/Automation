@@ -226,7 +226,7 @@ export default function BookingsPage() {
             />
 
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                <StatCard name="All bookings" value={stats.total} icon={<Calendar />} index={0} />
+                <StatCard name="All" value={stats.total} icon={<Calendar />} index={0} />
                 <StatCard name="Confirmed" value={stats.confirmed} icon={<CheckCircle />} index={1} />
                 <StatCard name="Done" value={stats.completed} icon={<CheckCheck />} index={2} />
                 <StatCard name="Cancelled" value={stats.cancelled} icon={<XCircle />} index={3} />
@@ -237,7 +237,7 @@ export default function BookingsPage() {
                     value={search}
                     onChange={setSearch}
                     label="Search bookings"
-                    placeholder="Search by name, service or reference"
+                    placeholder="Name, service or reference"
                     className="sm:max-w-md"
                 />
                 <FilterChips

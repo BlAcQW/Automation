@@ -104,7 +104,7 @@ export default function ProductsPage() {
             />
 
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-                <StatCard name="All products" value={stats.total} icon={<Box />} index={0} />
+                <StatCard name="All" value={stats.total} icon={<Box />} index={0} />
                 <StatCard name="On sale" value={stats.active} icon={<CheckCircle />} index={1} />
                 <StatCard name="Sold out" value={stats.outOfStock} icon={<AlertCircle />} index={2} />
                 <StatCard name="Categories" value={stats.categories} icon={<Tag />} index={3} />

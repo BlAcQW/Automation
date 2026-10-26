@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
     Calendar,
@@ -8,14 +10,16 @@ import {
     Clock,
     Banknote,
     ShoppingBag,
+    ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
-import { formatMoney, useTenantCurrency } from '@/lib/use-currency';
-import { StatCard } from '@bookingflow/ui';
+import { useTenantCurrency } from '@/lib/use-currency';
+import { PageHeader, StatCard, Skeleton, buttonVariants } from '@bookingflow/ui';
 import { RecentActivity } from '@/components/dashboard/recent-activity';
 import { GettingStarted } from '@/components/dashboard/getting-started';
 import { VerifyEmailBanner } from '@/components/dashboard/verify-email-banner';
+import { displayMoney } from '@/components/primitives/money';
 
 interface DashboardStats {
     totalBookings: number;
@@ -32,10 +36,22 @@ interface OrderStats {
     revenue: number;
 }
 
+/** "Good morning" etc. Worked out after mount so the server and browser clocks never disagree. */
+function useGreeting(): string {
+    const [greeting, setGreeting] = useState('Welcome back');
+    useEffect(() => {
+        const hour = new Date().getHours();
+        setGreeting(hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
+    }, []);
+    return greeting;
+}
+
 export default function DashboardPage() {
-    const { tenant } = useAuth();
+    const { tenant, user } = useAuth();
     const isProduct = tenant?.businessType === 'PRODUCT';
     const currency = useTenantCurrency();
+    const greeting = useGreeting();
+    const firstName = user?.name?.trim().split(/\s+/)[0];
 
     const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
         queryKey: ['dashboard', 'stats'],
@@ -52,89 +68,75 @@ export default function DashboardPage() {
         refetchInterval: 60_000,
     });
 
+    const subtitle = isProduct
+        ? "Here's how your shop is doing today."
+        : "Here's what's happening at your shop today.";
+
     return (
-        <div className="space-y-5 sm:space-y-6 lg:space-y-8">
+        <div className="space-y-6 lg:space-y-8">
+            <PageHeader
+                title={firstName ? `${greeting}, ${firstName}` : greeting}
+                subtitle={subtitle}
+                actions={
+                    <Link
+                        href={isProduct ? '/orders' : '/bookings'}
+                        className={buttonVariants({ variant: 'secondary' })}
+                    >
+                        {isProduct ? 'See orders' : 'See bookings'}
+                        <ArrowRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                }
+            />
+
             <VerifyEmailBanner />
             <GettingStarted />
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                {statsLoading ? (
-                    Array.from({ length: 4 }).map((_, i) => <StatSkeleton key={i} />)
-                ) : isProduct ? (
-                    <>
-                        <StatCard
-                            name="Total sales"
-                            value={formatMoney(orderStats?.revenue ?? 0, currency)}
-                            icon={<Banknote className="w-5 h-5" />}
-                            index={0}
-                        />
-                        <StatCard
-                            name="Orders"
-                            value={orderStats?.total ?? 0}
-                            icon={<ShoppingBag className="w-5 h-5" />}
-                            index={1}
-                        />
-                        <StatCard
-                            name="Open chats"
-                            value={stats?.activeConversations ?? 0}
-                            icon={<MessageCircle className="w-5 h-5" />}
-                            index={2}
-                        />
-                        <StatCard
-                            name="Customers"
-                            value={stats?.totalCustomers ?? 0}
-                            icon={<Users className="w-5 h-5" />}
-                            index={3}
-                        />
-                    </>
-                ) : (
-                    <>
-                        <StatCard
-                            name="Bookings today"
-                            value={stats?.todayBookings ?? 0}
-                            icon={<Clock className="w-5 h-5" />}
-                            index={0}
-                        />
-                        <StatCard
-                            name="All bookings"
-                            value={stats?.totalBookings ?? 0}
-                            icon={<Calendar className="w-5 h-5" />}
-                            index={1}
-                        />
-                        <StatCard
-                            name="Open chats"
-                            value={stats?.activeConversations ?? 0}
-                            icon={<MessageCircle className="w-5 h-5" />}
-                            index={2}
-                        />
-                        <StatCard
-                            name="Customers"
-                            value={stats?.totalCustomers ?? 0}
-                            icon={<Users className="w-5 h-5" />}
-                            index={3}
-                        />
-                    </>
-                )}
-            </div>
+            <section aria-labelledby="today-heading">
+                <h2 id="today-heading" className="sr-only">Your numbers</h2>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4" aria-busy={statsLoading || undefined}>
+                    {statsLoading ? (
+                        <>
+                            <span className="sr-only">Loading your numbers…</span>
+                            {Array.from({ length: 4 }).map((_, i) => <StatSkeleton key={i} />)}
+                        </>
+                    ) : isProduct ? (
+                        <>
+                            <StatCard
+                                name="Sales"
+                                value={displayMoney(orderStats?.revenue ?? 0, currency, { compact: true })}
+                                icon={<Banknote />}
+                                index={0}
+                            />
+                            <StatCard name="Orders" value={orderStats?.total ?? 0} icon={<ShoppingBag />} index={1} />
+                            <StatCard name="Open chats" value={stats?.activeConversations ?? 0} icon={<MessageCircle />} index={2} />
+                            <StatCard name="Customers" value={stats?.totalCustomers ?? 0} icon={<Users />} index={3} />
+                        </>
+                    ) : (
+                        <>
+                            <StatCard name="Today" value={stats?.todayBookings ?? 0} icon={<Clock />} index={0} />
+                            <StatCard name="Bookings" value={stats?.totalBookings ?? 0} icon={<Calendar />} index={1} />
+                            <StatCard name="Open chats" value={stats?.activeConversations ?? 0} icon={<MessageCircle />} index={2} />
+                            <StatCard name="Customers" value={stats?.totalCustomers ?? 0} icon={<Users />} index={3} />
+                        </>
+                    )}
+                </div>
+            </section>
 
             <RecentActivity />
         </div>
     );
 }
 
-/** Same shape as the loaded dark stat card, so nothing jumps when the numbers arrive. */
+/** Same shape as a loaded StatCard, so nothing jumps when the numbers arrive. */
 function StatSkeleton() {
     return (
-        <div
-            className="rounded-xl bg-[#1C2C22] dark:bg-[#1A2A20] p-3.5 sm:p-4 shadow-[0_30px_50px_-28px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)] animate-pulse"
-            aria-hidden
-        >
+        <div aria-hidden className="rounded-card border border-border bg-surface p-4 shadow-card sm:p-5">
             <div className="flex items-start justify-between gap-2">
-                <div className="mt-1 h-3 w-20 rounded-sm bg-white/10" />
-                <div className="h-[26px] w-[26px] rounded bg-white/[0.08]" />
+                <Skeleton className="mt-1 h-4 w-20" />
+                <Skeleton className="h-9 w-9 rounded-control" />
             </div>
-            <div className="mt-5 sm:mt-7 h-7 sm:h-9 w-16 rounded-sm bg-white/10" />
-            <div className="mt-2.5 h-px w-8 bg-white/15" />
+            <Skeleton className="mt-4 h-8 w-16 sm:mt-5" />
+            <Skeleton className="mt-3 h-[3px] w-8 rounded-full" />
         </div>
     );
 }

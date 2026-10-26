@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import toast from 'react-hot-toast';
-import { Search, MessageCircle } from 'lucide-react';
+import { MessageCircle, SearchX } from 'lucide-react';
 import { api } from '@/lib/api';
-import { cn } from '@bookingflow/ui';
+import { Button, EmptyState, SearchInput, Skeleton, buttonVariants, cn } from '@bookingflow/ui';
+import { notify as toast } from '@/components/brand/toast';
 import { ConversationListItem } from '@/components/conversations/conversation-list-item';
 import { ChatFilterChips } from '@/components/conversations/chat-filter-chips';
 import { ChatThread } from '@/components/conversations/chat-thread';
@@ -69,7 +70,7 @@ export default function ConversationsPage() {
                 queryClient.invalidateQueries({ queryKey: ['conversations'] }),
             ]);
         } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Failed to send message');
+            toast.error(err?.response?.data?.message ?? "Your message didn't send. Check your connection and try again.");
             throw err;
         }
     };
@@ -88,7 +89,7 @@ export default function ConversationsPage() {
                 queryClient.invalidateQueries({ queryKey: ['conversations'] }),
             ]);
         } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Failed to send attachment');
+            toast.error(err?.response?.data?.message ?? "Your file didn't send. Try a smaller file or try again.");
             throw err;
         }
     };
@@ -99,7 +100,7 @@ export default function ConversationsPage() {
             await api.post(`/conversations/${selectedId}/rich`, { type: 'reaction', messageId, emoji });
             await queryClient.invalidateQueries({ queryKey: ['conversation-messages', selectedId] });
         } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Failed to send reaction');
+            toast.error(err?.response?.data?.message ?? "Your reaction didn't send. Try again.");
         }
     };
 
@@ -151,68 +152,71 @@ export default function ConversationsPage() {
         try {
             await api.post(`/conversations/${selectedId}/resume-bot`);
             await queryClient.invalidateQueries({ queryKey: ['conversations'] });
-            toast.success('Bot resumed');
+            toast.success('Handed back. Your assistant is replying again.');
         } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Failed to resume bot');
+            toast.error(err?.response?.data?.message ?? "Couldn't hand back to your assistant. Try again.");
         } finally {
             setResuming(false);
         }
     };
 
+    const filterChips = [
+        { value: 'all', label: 'All', count: counts.all },
+        { value: 'unread', label: 'Unread', count: counts.unread },
+        { value: 'bot', label: 'Assistant replying', count: counts.bot },
+        { value: 'human', label: 'You replying', count: counts.human },
+    ];
+
     return (
         <div
             className={cn(
-                'flex overflow-hidden bg-white dark:bg-slate-900',
-                // Mobile: full-bleed like WhatsApp — cancel the dashboard
-                // <main> side/top gutters, no border. Height = viewport minus
-                // the header (4rem) and main's bottom clearance (7.5rem), so
-                // the panel always stops above the floating tab bar.
-                '-mx-4 -mt-4 h-[calc(100dvh-11.5rem)]',
+                'flex overflow-hidden bg-surface',
+                // Mobile: full-bleed like WhatsApp. Cancel <main>'s side and
+                // top gutters; the height stops the panel above the bottom
+                // tab bar (header 4rem + awning + main's bottom clearance).
+                '-mx-4 -mt-5 h-[calc(100dvh-10.75rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] sm:-mx-6',
                 // Desktop: a contained, rounded panel within normal padding.
-                'lg:mx-0 lg:mt-0 lg:h-[calc(100vh-7rem)] lg:rounded-2xl lg:border lg:border-slate-200 lg:dark:border-slate-800 lg:shadow-card',
+                'lg:mx-0 lg:mt-0 lg:h-[calc(100dvh-10rem)] lg:min-h-[32rem] lg:rounded-card lg:border lg:border-border lg:shadow-card',
             )}
         >
             {/* Conversation list */}
             <aside
+                aria-label="Chats"
                 className={cn(
-                    'w-full md:w-[22rem] lg:w-96 flex flex-col bg-white dark:bg-slate-900 md:border-r border-slate-200 dark:border-slate-800',
+                    'flex w-full flex-col bg-surface md:w-[22rem] md:border-r md:border-border lg:w-96',
                     selectedConvo && 'hidden md:flex',
                 )}
             >
-                <div className="px-4 pt-4 pb-2 space-y-3">
-                    <div className="flex items-baseline justify-between">
-                        <h1 className="text-[28px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">Chats</h1>
-                        <span className="text-xs tabular-nums text-slate-400">{conversations.length} total</span>
+                <div className="space-y-3 px-4 pb-3 pt-4">
+                    <div className="flex items-baseline justify-between gap-3">
+                        <h1 className="font-display text-page-title text-text">Inbox</h1>
+                        <span className="text-[14px] tabular-nums text-muted">
+                            {conversations.length} {conversations.length === 1 ? 'chat' : 'chats'}
+                        </span>
                     </div>
-                    <div className="relative">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search chats…"
-                            className="w-full h-11 pl-10 pr-4 rounded-lg bg-slate-100 dark:bg-slate-800 border-0 text-sm
-                                       text-slate-900 dark:text-white placeholder:text-slate-400
-                                       focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                        />
-                    </div>
-                    <ChatFilterChips active={filter} counts={counts} onChange={setFilter} />
+                    <SearchInput
+                        value={search}
+                        onChange={setSearch}
+                        label="Search chats"
+                        placeholder="Search by name or number"
+                    />
+                    <ChatFilterChips chips={filterChips} active={filter} onChange={setFilter} />
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-0.5">
+                <div className="flex-1 overflow-y-auto border-t border-border px-2 py-2">
                     {isLoading ? (
                         /* Shape, not a spinner: the placeholder is the list item's own
                            layout, so content fades in over it instead of snapping in. */
-                        <ul className="divide-y divide-slate-100 dark:divide-slate-800" aria-busy="true" aria-label="Loading conversations">
+                        <ul className="space-y-1" aria-busy="true" aria-label="Loading conversations">
                             {Array.from({ length: 8 }).map((_, i) => (
-                                <li key={i} className="flex items-center gap-3 px-4 py-3 animate-pulse">
-                                    <div className="w-12 h-12 shrink-0 rounded-full bg-slate-200 dark:bg-slate-800" />
+                                <li key={i} className="flex items-center gap-3 px-3 py-3">
+                                    <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
                                     <div className="flex-1 space-y-2">
-                                        <div className="flex justify-between">
-                                            <div className="h-3.5 w-2/5 rounded bg-slate-200 dark:bg-slate-800" />
-                                            <div className="h-3 w-10 rounded bg-slate-200 dark:bg-slate-800" />
+                                        <div className="flex justify-between gap-3">
+                                            <Skeleton className="h-4 w-2/5" />
+                                            <Skeleton className="h-3 w-10" />
                                         </div>
-                                        <div className="h-3 w-4/5 rounded bg-slate-200 dark:bg-slate-800" />
+                                        <Skeleton className="h-3 w-4/5" />
                                     </div>
                                 </li>
                             ))}
@@ -228,29 +232,47 @@ export default function ConversationsPage() {
                             <></>
                         </QueryState>
                     ) : visibleConvos.length === 0 ? (
-                        <div className="flex flex-col items-center text-center py-12 px-6">
-                            <MessageCircle className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-3" />
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {search || filter !== 'all' ? 'No chats match your filter' : 'No conversations yet'}
-                            </p>
-                        </div>
-                    ) : (
-                        visibleConvos.map((convo, i) => (
-                            <ConversationListItem
-                                key={convo.id}
-                                conversation={convo}
-                                index={i}
-                                active={selectedId === convo.id}
-                                unread={isUnread(convo)}
-                                onClick={() => setSelectedId(convo.id)}
+                        search || filter !== 'all' ? (
+                            <EmptyState
+                                icon={<SearchX />}
+                                title="No chats match"
+                                description="Try another name or number, or show all chats."
+                                action={
+                                    <Button variant="secondary" onClick={() => { setSearch(''); setFilter('all'); }}>
+                                        Show all chats
+                                    </Button>
+                                }
                             />
-                        ))
+                        ) : (
+                            <EmptyState
+                                icon={<MessageCircle />}
+                                title="No chats yet"
+                                description="When customers message your WhatsApp number, their chats land here."
+                                action={<Link href="/channels" className={buttonVariants()}>Check your channels</Link>}
+                            />
+                        )
+                    ) : (
+                        <ul className="space-y-0.5">
+                            {visibleConvos.map((convo, i) => (
+                                <li key={convo.id}>
+                                    <ConversationListItem
+                                        conversation={convo}
+                                        index={i}
+                                        active={selectedId === convo.id}
+                                        unread={isUnread(convo)}
+                                        onClick={() => setSelectedId(convo.id)}
+                                    />
+                                </li>
+                            ))}
+                        </ul>
                     )}
                 </div>
             </aside>
 
             {/* Chat thread */}
-            <div className={cn('flex-1 flex flex-col min-w-0', !selectedConvo && 'hidden md:flex')}>
+            <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', !selectedConvo && 'hidden md:flex')}>
+                {/* On phones the list (and its h1) is hidden while a chat is open. */}
+                {selectedConvo && <h1 className="sr-only md:hidden">Inbox</h1>}
                 {selectedConvo ? (
                     <ChatThread
                         conversation={selectedConvo}
@@ -264,11 +286,12 @@ export default function ConversationsPage() {
                         onReact={react}
                     />
                 ) : (
-                    <div className="flex-1 flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-                        <div className="text-center">
-                            <MessageCircle className="w-16 h-16 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
-                            <p className="text-slate-500 dark:text-slate-400">Select a conversation to start chatting</p>
-                        </div>
+                    <div className="flex flex-1 items-center justify-center bg-bg">
+                        <EmptyState
+                            icon={<MessageCircle />}
+                            title="Pick a chat"
+                            description="Choose a conversation on the left to read it and reply."
+                        />
                     </div>
                 )}
             </div>

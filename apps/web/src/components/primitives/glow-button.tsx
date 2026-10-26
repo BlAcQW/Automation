@@ -7,42 +7,26 @@ import { cn } from '@bookingflow/ui';
 
 /**
  * The primary Bookly CTA. (The file keeps its historical name; the "glow"
- * is gone.)
- *
- * Forest ledger: primary is the flat forest brand (#2F5640) with cream
- * text and a 1px top highlight, 3px corners. The shadow is a short dropped
- * elevation, never a halo. Press nudges 1px down so it feels physical.
+ * is gone.) Same look as `<Button>` from @bookingflow/ui: green, 12px
+ * corners, warm shadow, scale 0.97 on press. Prefer `Button` in new code.
  */
 const glowButtonStyles = cva(
     [
         'relative inline-flex items-center justify-center gap-2',
-        'rounded font-display font-medium tracking-[-0.01em] whitespace-nowrap',
-        'transition-[background-color,box-shadow,transform,color] duration-200 ease-[cubic-bezier(.2,.8,.2,1)]',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950',
+        'rounded-control font-sans font-semibold whitespace-nowrap',
+        'transition-[background-color,box-shadow,transform,color] duration-ui ease-brand-out',
         'disabled:pointer-events-none disabled:opacity-50',
-        'active:translate-y-px',
+        'active:scale-[0.97] motion-reduce:active:scale-100',
     ].join(' '),
     {
         variants: {
             variant: {
-                primary: [
-                    'bg-forest-brand text-on-accent',
-                    'shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)]',
-                    'hover:bg-bookly-emerald-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_8px_22px_-8px_rgba(47,86,64,0.7)]',
-                    'dark:bg-bookly-emerald-500 dark:hover:bg-bookly-emerald-600',
-                ],
-                ghost: [
-                    'bg-transparent text-ink-50 shadow-[inset_0_0_0_1px_rgb(var(--ink-50-rgb)/0.25)]',
-                    'hover:shadow-[inset_0_0_0_1px_rgb(var(--ink-50-rgb)/0.6)]',
-                ],
-                wa: [
-                    'bg-[var(--wa-green)] text-[#0B130E]',
-                    'shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(0,0,0,0.18)]',
-                    'hover:brightness-110',
-                ],
+                primary: 'bg-primary text-primary-fg shadow-soft hover:bg-primary-hover hover:shadow-card',
+                ghost: 'border border-border bg-transparent text-text hover:border-text/30 hover:bg-surface-2',
+                wa: 'bg-wa-green text-charcoal shadow-soft hover:brightness-105',
             },
             size: {
-                sm: 'h-9 px-4 text-sm',
+                sm: 'min-h-[44px] px-4 text-[15px]',
                 md: 'h-12 px-6 text-[15px]',
                 lg: 'h-14 px-8 text-base',
             },

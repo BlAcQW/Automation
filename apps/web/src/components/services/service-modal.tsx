@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Modal, Button, DashboardInput } from '@bookingflow/ui';
+import { Modal, Button, DashboardInput, MoneyInput, Textarea } from '@bookingflow/ui';
 import { useTenantCurrency } from '@/lib/use-currency';
-import { toast } from 'react-hot-toast';
+import { notify } from '@/components/brand/toast';
 
 const serviceSchema = z.object({
     name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -41,13 +41,18 @@ interface ServiceModalProps {
     service?: Service | null;
 }
 
+/** MoneyInput accepts "1,250.50"; the schema and API want plain "1250.50". */
+const stripCommas = (text: string) => text.replace(/,/g, '');
+
 export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
     const queryClient = useQueryClient();
     const currency = useTenantCurrency();
     const isEditing = !!service;
+    const isCedi = currency.toUpperCase() === 'GHS';
 
     const {
         register,
+        control,
         handleSubmit,
         reset,
         formState: { errors, isSubmitting },
@@ -99,11 +104,11 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['services'] });
-            toast.success(isEditing ? 'Service updated' : 'Service created');
+            notify.success(isEditing ? 'Service saved' : 'Service added. Customers can book it now');
             onClose();
         },
         onError: (error: any) => {
-            toast.error(error.response?.data?.message || 'Something went wrong');
+            notify.error(error.response?.data?.message || "Oops, that didn't save. Let's try again.");
         },
     });
 
@@ -115,28 +120,38 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={isEditing ? 'Edit Service' : 'Add New Service'}
+            title={isEditing ? 'Edit service' : 'Add a service'}
+            description={isEditing ? undefined : 'Customers see this when they book on WhatsApp.'}
+            maxWidth="max-w-lg"
         >
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <DashboardInput
                     label="Service name"
-                    placeholder="e.g. Braids, Haircut, Consultation"
+                    placeholder="e.g. Braids, haircut, consultation"
                     error={errors.name?.message}
                     {...register('name')}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
-                    <DashboardInput
-                        label={`Price (${currency})`}
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        error={errors.price?.message}
-                        {...register('price')}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Controller
+                        control={control}
+                        name="price"
+                        render={({ field }) => (
+                            <MoneyInput
+                                label={isCedi ? 'Price' : `Price (${currency})`}
+                                name={field.name}
+                                ref={field.ref}
+                                onBlur={field.onBlur}
+                                value={field.value === undefined || field.value === null ? '' : String(field.value)}
+                                onChange={(text) => field.onChange(stripCommas(text))}
+                                error={errors.price?.message}
+                            />
+                        )}
                     />
                     <DashboardInput
                         label="How long it takes (minutes)"
                         type="number"
+                        inputMode="numeric"
                         placeholder="60"
                         error={errors.durationMinutes?.message}
                         {...register('durationMinutes')}
@@ -144,38 +159,44 @@ export function ServiceModal({ isOpen, onClose, service }: ServiceModalProps) {
                 </div>
 
                 <DashboardInput
-                    label="Category"
-                    placeholder="e.g. Hair, Nails, Massage"
+                    label="Category (optional)"
+                    placeholder="e.g. Hair, nails, massage"
                     error={errors.category?.message}
                     {...register('category')}
                 />
 
-                <DashboardInput
-                    label="Description (Optional)"
-                    placeholder="Brief description..."
+                <Textarea
+                    label="Description (optional)"
+                    placeholder="A short line about what's included"
+                    rows={3}
                     error={errors.description?.message}
                     {...register('description')}
                 />
 
-                <DashboardInput
-                    label="Deposit (Optional)"
-                    type="number"
-                    step="0.01"
-                    placeholder="Leave blank for no deposit"
-                    error={errors.depositAmount?.message as string | undefined}
-                    {...register('depositAmount')}
+                <Controller
+                    control={control}
+                    name="depositAmount"
+                    render={({ field }) => (
+                        <MoneyInput
+                            label={isCedi ? 'Deposit (optional)' : `Deposit in ${currency} (optional)`}
+                            placeholder="Leave blank for no deposit"
+                            name={field.name}
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                            value={field.value ?? ''}
+                            onChange={(text) => field.onChange(stripCommas(text))}
+                            error={errors.depositAmount?.message as string | undefined}
+                            hint="We'll send the customer a payment link on WhatsApp and hold the slot until they pay."
+                        />
+                    )}
                 />
-                <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
-                    If set, customers booking this service via WhatsApp will be sent a Paystack payment link.
-                    The slot is held until paid.
-                </p>
 
-                <div className="flex justify-end gap-3 pt-4">
+                <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
                     <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
                         Cancel
                     </Button>
-                    <Button type="submit" isLoading={isSubmitting}>
-                        {isEditing ? 'Save Changes' : 'Create Service'}
+                    <Button type="submit" isLoading={isSubmitting || mutation.isPending} loadingText="Saving…">
+                        {isEditing ? 'Save changes' : 'Add service'}
                     </Button>
                 </div>
             </form>

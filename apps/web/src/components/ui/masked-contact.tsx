@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Eye, Loader2, ShieldCheck } from 'lucide-react';
+import { cn, formatGhanaPhone } from '@bookingflow/ui';
 import { api } from '@/lib/api';
 
 interface MaskedContactProps {
@@ -35,15 +36,15 @@ export function MaskedContact({ value, masked, scope, recordId, className = '' }
 
     if (!masked || revealed) {
         return (
-            <span className={`inline-flex items-center gap-1.5 ${className}`}>
-                <span className="tabular-nums">{revealed ?? value}</span>
+            <span className={cn('inline-flex flex-wrap items-center gap-1.5', className)}>
+                <span className="tabular-nums">{displayContact(revealed ?? value)}</span>
                 {revealed && (
                     <span
                         title="This reveal was recorded in your activity log"
-                        className="inline-flex items-center gap-1 font-mono text-[10px] text-ink-400"
+                        className="inline-flex items-center gap-1 text-[12px] font-medium text-muted"
                     >
-                        <ShieldCheck className="w-3 h-3" />
-                        logged
+                        <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                        Logged
                     </span>
                 )}
             </span>
@@ -59,8 +60,8 @@ export function MaskedContact({ value, masked, scope, recordId, className = '' }
         } catch (err: any) {
             setFailed(
                 err?.response?.status === 429
-                    ? 'Too many reveals this hour'
-                    : 'Could not reveal',
+                    ? 'Too many reveals this hour. Try again later.'
+                    : "Couldn't show it. Try again.",
             );
         } finally {
             setLoading(false);
@@ -68,19 +69,29 @@ export function MaskedContact({ value, masked, scope, recordId, className = '' }
     }
 
     return (
-        <span className={`inline-flex items-center gap-1.5 ${className}`}>
+        <span className={cn('inline-flex flex-wrap items-center gap-1.5', className)}>
             <span className="tabular-nums tracking-tight">{value}</span>
             <button
                 type="button"
-                onClick={reveal}
+                onClick={(e) => {
+                    // Rows and cards around this are often clickable themselves.
+                    e.stopPropagation();
+                    void reveal();
+                }}
                 disabled={loading}
-                title="Show the full number — this will be recorded"
+                title="Show the full number (this is recorded)"
                 aria-label="Show full contact details"
-                className="inline-flex items-center justify-center w-5 h-5 rounded-sm text-ink-400 hover:text-forest-brand hover:bg-bookly-emerald-100 dark:hover:bg-white/[0.06] dark:hover:text-forest-glow transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:opacity-50"
+                className="relative inline-flex h-8 w-8 items-center justify-center rounded-control text-muted transition-colors duration-ui hover:bg-primary-soft hover:text-primary disabled:opacity-50 after:absolute after:-inset-1.5 after:content-['']"
             >
-                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
             </button>
-            {failed && <span className="text-[10px] text-[#B03A2E] dark:text-[#F0B8B0]">{failed}</span>}
+            {failed && <span role="status" className="text-[13px] font-medium text-error-fg">{failed}</span>}
         </span>
     );
+}
+
+/** Ghana numbers read as `+233 24 412 3456`; emails and foreign numbers pass through untouched. */
+function displayContact(value: string): string {
+    if (value.includes('@')) return value;
+    return formatGhanaPhone(value);
 }

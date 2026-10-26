@@ -1,6 +1,6 @@
 'use client';
 
-import { CloudOff, Loader2 } from 'lucide-react';
+import { ErrorState, SkeletonList } from '@bookingflow/ui';
 
 interface QueryStateProps {
     isLoading: boolean;
@@ -26,33 +26,20 @@ interface QueryStateProps {
 export function QueryState({ isLoading, isError, isEmpty, onRetry, empty, children }: QueryStateProps) {
     if (isLoading) {
         return (
-            <div className="flex flex-1 items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-ink-400" />
+            <div aria-busy="true" className="px-4 py-2">
+                <span className="sr-only">Loading…</span>
+                <SkeletonList rows={4} />
             </div>
         );
     }
 
     if (isError) {
         return (
-            <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-                <CloudOff className="h-9 w-9 text-ink-400" strokeWidth={1.5} />
-                <p className="mt-1 text-[17px] font-medium tracking-[-0.03em] text-ink-50">Can&apos;t reach the server</p>
-                <p className="max-w-[44ch] text-sm text-ink-300">
-                    Your data is safe. Check your connection and try again.
-                </p>
-                {onRetry ? (
-                    <button
-                        type="button"
-                        onClick={onRetry}
-                        className="mt-3 inline-flex min-h-[44px] items-center rounded bg-forest-brand px-5 text-sm font-medium text-on-accent
-                                   shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(0,0,0,0.18)]
-                                   hover:bg-bookly-emerald-700 transition-colors focus-visible:outline focus-visible:outline-2
-                                   focus-visible:outline-offset-2 focus-visible:outline-[color:var(--ring)]"
-                    >
-                        Try again
-                    </button>
-                ) : null}
-            </div>
+            <ErrorState
+                title="We can't reach Bookly right now"
+                description="Your data is safe. Check your internet connection, then try again."
+                onRetry={onRetry}
+            />
         );
     }
 

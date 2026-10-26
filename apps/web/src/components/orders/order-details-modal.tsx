@@ -1,15 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import {
-    Package, Truck, CheckCircle, XCircle, Clock, DollarSign,
-    MapPin, Phone, User, AlertTriangle
-} from 'lucide-react';
+import { Clock, MapPin, Phone, StickyNote } from 'lucide-react';
 import { api } from '@/lib/api';
-import { Modal, Button } from '@bookingflow/ui';
-import { toast } from 'react-hot-toast';
+import { useTenantCurrency } from '@/lib/use-currency';
+import { Avatar, Button, ConfirmDialog, Modal, Select, TickPop, formatGhanaPhone } from '@bookingflow/ui';
+import { notify as toast } from '@/components/brand/toast';
+import { displayMoney } from '@/components/primitives/money';
+import { ORDER_STATUS_LABEL, OrderStatusPill, PaymentPill, type OrderStatus } from './order-pills';
 
 interface OrderItem {
     id: string;
@@ -50,7 +50,17 @@ interface OrderDetailsModalProps {
 
 export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalProps) {
     const queryClient = useQueryClient();
-    const [isUpdating, setIsUpdating] = useState(false);
+    const currency = useTenantCurrency();
+    const [confirmCancel, setConfirmCancel] = useState(false);
+    // The parent holds a snapshot; show the new status right after a save.
+    const [savedStatus, setSavedStatus] = useState<OrderStatus | null>(null);
+    const [tickKey, setTickKey] = useState(0);
+
+    useEffect(() => {
+        setSavedStatus(null);
+        setTickKey(0);
+        setConfirmCancel(false);
+    }, [order?.id]);
 
     // Hooks must run unconditionally — the `!order` guard lives below all of
     // them. The mutationFns guard `order` themselves since they're defined
@@ -60,11 +70,13 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
             if (!order) return;
             await api.patch(`/orders/${order.id}`, { status: newStatus });
         },
-        onSuccess: () => {
+        onSuccess: (_data, newStatus) => {
             queryClient.invalidateQueries({ queryKey: ['orders'] });
-            toast.success('Order status updated');
+            setSavedStatus(newStatus as OrderStatus);
+            if (newStatus === 'CONFIRMED' || newStatus === 'DELIVERED') setTickKey((k) => k + 1);
+            toast.success(`Order marked as ${(ORDER_STATUS_LABEL[newStatus as OrderStatus] ?? 'updated').toLowerCase()}`);
         },
-        onError: () => toast.error('Failed to update status'),
+        onError: () => toast.error("Couldn't update the order. Try again."),
     });
 
     const cancelMutation = useMutation({
@@ -74,185 +86,155 @@ export function OrderDetailsModal({ isOpen, onClose, order }: OrderDetailsModalP
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['orders'] });
-            toast.success('Order cancelled and stock restored');
+            setSavedStatus('CANCELLED');
+            toast.success('Order cancelled. The items are back in stock.');
         },
-        onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to cancel order'),
+        onError: (err: any) => toast.error(err.response?.data?.message || "Couldn't cancel the order. Try again."),
+        onSettled: () => setConfirmCancel(false),
     });
 
     if (!order) return null;
 
+    const status = savedStatus ?? order.status;
+    const locked = status === 'DELIVERED' || status === 'CANCELLED';
+
     const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const newStatus = e.target.value;
         if (newStatus === 'CANCELLED') {
-            if (confirm('Are you sure? This will restore stock.')) {
-                cancelMutation.mutate();
-            }
+            setConfirmCancel(true);
         } else {
             updateStatusMutation.mutate(newStatus);
         }
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'PENDING': return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
-            case 'CONFIRMED': return 'text-blue-500 bg-blue-500/10 border-blue-500/20';
-            case 'PROCESSING': return 'text-purple-500 bg-purple-500/10 border-purple-500/20';
-            case 'SHIPPED': return 'text-indigo-500 bg-indigo-500/10 border-indigo-500/20';
-            case 'DELIVERED': return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
-            case 'CANCELLED': return 'text-red-500 bg-red-500/10 border-red-500/20';
-            default: return 'text-slate-500 bg-slate-500/10 border-slate-500/20';
-        }
-    };
-
-    const getPaymentColor = (status: string) => {
-        switch (status) {
-            case 'PAID': return 'text-emerald-500';
-            case 'REFUNDED': return 'text-orange-500';
-            default: return 'text-red-500';
-        }
-    };
-
     return (
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={`Order ${order.orderRef ?? order.orderNumber ?? ''}`}
-            maxWidth="max-w-2xl"
-        >
-            <div className="space-y-6">
-                {/* Header Info */}
-                <div className="flex flex-col sm:flex-row justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-sm tabular-nums text-slate-500">
-                            <Clock className="w-4 h-4" />
-                            {format(new Date(order.createdAt), 'PPP p')}
+        <>
+            <Modal
+                isOpen={isOpen}
+                onClose={onClose}
+                title={`Order ${order.orderRef ?? order.orderNumber ?? ''}`}
+                description={order.customerName}
+                maxWidth="max-w-2xl"
+                footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+            >
+                <div className="space-y-5">
+                    {tickKey > 0 && (
+                        <div className="flex items-center gap-3 rounded-card bg-success-soft p-3 text-success-fg" role="status">
+                            <TickPop key={tickKey} size={40} label={`Order ${ORDER_STATUS_LABEL[status].toLowerCase()}`} />
+                            <p className="text-[15px] font-semibold">
+                                {status === 'DELIVERED' ? 'Delivered. Your customer has their order!' : 'Order confirmed!'}
+                            </p>
                         </div>
-                        <div className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium border ${getStatusColor(order.status)}`}>
-                            {order.status}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Update Status:</label>
-                        <select
-                            className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-emerald-500"
-                            value={order.status}
-                            onChange={handleStatusChange}
-                            disabled={order.status === 'DELIVERED' || order.status === 'CANCELLED'}
-                        >
-                            <option value="PENDING">Pending</option>
-                            <option value="CONFIRMED">Confirmed</option>
-                            <option value="PROCESSING">Processing</option>
-                            <option value="SHIPPED">Shipped</option>
-                            <option value="DELIVERED">Delivered</option>
-                            <option value="CANCELLED">Cancelled</option>
-                        </select>
-                    </div>
-                </div>
+                    )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Customer Details */}
-                    <div className="space-y-4">
-                        <h3 className="font-medium tracking-[-0.02em] text-slate-900 dark:text-white flex items-center gap-2">
-                            <User className="w-4 h-4 text-emerald-500" />
-                            Customer Details
-                        </h3>
-                        <div className="space-y-2 text-sm">
-                            <p className="flex items-center gap-2">
-                                <span className="text-slate-500">Name:</span>
-                                <span className="font-medium text-slate-900 dark:text-white">{order.customerName}</span>
+                    <div className="flex flex-col gap-4 rounded-card border border-border bg-surface-2 p-4 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="space-y-2">
+                            <p className="flex items-center gap-2 text-[15px] tabular-nums text-muted">
+                                <Clock className="h-4 w-4" aria-hidden />
+                                {format(new Date(order.createdAt), 'EEE d MMM yyyy, h:mm a')}
                             </p>
-                            <p className="flex items-center gap-2">
-                                <Phone className="w-4 h-4 text-slate-400" />
-                                <span className="text-slate-700 dark:text-slate-300">{order.customerPhone}</span>
-                            </p>
-                            {order.deliveryAddress && (
-                                <div className="flex items-start gap-2">
-                                    <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
-                                    <span className="text-slate-700 dark:text-slate-300">{order.deliveryAddress}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Payment & Total */}
-                    <div className="space-y-4">
-                        <h3 className="font-medium tracking-[-0.02em] text-slate-900 dark:text-white flex items-center gap-2">
-                            <DollarSign className="w-4 h-4 text-emerald-500" />
-                            Payment
-                        </h3>
-                        <div className="space-y-2 text-sm">
-                            <p className="flex items-center justify-between">
-                                <span className="text-slate-500">Status:</span>
-                                <span className={`font-medium ${getPaymentColor(order.paymentStatus)}`}>
-                                    {order.paymentStatus}
-                                </span>
-                            </p>
-                            <div className="pt-2 border-t border-slate-200 dark:border-slate-700 mt-2">
-                                <p className="flex items-center justify-between text-lg font-medium tabular-nums text-slate-900 dark:text-white">
-                                    <span>Total:</span>
-                                    <span>${Number(order.totalAmount).toFixed(2)}</span>
-                                </p>
+                            <div className="flex flex-wrap gap-2">
+                                <OrderStatusPill status={status} size="md" />
+                                <PaymentPill status={order.paymentStatus} size="md" />
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                {/* Items */}
-                <div className="space-y-4">
-                    <h3 className="font-medium tracking-[-0.02em] text-slate-900 dark:text-white flex items-center gap-2">
-                        <Package className="w-4 h-4 text-emerald-500" />
-                        Order Items
-                    </h3>
-                    <div className="bg-slate-50 dark:bg-slate-700/20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700">
-                        <table className="w-full text-sm">
-                            <thead className="bg-slate-100 dark:bg-slate-700/40">
-                                <tr>
-                                    <th className="px-4 py-2 text-left text-slate-500 font-medium">Product</th>
-                                    <th className="px-4 py-2 text-center text-slate-500 font-medium">Qty</th>
-                                    <th className="px-4 py-2 text-right text-slate-500 font-medium">Price</th>
-                                    <th className="px-4 py-2 text-right text-slate-500 font-medium">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                                {order.items.map((item) => (
-                                    <tr key={item.id}>
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-slate-900 dark:text-white">
-                                                {item.product.name}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-center tabular-nums text-slate-600 dark:text-slate-300">
-                                            {item.quantity}
-                                        </td>
-                                        <td className="px-4 py-3 text-right tabular-nums text-slate-600 dark:text-slate-300">
-                                            ${Number(item.unitPrice).toFixed(2)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right font-medium tabular-nums text-slate-900 dark:text-white">
-                                            ${Number(item.totalPrice).toFixed(2)}
-                                        </td>
-                                    </tr>
+                        <div className="sm:w-56">
+                            <Select
+                                label="Update order"
+                                value={status}
+                                onChange={handleStatusChange}
+                                disabled={locked || updateStatusMutation.isPending || cancelMutation.isPending}
+                            >
+                                {(Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]).map((s) => (
+                                    <option key={s} value={s}>{ORDER_STATUS_LABEL[s]}</option>
                                 ))}
-                            </tbody>
-                        </table>
+                            </Select>
+                        </div>
                     </div>
-                </div>
 
-                {/* Notes */}
-                {order.notes && (
-                    <div className="bg-yellow-50 dark:bg-yellow-500/10 p-4 rounded-xl border border-yellow-200 dark:border-yellow-500/20">
-                        <h4 className="flex items-center gap-2 text-sm font-medium text-yellow-800 dark:text-yellow-400 mb-1">
-                            <AlertTriangle className="w-4 h-4" /> Notes
-                        </h4>
-                        <p className="text-sm text-yellow-900 dark:text-yellow-200">{order.notes}</p>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <section className="rounded-card border border-border p-4">
+                            <h3 className="mb-3 text-[14px] font-semibold text-muted">Customer</h3>
+                            <div className="flex items-center gap-3">
+                                <Avatar name={order.customerName} size="md" />
+                                <div className="min-w-0">
+                                    <p className="truncate font-semibold text-text">{order.customerName}</p>
+                                    <p className="flex items-center gap-1.5 text-[15px] tabular-nums text-muted">
+                                        <Phone className="h-3.5 w-3.5" aria-hidden />
+                                        {formatGhanaPhone(order.customerPhone)}
+                                    </p>
+                                </div>
+                            </div>
+                            {order.deliveryAddress && (
+                                <p className="mt-3 flex items-start gap-2 text-[15px] text-text">
+                                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
+                                    <span>{order.deliveryAddress}</span>
+                                </p>
+                            )}
+                        </section>
+
+                        <section className="rounded-card border border-border p-4">
+                            <h3 className="mb-3 text-[14px] font-semibold text-muted">Payment</h3>
+                            <dl className="space-y-2 text-[15px]">
+                                <div className="flex items-center justify-between gap-3">
+                                    <dt className="text-muted">Status</dt>
+                                    <dd><PaymentPill status={order.paymentStatus} /></dd>
+                                </div>
+                                {order.paidAt && (
+                                    <div className="flex items-center justify-between gap-3">
+                                        <dt className="text-muted">Paid on</dt>
+                                        <dd className="tabular-nums text-text">{format(new Date(order.paidAt), 'd MMM, h:mm a')}</dd>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between gap-3 border-t border-border pt-2">
+                                    <dt className="font-semibold text-text">Total</dt>
+                                    <dd className="text-[18px] font-bold tabular-nums text-text">{displayMoney(order.totalAmount, currency)}</dd>
+                                </div>
+                            </dl>
+                        </section>
                     </div>
-                )}
 
-                <div className="flex justify-end pt-4">
-                    <Button onClick={onClose}>
-                        Close
-                    </Button>
+                    <section>
+                        <h3 className="mb-2 text-[14px] font-semibold text-muted">What they ordered</h3>
+                        <ul className="divide-y divide-border rounded-card border border-border">
+                            {order.items.map((item) => (
+                                <li key={item.id} className="flex items-center justify-between gap-3 px-4 py-3 text-[15px]">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-semibold text-text">{item.product.name}</p>
+                                        <p className="tabular-nums text-muted">
+                                            {item.quantity} × {displayMoney(item.unitPrice, currency)}
+                                        </p>
+                                    </div>
+                                    <span className="shrink-0 font-semibold tabular-nums text-text">
+                                        {displayMoney(item.totalPrice, currency)}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+
+                    {order.notes && (
+                        <section>
+                            <h3 className="mb-2 text-[14px] font-semibold text-muted">Notes</h3>
+                            <div className="flex gap-2 rounded-card bg-warning-soft p-3 text-[15px] text-text">
+                                <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-warning-fg" aria-hidden />
+                                <p>{order.notes}</p>
+                            </div>
+                        </section>
+                    )}
                 </div>
-            </div>
-        </Modal>
+            </Modal>
+
+            <ConfirmDialog
+                isOpen={confirmCancel}
+                onClose={() => setConfirmCancel(false)}
+                onConfirm={() => cancelMutation.mutate()}
+                title="Cancel this order?"
+                description="The items go back into your stock. You can't undo this."
+                confirmLabel="Cancel order"
+                cancelLabel="Keep order"
+                isLoading={cancelMutation.isPending}
+            />
+        </>
     );
 }

@@ -1,19 +1,28 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import toast from 'react-hot-toast';
-import {
-    Calendar, Search, Filter, Clock, MapPin,
-    MoreHorizontal, CheckCircle, XCircle, AlertCircle,
-    Link2, RefreshCw,
-} from 'lucide-react';
+import { Calendar, CalendarPlus, CheckCircle, Link2, RefreshCw, SearchX, XCircle, CheckCheck } from 'lucide-react';
 import { api } from '@/lib/api';
-import { paymentBadgeClass } from '@/lib/payment';
-import { Button, DashboardInput, StatCard, PageHeader } from '@bookingflow/ui';
+import {
+    Button,
+    EmptyState,
+    ErrorState,
+    FilterChips,
+    PageHeader,
+    ResponsiveTable,
+    SearchInput,
+    SkeletonList,
+    StatCard,
+    StatusPill,
+    buttonVariants,
+    type Column,
+} from '@bookingflow/ui';
+import { notify as toast } from '@/components/brand/toast';
 import { BookingDetailsModal } from '@/components/bookings/booking-details-modal';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { BookingStatusPill } from '@/components/bookings/booking-status-pill';
 import { MaskedContact } from '@/components/ui/masked-contact';
 
 interface Booking {
@@ -39,14 +48,17 @@ interface Booking {
     };
 }
 
-// What the customer sees on the filter chips. Never the raw enum.
-const STATUS_FILTER_LABELS: Record<string, string> = {
-    ALL: 'All',
-    PENDING_PAYMENT: 'Awaiting payment',
-    CONFIRMED: 'Confirmed',
-    COMPLETED: 'Completed',
-    CANCELLED: 'Cancelled',
-};
+// What the owner sees on the filter chips. Never the raw enum.
+const STATUS_FILTERS = [
+    { value: 'ALL', label: 'All' },
+    { value: 'PENDING_PAYMENT', label: 'Awaiting payment' },
+    { value: 'CONFIRMED', label: 'Confirmed' },
+    { value: 'COMPLETED', label: 'Done' },
+    { value: 'CANCELLED', label: 'Cancelled' },
+];
+
+const LINK_BTN =
+    'inline-flex min-h-[44px] items-center gap-1.5 rounded-control px-2 text-[14px] font-semibold transition-colors duration-ui disabled:opacity-50';
 
 export default function BookingsPage() {
     const queryClient = useQueryClient();
@@ -59,14 +71,14 @@ export default function BookingsPage() {
     const copyPaymentLink = async (booking: Booking, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!booking.paymentAuthorizationUrl) {
-            toast.error('No payment link on this booking yet');
+            toast.error('This booking has no payment link yet. Tap "New link" to make one.');
             return;
         }
         try {
             await navigator.clipboard.writeText(booking.paymentAuthorizationUrl);
-            toast.success('Payment link copied');
+            toast.success('Payment link copied. Paste it in WhatsApp.');
         } catch {
-            toast.error('Could not copy. Select the URL manually.');
+            toast.error("Couldn't copy the link. Open the booking and copy it by hand.");
         }
     };
 
@@ -76,16 +88,16 @@ export default function BookingsPage() {
         try {
             const res = await api.post(`/payments/bookings/${booking.id}/initialize`);
             await navigator.clipboard.writeText(res.data.authorizationUrl).catch(() => undefined);
-            toast.success('New payment link copied');
+            toast.success('New payment link made and copied');
             await queryClient.invalidateQueries({ queryKey: ['bookings'] });
         } catch (err: any) {
-            toast.error(err?.response?.data?.message ?? 'Could not generate a new link');
+            toast.error(err?.response?.data?.message ?? "Couldn't make a new link. Try again.");
         } finally {
             setResendingId(null);
         }
     };
 
-    const { data: bookingsResponse, isLoading } = useQuery({
+    const { data: bookingsResponse, isLoading, isError, refetch, isRefetching } = useQuery({
         queryKey: ['bookings', selectedStatus, search],
         queryFn: async () => {
             const params: any = { limit: 100 }; // Fetch more for now
@@ -122,256 +134,169 @@ export default function BookingsPage() {
         cancelled: bookings.filter(b => b.status === 'CANCELLED').length,
     };
 
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'PENDING_PAYMENT':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">Pending Payment</span>;
-            case 'CONFIRMED':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">Confirmed</span>;
-            case 'COMPLETED':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">Completed</span>;
-            case 'CANCELLED':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Cancelled</span>;
-            case 'NO_SHOW':
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">No Show</span>;
-            default:
-                return <span className="inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400">{status}</span>;
-        }
+    const paymentCell = (booking: Booking) => {
+        if (!booking.depositAmount) return <span className="text-muted">No deposit</span>;
+        const awaiting = booking.paymentStatus === 'UNPAID' && booking.status === 'PENDING_PAYMENT';
+        return (
+            <div className="flex flex-col items-end gap-0.5 md:items-start">
+                <StatusPill
+                    status={booking.paymentStatus === 'UNPAID' ? 'unpaid' : booking.paymentStatus}
+                    label={booking.paymentStatus === 'PAID' ? 'Deposit paid' : booking.paymentStatus === 'REFUNDED' ? 'Refunded' : 'Deposit due'}
+                    size="sm"
+                />
+                {awaiting && (
+                    <div className="-ml-2 flex flex-wrap items-center">
+                        {booking.paymentAuthorizationUrl && (
+                            <button
+                                type="button"
+                                onClick={(e) => copyPaymentLink(booking, e)}
+                                className={`${LINK_BTN} text-primary hover:bg-primary-soft`}
+                                aria-label="Copy payment link"
+                            >
+                                <Link2 className="h-4 w-4" aria-hidden /> Copy link
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={(e) => resendPaymentLink(booking, e)}
+                            disabled={resendingId === booking.id}
+                            className={`${LINK_BTN} text-muted hover:bg-surface-2 hover:text-text`}
+                            aria-label="Generate new payment link"
+                        >
+                            <RefreshCw className={`h-4 w-4 ${resendingId === booking.id ? 'animate-spin' : ''}`} aria-hidden />
+                            {resendingId === booking.id ? 'Making…' : 'New link'}
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
     };
 
+    const columns: Column<Booking>[] = [
+        {
+            key: 'customer',
+            header: 'Customer',
+            render: (b) => (
+                <div className="min-w-0">
+                    <div className="font-semibold text-text">{b.customerName}</div>
+                    <div className="text-[14px] text-muted">
+                        <MaskedContact value={b.customerPhone} masked={b.contactMasked} scope="booking" recordId={b.id} />
+                    </div>
+                </div>
+            ),
+        },
+        { key: 'service', header: 'Service', render: (b) => b.service.name },
+        {
+            key: 'when',
+            header: 'When',
+            render: (b) => (
+                <span className="whitespace-nowrap tabular-nums">
+                    <span className="font-medium">{format(new Date(b.startTime), 'EEE d MMM')}</span>
+                    <span className="text-muted"> · {format(new Date(b.startTime), 'h:mm a')}</span>
+                </span>
+            ),
+        },
+        { key: 'status', header: 'Status', render: (b) => <BookingStatusPill status={b.status} /> },
+        { key: 'payment', header: 'Deposit', render: paymentCell },
+        {
+            key: 'ref',
+            header: 'Reference',
+            hideOnMobile: true,
+            render: (b) => <span className="text-[14px] tabular-nums text-muted">{b.bookingReference}</span>,
+        },
+        {
+            key: 'actions',
+            header: 'Details',
+            align: 'right',
+            render: (b) => (
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleViewBooking(b); }}>
+                    View
+                </Button>
+            ),
+        },
+    ];
+
+    const filtersActive = search.trim() !== '' || selectedStatus !== 'ALL';
+
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-6 lg:space-y-8">
             <PageHeader
-                title="Bookings"
-                subtitle="Manage appointments and schedules"
+                title="Your bookings"
+                subtitle="Everyone who has booked with you, newest first. Tap a booking to see it or change it."
             />
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                <StatCard
-                    name="All bookings"
-                    value={stats.total}
-                    icon={<Calendar className="w-6 h-6 text-slate-500" />}
-                    color="bg-slate-500/10"
-                    index={0}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+                <StatCard name="All" value={stats.total} icon={<Calendar />} index={0} />
+                <StatCard name="Confirmed" value={stats.confirmed} icon={<CheckCircle />} index={1} />
+                <StatCard name="Done" value={stats.completed} icon={<CheckCheck />} index={2} />
+                <StatCard name="Cancelled" value={stats.cancelled} icon={<XCircle />} index={3} />
+            </div>
+
+            <div className="space-y-3">
+                <SearchInput
+                    value={search}
+                    onChange={setSearch}
+                    label="Search bookings"
+                    placeholder="Name, service or reference"
+                    className="sm:max-w-md"
                 />
-                <StatCard
-                    name="Confirmed"
-                    value={stats.confirmed}
-                    icon={<CheckCircle className="w-6 h-6 text-emerald-500" />}
-                    color="bg-emerald-500/10"
-                    index={1}
-                />
-                <StatCard
-                    name="Completed"
-                    value={stats.completed}
-                    icon={<CheckCircle className="w-6 h-6 text-blue-500" />}
-                    color="bg-blue-500/10"
-                    index={2}
-                />
-                <StatCard
-                    name="Cancelled"
-                    value={stats.cancelled}
-                    icon={<XCircle className="w-6 h-6 text-red-500" />}
-                    color="bg-red-500/10"
-                    index={3}
+                <FilterChips
+                    label="Filter bookings by status"
+                    chips={STATUS_FILTERS}
+                    selected={[selectedStatus]}
+                    onToggle={setSelectedStatus}
                 />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center justify-between bg-white dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm backdrop-blur-xl">
-                {/* Scrolls sideways on phones instead of spilling past the card edge. */}
-                <div className="flex w-full sm:w-auto p-1 bg-slate-100 dark:bg-slate-700/50 rounded-md overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {['ALL', 'PENDING_PAYMENT', 'CONFIRMED', 'COMPLETED', 'CANCELLED'].map((status) => (
-                        <button
-                            key={status}
-                            onClick={() => setSelectedStatus(status)}
-                            className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-[3px] text-sm font-medium transition-all ${selectedStatus === status
-                                    ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                                }`}
-                        >
-                            {STATUS_FILTER_LABELS[status]}
-                        </button>
-                    ))}
+            {isLoading ? (
+                <div aria-busy="true" className="rounded-card border border-border bg-surface px-4 shadow-card">
+                    <span className="sr-only">Loading your bookings…</span>
+                    <SkeletonList rows={6} />
                 </div>
-
-                <div className="relative w-full sm:max-w-xs group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                    <DashboardInput
-                        placeholder="Search bookings..."
-                        className="pl-10 h-10 bg-transparent border-slate-200 dark:border-slate-700/50"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
+            ) : isError ? (
+                <div className="rounded-card border border-border bg-surface shadow-card">
+                    <ErrorState onRetry={() => refetch()} isRetrying={isRefetching} />
                 </div>
-            </div>
-
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-                <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50/50 dark:bg-slate-700/20 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200 dark:border-slate-700">
-                            <tr>
-                                <th className="px-6 py-4">Reference</th>
-                                <th className="px-6 py-4">Customer</th>
-                                <th className="px-6 py-4">Service</th>
-                                <th className="px-6 py-4">Date & Time</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Payment</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                            {isLoading ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <BooklyDots size="sm" />
-                                            <p>Loading bookings...</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : filteredBookings.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <Calendar className="w-8 h-8 text-slate-300" />
-                                            <p>No bookings found</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredBookings.map((booking: Booking) => (
-                                    <tr key={booking.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors cursor-pointer" onClick={() => handleViewBooking(booking)}>
-                                        <td className="px-6 py-4 font-mono tabular-nums text-slate-500">
-                                            {booking.bookingReference}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="font-medium text-slate-900 dark:text-white">{booking.customerName}</div>
-                                            <div className="text-xs text-slate-500">
-                                                <MaskedContact
-                                                    value={booking.customerPhone}
-                                                    masked={booking.contactMasked}
-                                                    scope="booking"
-                                                    recordId={booking.id}
-                                                />
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                                            {booking.service.name}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex flex-col text-slate-600 dark:text-slate-300">
-                                                <span className="font-medium">{format(new Date(booking.startTime), 'MMM d, yyyy')}</span>
-                                                <span className="text-xs text-slate-500">
-                                                    {format(new Date(booking.startTime), 'h:mm a')}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {getStatusBadge(booking.status)}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {booking.depositAmount ? (
-                                                <>
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-[3px] text-xs font-medium ${paymentBadgeClass(booking.paymentStatus)}`}>
-                                                        {booking.paymentStatus}
-                                                    </span>
-                                                    {booking.paymentStatus === 'UNPAID' && booking.status === 'PENDING_PAYMENT' && (
-                                                        <div className="flex items-center gap-1 mt-1.5">
-                                                            {booking.paymentAuthorizationUrl && (
-                                                                <button
-                                                                    onClick={(e) => copyPaymentLink(booking, e)}
-                                                                    className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300 hover:underline"
-                                                                    aria-label="Copy payment link"
-                                                                >
-                                                                    <Link2 className="w-3 h-3" /> Copy link
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={(e) => resendPaymentLink(booking, e)}
-                                                                disabled={resendingId === booking.id}
-                                                                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-700 dark:hover:text-emerald-300 hover:underline disabled:opacity-50"
-                                                                aria-label="Generate new payment link"
-                                                            >
-                                                                <RefreshCw className={`w-3 h-3 ${resendingId === booking.id ? 'animate-spin' : ''}`} />
-                                                                {resendingId === booking.id ? 'Generating…' : 'New link'}
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <span className="text-xs text-slate-400">-</span>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleViewBooking(booking); }}>
-                                                View
-                                            </Button>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Mobile: stacked booking cards */}
-                <div className="md:hidden divide-y divide-slate-200 dark:divide-slate-700">
-                    {isLoading ? (
-                        <div className="px-4 py-12 text-center text-slate-500">
-                            <div className="flex flex-col items-center gap-2">
-                                <BooklyDots size="sm" />
-                                <p>Loading bookings...</p>
-                            </div>
-                        </div>
-                    ) : filteredBookings.length === 0 ? (
-                        <div className="px-4 py-12 text-center text-slate-500">
-                            <div className="flex flex-col items-center gap-2">
-                                <Calendar className="w-8 h-8 text-slate-300" />
-                                <p>No bookings found</p>
-                            </div>
-                        </div>
+            ) : filteredBookings.length === 0 ? (
+                <div className="rounded-card border border-border bg-surface shadow-card">
+                    {filtersActive ? (
+                        <EmptyState
+                            icon={<SearchX />}
+                            title="No bookings match"
+                            description="Try another name, or show all bookings."
+                            action={
+                                <Button variant="secondary" onClick={() => { setSearch(''); setSelectedStatus('ALL'); }}>
+                                    Show all bookings
+                                </Button>
+                            }
+                        />
                     ) : (
-                        filteredBookings.map((booking: Booking) => (
-                            <button
-                                key={booking.id}
-                                onClick={() => handleViewBooking(booking)}
-                                className="w-full text-left p-4 active:bg-slate-50 dark:active:bg-slate-700/30 transition-colors"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-slate-900 dark:text-white truncate">{booking.customerName}</p>
-                                        <p className="text-xs text-slate-500 truncate">{booking.service.name}</p>
-                                    </div>
-                                    {getStatusBadge(booking.status)}
-                                </div>
-                                <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
-                                    <Clock className="w-3.5 h-3.5" />
-                                    <span>{format(new Date(booking.startTime), 'MMM d, yyyy')} · {format(new Date(booking.startTime), 'h:mm a')}</span>
-                                </div>
-                                {booking.depositAmount && booking.paymentStatus === 'UNPAID' && booking.status === 'PENDING_PAYMENT' && (
-                                    <div className="flex items-center gap-3 mt-2">
-                                        {booking.paymentAuthorizationUrl && (
-                                            <span
-                                                onClick={(e) => copyPaymentLink(booking, e)}
-                                                className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300"
-                                            >
-                                                <Link2 className="w-3 h-3" /> Copy link
-                                            </span>
-                                        )}
-                                        <span
-                                            onClick={(e) => resendPaymentLink(booking, e)}
-                                            className="inline-flex items-center gap-1 text-xs text-slate-500"
-                                        >
-                                            <RefreshCw className={`w-3 h-3 ${resendingId === booking.id ? 'animate-spin' : ''}`} />
-                                            {resendingId === booking.id ? 'Generating…' : 'New link'}
-                                        </span>
-                                    </div>
-                                )}
-                            </button>
-                        ))
+                        <EmptyState
+                            icon={<CalendarPlus />}
+                            title="No bookings yet"
+                            description="Share your WhatsApp link to get your first one!"
+                            action={<Link href="/channels" className={buttonVariants()}>Get your WhatsApp link</Link>}
+                        />
                     )}
                 </div>
-            </div>
+            ) : (
+                <ResponsiveTable
+                    caption="Your bookings"
+                    columns={columns}
+                    rows={filteredBookings}
+                    rowKey={(b) => b.id}
+                    cardTitle={(b) => (
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="truncate">{b.customerName}</div>
+                                <div className="text-[14px] font-normal text-muted">
+                                    <MaskedContact value={b.customerPhone} masked={b.contactMasked} scope="booking" recordId={b.id} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                />
+            )}
 
             <BookingDetailsModal
                 isOpen={isModalOpen}

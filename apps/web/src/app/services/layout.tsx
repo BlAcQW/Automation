@@ -3,7 +3,7 @@ import { DashboardShell } from '@/components/dashboard/shell';
 
 // The shell is a client component; this layout stays a server component so it
 // can own the page title.
-export const metadata: Metadata = { title: 'Services' };
+export const metadata: Metadata = { title: 'Services', robots: { index: false, follow: false } };
 
 export default function ServicesLayout({
     children,

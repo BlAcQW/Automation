@@ -16,7 +16,7 @@ interface Props {
 export function DotPattern({ size = 22, radius = 1, className }: Props) {
     const id = useId();
     return (
-        <svg aria-hidden className={cn('pointer-events-none absolute inset-0 h-full w-full fill-ink-400/40', className)}>
+        <svg aria-hidden className={cn('pointer-events-none absolute inset-0 h-full w-full fill-muted/30', className)}>
             <defs>
                 <pattern id={id} width={size} height={size} patternUnits="userSpaceOnUse" x={0} y={0}>
                     <circle cx={size / 2} cy={size / 2} r={radius} />

@@ -8,7 +8,7 @@ import { PaymentResult } from '@/components/pay/payment-result';
  */
 export default function PayOrderPage() {
     return (
-        <Suspense fallback={<main className="min-h-screen bg-forest-paper" />}>
+        <Suspense fallback={<main className="light min-h-screen bg-bg" />}>
             <PaymentResult kind="order" />
         </Suspense>
     );

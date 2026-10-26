@@ -3,14 +3,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, Loader2, AlertCircle, Clock, ArrowRight } from 'lucide-react';
+import { ArrowRight, Clock, RotateCcw, SearchX, CloudOff, XCircle } from 'lucide-react';
+import { Button, Skeleton, SkeletonLine, StatusPill, TickPop, buttonVariants, cn } from '@bookingflow/ui';
 import {
-    PaperCard,
+    BusinessHero,
+    FactList,
+    PublicCard,
     PublicPage,
-    SummaryCard,
+    formatMoney,
+    formatWhen,
     publicBody,
-    publicBrandBtn,
-    publicFine,
     publicTitle,
 } from './public-shell';
 
@@ -79,144 +81,153 @@ export function PaymentResult({ kind }: { kind: Kind }) {
 
     return (
         <PublicPage>
-            <PaperCard className="sm:p-8">
-                {state === 'verifying' && (
-                    <Centered>
-                        <Loader2 className="w-9 h-9 text-forest-brand animate-spin" />
-                        <h1 className={`${publicTitle} mt-5`}>
-                            Confirming your payment…
-                        </h1>
-                        <p className={`mt-2 ${publicBody}`}>This only takes a moment.</p>
-                    </Centered>
-                )}
+            <BusinessHero name={data?.businessName} />
+            <PublicCard>
+                {state === 'verifying' && <Verifying />}
 
                 {state === 'paid' && (
-                    <Centered>
-                        <StatusMark tone="ok"><CheckCircle2 className="w-6 h-6" /></StatusMark>
-                        <h1 className={`${publicTitle} mt-5`}>
-                            Payment confirmed
-                        </h1>
-                        <p className={`mt-2 ${publicBody}`}>
-                            Your {noun}{' '}
-                            {data?.ref && <span className="font-mono text-[13px] text-forest-ink">{data.ref}</span>}{' '}
-                            is confirmed.
+                    <div className="flex flex-col items-center text-center">
+                        <TickPop size={64} label="Payment confirmed" />
+                        <StatusPill status="paid" className="mt-5" />
+                        <h1 className={cn(publicTitle, 'mt-3')}>Payment confirmed</h1>
+                        <p className={cn(publicBody, 'mt-2')}>
+                            Thank you! Your {noun} is confirmed.
                         </p>
 
-                        {(data?.businessName || typeof data?.amount === 'number' || (kind === 'booking' && data?.startTime)) && (
-                            <SummaryCard className="mt-6 w-full text-left">
-                                {data?.businessName && (
-                                    <p className="text-[12px] font-medium text-forest-cream/60">
-                                        {data.businessName}
-                                    </p>
-                                )}
-                                {typeof data?.amount === 'number' && (
-                                    <p className="mt-2 text-[30px] font-light leading-none tracking-[-0.04em] tabular-nums">
-                                        {data.currency} {data.amount.toFixed(2)}
-                                    </p>
-                                )}
-                                {kind === 'booking' && data?.startTime && (
-                                    <p className="mt-3 pt-3 border-t border-forest-cream/10 text-[14px] text-forest-cream/80 tabular-nums">
-                                        {new Date(data.startTime).toLocaleString()}
-                                    </p>
-                                )}
-                            </SummaryCard>
+                        {typeof data?.amount === 'number' && (
+                            <p className="mt-6 font-display text-[40px] font-semibold leading-none tabular-nums text-text">
+                                {formatMoney(data.amount, data.currency)}
+                            </p>
                         )}
+
+                        <PaidFacts kind={kind} data={data} />
 
                         {kind === 'order' && data?.trackToken && (
                             <Link
                                 href={`/track/${data.trackToken}`}
-                                className={`mt-6 fs-btn--wide ${publicBrandBtn}`}
+                                className={cn(buttonVariants({ size: 'lg', fullWidth: true }), 'mt-6')}
                             >
                                 Track your order
-                                <ArrowRight className="w-4 h-4" />
+                                <ArrowRight className="h-4 w-4" aria-hidden />
                             </Link>
                         )}
 
-                        <p className={`mt-6 ${publicFine}`}>
-                            You can close this page — a confirmation has been sent to you on WhatsApp.
+                        <p className="mt-6 text-small text-muted">
+                            You can close this page. We&apos;ve sent a confirmation to you on WhatsApp.
                         </p>
-                    </Centered>
+                    </div>
                 )}
 
                 {state === 'pending' && (
-                    <Centered>
-                        <StatusMark tone="wait"><Clock className="w-6 h-6" /></StatusMark>
-                        <h1 className={`${publicTitle} mt-5`}>
-                            Still processing
-                        </h1>
-                        <p className={`mt-2 ${publicBody}`}>
-                            Your payment hasn&apos;t been confirmed yet. This can take a minute —
-                            check again shortly.
-                        </p>
-                        <button onClick={verify} className={`mt-6 ${publicBrandBtn}`}>
-                            Check again
-                        </button>
-                    </Centered>
+                    <StateBlock
+                        icon={<Clock />}
+                        tone="warning"
+                        pill={<StatusPill status="pending" />}
+                        title="Still processing"
+                        body="Your payment hasn't been confirmed yet. This can take a minute, so check again shortly."
+                        action={<RetryButton onClick={verify} label="Check again" />}
+                    />
                 )}
 
                 {state === 'failed' && (
-                    <Centered>
-                        <StatusMark tone="bad"><AlertCircle className="w-6 h-6" /></StatusMark>
-                        <h1 className={`${publicTitle} mt-5`}>
-                            Payment not completed
-                        </h1>
-                        <p className={`mt-2 ${publicBody}`}>
-                            We couldn&apos;t confirm this payment. If you were charged, message the
-                            business on WhatsApp and they&apos;ll help sort it out.
-                        </p>
-                        <button onClick={verify} className={`mt-6 ${publicBrandBtn}`}>
-                            Try again
-                        </button>
-                    </Centered>
+                    <StateBlock
+                        icon={<XCircle />}
+                        tone="error"
+                        pill={<StatusPill status="failed" />}
+                        title="Payment not completed"
+                        body="We couldn't confirm this payment. If money left your account, message the business on WhatsApp and they'll sort it out."
+                        action={<RetryButton onClick={verify} label="Try again" />}
+                    />
                 )}
 
                 {state === 'not_found' && (
-                    <Centered>
-                        <StatusMark tone="muted"><AlertCircle className="w-6 h-6" /></StatusMark>
-                        <h1 className={`${publicTitle} mt-5`}>
-                            Payment not found
-                        </h1>
-                        <p className={`mt-2 ${publicBody}`}>
-                            This link is invalid or has expired. Check the link in your message
-                            and try again.
-                        </p>
-                    </Centered>
+                    <StateBlock
+                        icon={<SearchX />}
+                        tone="neutral"
+                        title="We can't find this payment"
+                        body="This link may be broken or too old. Open the link in your WhatsApp message again, or ask the business to send a new one."
+                    />
                 )}
 
                 {state === 'error' && (
-                    <Centered>
-                        <StatusMark tone="muted"><AlertCircle className="w-6 h-6" /></StatusMark>
-                        <h1 className={`${publicTitle} mt-5`}>
-                            Something went wrong
-                        </h1>
-                        <p className={`mt-2 ${publicBody}`}>
-                            We couldn&apos;t reach the server. Please try again in a moment.
-                        </p>
-                        <button onClick={verify} className={`mt-6 ${publicBrandBtn}`}>
-                            Try again
-                        </button>
-                    </Centered>
+                    <StateBlock
+                        icon={<CloudOff />}
+                        tone="error"
+                        title="Oops, that didn't work"
+                        body="We couldn't check your payment just now. Check your internet connection, then try again."
+                        action={<RetryButton onClick={verify} label="Try again" />}
+                    />
                 )}
-            </PaperCard>
+            </PublicCard>
         </PublicPage>
     );
 }
 
-const MARK_TONES = {
-    ok: 'bg-forest-night text-forest-glow',
-    wait: 'bg-[#E0A43A]/15 text-[#8A5A12]',
-    bad: 'bg-[#B03A2E]/10 text-[#B03A2E]',
-    muted: 'bg-forest-ink/[.06] text-[#7F857B]',
-} as const;
+function PaidFacts({ kind, data }: { kind: Kind; data: VerifyResponse | null }) {
+    const rows: Array<[string, React.ReactNode]> = [];
+    if (data?.ref) rows.push(['Reference', <span className="font-mono text-[15px]">{data.ref}</span>]);
+    if (kind === 'booking' && data?.startTime) rows.push(['Appointment', formatWhen(data.startTime)]);
+    if (rows.length === 0) return null;
+    return <FactList className="mt-6 w-full text-left" rows={rows} />;
+}
 
-function StatusMark({ tone, children }: { tone: keyof typeof MARK_TONES; children: React.ReactNode }) {
+function Verifying() {
     return (
-        <div className={`w-14 h-14 rounded-[6px] flex items-center justify-center ${MARK_TONES[tone]}`} aria-hidden>
-            {children}
+        <div className="flex flex-col items-center text-center" aria-busy="true">
+            <Skeleton className="h-16 w-16 rounded-full" />
+            <h1 className={cn(publicTitle, 'mt-5')}>Confirming your payment…</h1>
+            <p className={cn(publicBody, 'mt-2')}>This only takes a moment.</p>
+            <div className="mt-6 w-full space-y-3" aria-hidden>
+                <Skeleton className="mx-auto h-10 w-40" />
+                <SkeletonLine />
+                <SkeletonLine width="w-4/5" />
+            </div>
         </div>
     );
 }
 
-function Centered({ children }: { children: React.ReactNode }) {
-    return <div className="flex flex-col items-center text-center">{children}</div>;
+const ICON_TONES = {
+    warning: 'bg-warning-soft text-warning-fg',
+    error: 'bg-error-soft text-error-fg',
+    neutral: 'bg-surface-2 text-muted',
+} as const;
+
+function StateBlock({
+    icon,
+    tone,
+    pill,
+    title,
+    body,
+    action,
+}: {
+    icon: React.ReactNode;
+    tone: keyof typeof ICON_TONES;
+    pill?: React.ReactNode;
+    title: string;
+    body: string;
+    action?: React.ReactNode;
+}) {
+    return (
+        <div className="flex flex-col items-center text-center">
+            <div
+                aria-hidden
+                className={cn('flex h-16 w-16 items-center justify-center rounded-full [&_svg]:h-8 [&_svg]:w-8', ICON_TONES[tone])}
+            >
+                {icon}
+            </div>
+            {pill && <div className="mt-5">{pill}</div>}
+            <h1 className={cn(publicTitle, pill ? 'mt-3' : 'mt-5')}>{title}</h1>
+            <p className={cn(publicBody, 'mt-2')}>{body}</p>
+            {action && <div className="mt-6 w-full">{action}</div>}
+        </div>
+    );
+}
+
+function RetryButton({ onClick, label }: { onClick: () => void; label: string }) {
+    return (
+        <Button size="lg" fullWidth onClick={onClick}>
+            <RotateCcw className="h-4 w-4" aria-hidden />
+            {label}
+        </Button>
+    );
 }

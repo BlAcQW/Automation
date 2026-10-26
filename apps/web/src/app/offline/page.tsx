@@ -1,27 +1,36 @@
-import { BooklyIcon } from '@/components/primitives/bookly-icon';
+import type { Metadata } from 'next';
+import { WifiOff } from 'lucide-react';
+import { AwningDivider, BrandLogo } from '@bookingflow/ui';
 
-export const metadata = { title: 'Offline | Bookly' };
+export const metadata: Metadata = {
+    title: "You're offline",
+    robots: { index: false, follow: false },
+};
 
 /**
  * Branded offline fallback. The service worker serves this for navigation
- * requests that fail while the device has no connection.
+ * requests that fail while the device has no connection. Server-rendered and
+ * fully visible without JS (it may be the only thing that loads).
  */
 export default function OfflinePage() {
     return (
-        <main className="relative isolate flex min-h-screen items-center justify-center bg-ink-950 px-6 text-ink-50">
-            <div className="fs-hero-grid" aria-hidden />
-            <div className="max-w-sm text-center">
-                <div className="mx-auto mb-8 flex h-16 w-16 items-center justify-center rounded-[6px] bg-ink-900 shadow-[0_14px_30px_-22px_rgba(20,26,22,0.45)] ring-1 ring-ink-700/60">
-                    <BooklyIcon size="lg" />
+        <main id="main" className="flex min-h-screen flex-col bg-bg text-text">
+            <AwningDivider size="sm" />
+            <div className="flex flex-1 flex-col items-center justify-center px-4 py-12 text-center">
+                <BrandLogo size="md" />
+                <div className="mt-10 w-full max-w-sm rounded-card-lg border border-border bg-surface p-6 shadow-card sm:p-8">
+                    <div
+                        aria-hidden
+                        className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-warning-soft text-warning-fg"
+                    >
+                        <WifiOff className="h-8 w-8" />
+                    </div>
+                    <h1 className="mt-5 font-display text-page-title text-text">You&apos;re offline</h1>
+                    <p className="mt-3 text-body leading-relaxed text-muted">
+                        We can&apos;t reach the internet right now. Check your data or Wi-Fi, then reload this page.
+                        Don&apos;t worry, your work is safe.
+                    </p>
                 </div>
-                <p className="font-mono text-[11px] text-ink-300">/offline/</p>
-                <h1 className="mt-3 text-[clamp(36px,9vw,52px)] font-normal leading-[0.98] tracking-[-0.05em] text-ink-50">
-                    You&apos;re offline
-                </h1>
-                <p className="mt-4 text-[15px] leading-relaxed text-ink-300">
-                    Bookly needs a connection to load this screen. Check your network and try
-                    again. Your work is safe.
-                </p>
             </div>
         </main>
     );

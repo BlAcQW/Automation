@@ -97,3 +97,48 @@ describe('buildTextBundle — customer self-service link injection', () => {
         expect(buildTextBundle('ORDER_SHIPPED', [], { trackUrl: 'x' })).toBeNull();
     });
 });
+
+describe('buildTextBundle — Bookly email rendering', () => {
+    it('shows booking facts in a details block and escapes them', () => {
+        const b = buildTextBundle('BOOKING_CONFIRMATION', ['Jane', 'Cut & <b>Style</b>', '2026-05-20', '10:00', 'BK-1'])!;
+        expect(b.emailHtml).toContain('>Reference</td>');
+        expect(b.emailHtml).toContain('Cut &amp; &lt;b&gt;Style&lt;/b&gt;');
+        expect(b.emailHtml).not.toContain('<b>Style</b>');
+        expect(b.emailText).toContain('Reference: BK-1');
+    });
+
+    it('puts the tracking link in a button inside the card, before the footer', () => {
+        const url = 'https://bookly.ikieguy.online/track/abc123';
+        const b = buildTextBundle('ORDER_CONFIRMATION', ['ORD-1', 'GH₵ 25.00'], { trackUrl: url })!;
+        const btn = b.emailHtml.indexOf(`href="${url}"`);
+        expect(btn).toBeGreaterThan(-1);
+        expect(btn).toBeLessThan(b.emailHtml.indexOf('Your shop, always open.'));
+        expect(b.emailHtml).toContain('GH₵ 25.00');
+        // Link sits above the sign-off in plain text too.
+        expect(b.emailText.indexOf('Track your order:')).toBeLessThan(b.emailText.indexOf('--\nBookly'));
+    });
+
+    it('offers the cancel link as a quiet text link, not a big button', () => {
+        const url = 'https://bookly.ikieguy.online/c/xyz789';
+        const b = buildTextBundle('BOOKING_REMINDER', ['Haircut', '10:00'], { cancelUrl: url })!;
+        expect(b.emailHtml).toContain('Cancel this appointment</a>');
+        expect(b.emailHtml).not.toContain('v:roundrect');
+        expect(b.emailText).toContain(`Need to cancel? ${url}`);
+    });
+
+    it.each([
+        ['BOOKING_CONFIRMATION', ['Jane', 'Haircut', 'd', 't', 'r']],
+        ['BOOKING_REMINDER', ['Haircut', '10:00']],
+        ['BOOKING_CANCELLED', ['Haircut', 'd']],
+        ['BOOKING_RESCHEDULED', ['Haircut', 'd', 't']],
+        ['ORDER_CONFIRMATION', ['ORD-1', '25.00']],
+        ['ORDER_SHIPPED', ['ORD-1']],
+        ['ORDER_DELIVERED', ['ORD-1']],
+    ] as const)('%s renders the branded shell and sign-off', (purpose, vars) => {
+        const b = buildTextBundle(purpose, [...vars])!;
+        expect(b.emailHtml.startsWith('<!DOCTYPE html>')).toBe(true);
+        expect(b.emailHtml).toContain('Your shop, always open.');
+        expect(b.emailText).toContain('Bookly · Your shop, always open.');
+        expect(b.sms).not.toContain('Bookly');
+    });
+});

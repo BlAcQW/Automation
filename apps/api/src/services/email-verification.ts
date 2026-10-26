@@ -6,6 +6,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { emailButton, emailLink, emailParagraph, escapeHtml, renderEmailLayout, renderEmailText } from './email-layout.js';
 
 export const VERIFY_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -59,28 +60,30 @@ export function verificationEmail(args: { name: string; businessName: string; li
 } {
     const first = args.name.trim().split(' ')[0] || 'there';
     const subject = 'Confirm your email for Bookly';
-    const text = [
+    const text = renderEmailText([
         `Hi ${first},`,
         '',
-        `Welcome to Bookly. Please confirm this is your email address so we can reach you about ${args.businessName}:`,
+        `Welcome to Bookly! Please confirm this is your email address so we can reach you about ${args.businessName}:`,
         '',
         args.link,
         '',
         'The link works for 7 days. If you did not create a Bookly account, you can ignore this email.',
-    ].join('\n');
-    const html = `
-<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0A0F0D">
-  <p style="font-size:16px">Hi ${esc(first)},</p>
-  <p style="font-size:16px;line-height:1.5">Welcome to Bookly. Please confirm this is your email address so we can reach you about ${esc(args.businessName)}.</p>
-  <p style="margin:28px 0">
-    <a href="${args.link}" style="display:inline-block;background:#10B981;color:#050807;text-decoration:none;font-weight:600;padding:14px 22px;border-radius:12px;font-size:16px">Confirm my email</a>
-  </p>
-  <p style="font-size:14px;color:#5C6B65;line-height:1.5">The link works for 7 days. If the button does not open, copy this address into your browser:<br><a href="${args.link}" style="color:#047857">${args.link}</a></p>
-  <p style="font-size:14px;color:#5C6B65;line-height:1.5">If you did not create a Bookly account, ignore this email.</p>
-</div>`;
+    ]);
+    const html = renderEmailLayout({
+        title: subject,
+        preheader: `One tap to confirm your email for ${args.businessName}.`,
+        heading: 'Welcome to Bookly!',
+        bodyHtml: [
+            emailParagraph(`Hi ${escapeHtml(first)},`),
+            emailParagraph(`Please confirm this is your email address so we can reach you about <strong>${escapeHtml(args.businessName)}</strong>.`),
+            emailButton('Confirm my email', args.link),
+            emailParagraph(
+                `The link works for 7 days. If the button does not open, copy this address into your browser:<br>${emailLink(args.link, args.link)}`,
+                { small: true, muted: true },
+            ),
+        ].join('\n'),
+        footerNote: "Didn't create a Bookly account? You can ignore this email.",
+    });
     return { subject, text, html };
 }
 
-function esc(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
-}

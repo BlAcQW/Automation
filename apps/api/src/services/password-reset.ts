@@ -13,6 +13,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { emailButton, emailLink, emailParagraph, escapeHtml, renderEmailLayout, renderEmailText } from './email-layout.js';
 
 /** How long a reset link works. Long enough for a slow inbox, not a day. */
 export const RESET_TOKEN_TTL_SECONDS = 60 * 60;
@@ -80,7 +81,7 @@ export function passwordResetEmail(args: { name: string; link: string }): {
 } {
     const first = args.name.trim().split(' ')[0] || 'there';
     const subject = 'Reset your Bookly password';
-    const text = [
+    const text = renderEmailText([
         `Hi ${first},`,
         '',
         'Someone asked to reset the password for your Bookly account. If that was you, open this link to choose a new one:',
@@ -90,20 +91,22 @@ export function passwordResetEmail(args: { name: string; link: string }): {
         'The link works for one hour and can only be used once.',
         '',
         'If you did not ask for this, you can ignore this email. Your password has not changed.',
-    ].join('\n');
-    const html = `
-<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0A0F0D">
-  <p style="font-size:16px">Hi ${escapeHtml(first)},</p>
-  <p style="font-size:16px;line-height:1.5">Someone asked to reset the password for your Bookly account. If that was you, choose a new one here:</p>
-  <p style="margin:28px 0">
-    <a href="${args.link}" style="display:inline-block;background:#10B981;color:#050807;text-decoration:none;font-weight:600;padding:14px 22px;border-radius:12px;font-size:16px">Choose a new password</a>
-  </p>
-  <p style="font-size:14px;color:#5C6B65;line-height:1.5">The link works for one hour and can only be used once. If the button does not open, copy this address into your browser:<br><a href="${args.link}" style="color:#047857">${args.link}</a></p>
-  <p style="font-size:14px;color:#5C6B65;line-height:1.5">If you did not ask for this, ignore this email. Your password has not changed.</p>
-</div>`;
+    ]);
+    const html = renderEmailLayout({
+        title: subject,
+        preheader: 'Choose a new password. The link works for one hour.',
+        heading: "Let's get you back in",
+        bodyHtml: [
+            emailParagraph(`Hi ${escapeHtml(first)},`),
+            emailParagraph('Someone asked to reset the password for your Bookly account. If that was you, tap the button to choose a new one.'),
+            emailButton('Choose a new password', args.link),
+            emailParagraph(
+                `The link works for one hour and can only be used once. If the button does not open, copy this address into your browser:<br>${emailLink(args.link, args.link)}`,
+                { small: true, muted: true },
+            ),
+        ].join('\n'),
+        footerNote: "Didn't ask for this? You can ignore this email. Your password has not changed.",
+    });
     return { subject, text, html };
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
-}

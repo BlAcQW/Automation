@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check } from 'lucide-react';
+import { CalendarX2, CloudOff, SearchX } from 'lucide-react';
+import { Button, Skeleton, SkeletonLine, StatusPill, TickPop, cn } from '@bookingflow/ui';
 import {
-    PaperCard,
+    BusinessHero,
+    FactList,
+    PublicCard,
     PublicPage,
-    SummaryCard,
+    formatWhen,
     publicBody,
-    publicDangerBtn,
-    publicEyebrow,
-    publicFine,
     publicTitle,
 } from '@/components/pay/public-shell';
 
@@ -58,80 +58,126 @@ export default function CancelBookingPage({ params }: { params: { token: string 
 
     return (
         <PublicPage>
-            <PaperCard>
-                {phase === 'loading' && (
-                    <p className={`text-center py-12 ${publicBody}`}>Loading…</p>
-                )}
+            {phase === 'loading' ? <CancelSkeleton /> : <BusinessHero name={data?.businessName} />}
 
-                {phase === 'not_found' && (
-                    <>
-                        <h1 className={publicTitle}>Appointment not found</h1>
-                        <p className={`mt-3 ${publicBody}`}>
-                            This link is invalid or has expired.
-                        </p>
-                    </>
-                )}
+            {phase !== 'loading' && (
+                <PublicCard>
+                    {phase === 'not_found' && (
+                        <Message
+                            icon={<SearchX />}
+                            title="We can't find this appointment"
+                            body="This link may be broken or too old. Message the business on WhatsApp if you need to change your booking."
+                        />
+                    )}
 
-                {phase === 'error' && (
-                    <>
-                        <h1 className={publicTitle}>Something went wrong</h1>
-                        <p className={`mt-3 ${publicBody}`}>Please try again in a moment.</p>
-                    </>
-                )}
+                    {phase === 'error' && (
+                        <Message
+                            icon={<CloudOff />}
+                            title="Oops, that didn't work"
+                            body="We couldn't reach the booking just now. Check your internet connection, then refresh this page and try again."
+                        />
+                    )}
 
-                {phase === 'already' && data && (
-                    <>
-                        <h1 className={publicTitle}>Already cancelled</h1>
-                        <p className={`mt-3 ${publicBody}`}>
-                            Your {data.serviceName} appointment with {data.businessName} is already cancelled.
-                        </p>
-                    </>
-                )}
+                    {phase === 'already' && data && (
+                        <Message
+                            icon={<CalendarX2 />}
+                            pill={<StatusPill status="cancelled" />}
+                            title="Already cancelled"
+                            body={`Your ${data.serviceName} appointment with ${data.businessName} is already cancelled. Nothing else to do.`}
+                        />
+                    )}
 
-                {phase === 'cancelled' && data && (
-                    <>
-                        <div className="w-11 h-11 rounded-[5px] bg-forest-night text-forest-glow flex items-center justify-center mx-auto">
-                            <Check className="w-5 h-5" strokeWidth={2.4} aria-hidden />
-                        </div>
-                        <h1 className={`${publicTitle} text-center mt-4`}>
-                            Appointment cancelled
-                        </h1>
-                        <p className={`mt-3 text-center ${publicBody}`}>
-                            Your {data.serviceName} appointment with {data.businessName} has been cancelled.
-                            Reference {data.bookingReference}.
-                        </p>
-                    </>
-                )}
-
-                {(phase === 'show' || phase === 'cancelling') && data && (
-                    <>
-                        <p className={publicEyebrow}>{data.businessName}</p>
-                        <h1 className={`${publicTitle} mt-2`}>
-                            Cancel this appointment?
-                        </h1>
-                        <SummaryCard className="mt-5">
-                            <p className="text-[15px] font-medium tracking-[-0.02em]">{data.serviceName}</p>
-                            <p className="mt-1 text-[14px] text-forest-cream/75 tabular-nums">
-                                {new Date(data.startTime).toLocaleString([], {
-                                    weekday: 'short', month: 'short', day: 'numeric',
-                                    hour: '2-digit', minute: '2-digit',
-                                })}
+                    {phase === 'cancelled' && data && (
+                        <div className="flex flex-col items-center text-center">
+                            <TickPop size={64} label="Appointment cancelled" />
+                            <StatusPill status="cancelled" className="mt-5" />
+                            <h1 className={cn(publicTitle, 'mt-3')}>Appointment cancelled</h1>
+                            <p className={cn(publicBody, 'mt-2')}>
+                                Your {data.serviceName} appointment with {data.businessName} has been cancelled.
+                                Want a new time? Just message them on WhatsApp.
                             </p>
-                            <p className="mt-3 pt-3 border-t border-forest-cream/10 font-mono text-[11px] text-forest-cream/55">Ref: {data.bookingReference}</p>
-                        </SummaryCard>
-                        <button
-                            onClick={doCancel}
-                            disabled={phase === 'cancelling'}
-                            className={`mt-5 ${publicDangerBtn}`}
-                        >
-                            {phase === 'cancelling' ? 'Cancelling…' : 'Cancel Appointment'}
-                        </button>
-                        <p className={`mt-3 text-center ${publicFine}`}>
-                            Changed your mind? Just close this page. Nothing happens.
-                        </p>
-                    </>
-                )}
-            </PaperCard>
+                            <FactList
+                                className="mt-6 w-full text-left"
+                                rows={[['Reference', <span className="font-mono text-[15px]">{data.bookingReference}</span>]]}
+                            />
+                        </div>
+                    )}
+
+                    {(phase === 'show' || phase === 'cancelling') && data && (
+                        <>
+                            <StatusPill status={data.status} />
+                            <h1 className={cn(publicTitle, 'mt-3')}>Cancel this appointment?</h1>
+                            <p className={cn(publicBody, 'mt-2')}>
+                                Your slot will be freed up for someone else. You can always book again later.
+                            </p>
+                            <FactList
+                                className="mt-5"
+                                rows={[
+                                    ['Service', data.serviceName],
+                                    ['When', formatWhen(data.startTime)],
+                                    ['Reference', <span className="font-mono text-[15px]">{data.bookingReference}</span>],
+                                ]}
+                            />
+                            <Button
+                                variant="destructive"
+                                size="lg"
+                                fullWidth
+                                className="mt-6"
+                                onClick={doCancel}
+                                isLoading={phase === 'cancelling'}
+                                loadingText="Cancelling…"
+                            >
+                                Yes, cancel my appointment
+                            </Button>
+                            <p className="mt-3 text-center text-small text-muted">
+                                Changed your mind? Just close this page. Nothing happens.
+                            </p>
+                        </>
+                    )}
+                </PublicCard>
+            )}
         </PublicPage>
+    );
+}
+
+function Message({
+    icon,
+    pill,
+    title,
+    body,
+}: {
+    icon: React.ReactNode;
+    pill?: React.ReactNode;
+    title: string;
+    body: string;
+}) {
+    return (
+        <div className="flex flex-col items-center text-center">
+            <div aria-hidden className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-2 text-muted [&_svg]:h-8 [&_svg]:w-8">
+                {icon}
+            </div>
+            {pill && <div className="mt-5">{pill}</div>}
+            <h1 className={cn(publicTitle, pill ? 'mt-3' : 'mt-5')}>{title}</h1>
+            <p className={cn(publicBody, 'mt-2')}>{body}</p>
+        </div>
+    );
+}
+
+function CancelSkeleton() {
+    return (
+        <div aria-busy="true">
+            <h1 className="sr-only">Loading your appointment…</h1>
+            <div className="mb-5 flex items-center gap-3" aria-hidden>
+                <Skeleton className="h-12 w-12 rounded-control" />
+                <SkeletonLine width="w-1/2" className="h-6" />
+            </div>
+            <div className="rounded-card-lg border border-border bg-surface p-5 shadow-card sm:p-8" aria-hidden>
+                <Skeleton className="h-6 w-24 rounded-full" />
+                <SkeletonLine width="w-3/4" className="mt-4 h-7" />
+                <SkeletonLine width="w-full" className="mt-3" />
+                <Skeleton className="mt-5 h-36 w-full rounded-card" />
+                <Skeleton className="mt-6 h-12 w-full rounded-control" />
+            </div>
+        </div>
     );
 }

@@ -17,6 +17,7 @@ import { VERTICALS, verticalDefaults } from './verticals.js';
 import { createResetToken, RESET_TOKEN_TTL_SECONDS } from './password-reset.js';
 import { config } from '../config/index.js';
 import { createTenantWallet, newTenantMoneyDefaults } from './ledger.js';
+import { emailButton, emailLink, emailParagraph, escapeHtml, renderEmailLayout, renderEmailText } from './email-layout.js';
 
 export const MAX_QUOTA_OVERRIDE = 1_000_000;
 /** Invites outlive a reset link: the owner may not read mail within the hour. */
@@ -89,14 +90,11 @@ export interface OnboardingDeps {
     productModeEnabled?: boolean;
 }
 
-function escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
-}
 
 export function inviteEmail(args: { ownerName: string; orgName: string; link: string }): Omit<InviteMail, 'to'> {
     const first = args.ownerName.trim().split(' ')[0] || 'there';
     const subject = `You have been invited to manage ${args.orgName} on Bookly`;
-    const text = [
+    const text = renderEmailText([
         `Hi ${first},`,
         '',
         `An organisation called "${args.orgName}" has been set up for you on Bookly. Open this link to choose your password and sign in:`,
@@ -104,17 +102,23 @@ export function inviteEmail(args: { ownerName: string; orgName: string; link: st
         args.link,
         '',
         `The link works for ${INVITE_TTL_DAYS} days and can only be used once. After that, use "Forgot password" on the sign-in page.`,
-    ].join('\n');
+    ]);
     const orgH = escapeHtml(args.orgName);
-    const html = `
-<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0A0F0D">
-  <p style="font-size:16px">Hi ${escapeHtml(first)},</p>
-  <p style="font-size:16px;line-height:1.5">An organisation called <strong>${orgH}</strong> has been set up for you on Bookly. Choose your password to sign in:</p>
-  <p style="margin:28px 0">
-    <a href="${escapeHtml(args.link)}" style="display:inline-block;background:#10B981;color:#050807;text-decoration:none;font-weight:600;padding:14px 22px;border-radius:12px;font-size:16px">Accept invite</a>
-  </p>
-  <p style="font-size:14px;color:#5C6B65;line-height:1.5">The link works for ${INVITE_TTL_DAYS} days and can only be used once. After that, use "Forgot password" on the sign-in page.</p>
-</div>`;
+    const html = renderEmailLayout({
+        title: subject,
+        preheader: `${args.orgName} is ready for you on Bookly. Choose your password to sign in.`,
+        heading: 'Your shop is ready',
+        bodyHtml: [
+            emailParagraph(`Hi ${escapeHtml(first)},`),
+            emailParagraph(`An organisation called <strong>${orgH}</strong> has been set up for you on Bookly. Choose your password to sign in and take a look around.`),
+            emailButton('Accept invite', args.link),
+            emailParagraph(
+                `The link works for ${INVITE_TTL_DAYS} days and can only be used once. After that, use "Forgot password" on the sign-in page. If the button does not open, copy this address into your browser:<br>${emailLink(args.link, args.link)}`,
+                { small: true, muted: true },
+            ),
+        ].join('\n'),
+        footerNote: 'You got this email because someone set up a Bookly account for you.',
+    });
     return { subject, text, html };
 }
 

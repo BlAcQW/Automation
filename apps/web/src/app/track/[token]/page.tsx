@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Check, CloudOff, SearchX } from 'lucide-react';
+import { Skeleton, SkeletonLine, StatusPill, cn, formatCedi } from '@bookingflow/ui';
 import {
-    PaperCard,
+    BusinessHero,
+    PublicCard,
     PublicPage,
-    SummaryCard,
+    formatWhen,
     publicBody,
-    publicEyebrow,
-    publicFine,
     publicTitle,
 } from '@/components/pay/public-shell';
 
@@ -27,7 +28,7 @@ interface TrackData {
     items: TrackItem[];
 }
 
-const STEPS = ['Placed', 'Paid', 'Shipped', 'Delivered'] as const;
+const STEPS = ['Order placed', 'Paid', 'On its way', 'Delivered'] as const;
 
 /** Index of the furthest reached step (-1 if cancelled). */
 function currentStep(d: TrackData): number {
@@ -37,6 +38,21 @@ function currentStep(d: TrackData): number {
     if (d.paymentStatus === 'PAID') return 1;
     return 0;
 }
+
+const PAYMENT_PILL: Record<TrackData['paymentStatus'], { status: string; label: string }> = {
+    PAID: { status: 'paid', label: 'Paid' },
+    UNPAID: { status: 'pending', label: 'Not paid yet' },
+    REFUNDED: { status: 'refunded', label: 'Refunded' },
+};
+
+const ORDER_PILL: Record<TrackData['status'], { status: string; label: string }> = {
+    PENDING: { status: 'pending', label: 'Order placed' },
+    CONFIRMED: { status: 'confirmed', label: 'Confirmed' },
+    PROCESSING: { status: 'processing', label: 'Being prepared' },
+    SHIPPED: { status: 'pending', label: 'On its way' },
+    DELIVERED: { status: 'delivered', label: 'Delivered' },
+    CANCELLED: { status: 'cancelled', label: 'Cancelled' },
+};
 
 export default function TrackOrderPage({ params }: { params: { token: string } }) {
     const [data, setData] = useState<TrackData | null>(null);
@@ -57,98 +73,143 @@ export default function TrackOrderPage({ params }: { params: { token: string } }
 
     return (
         <PublicPage>
-            {loading && (
-                <div className={`text-center py-20 ${publicBody}`}>Loading your order…</div>
-            )}
+            {loading && <TrackSkeleton />}
 
             {error === 'not_found' && (
-                <PaperCard>
-                    <h1 className={publicTitle}>Order not found</h1>
-                    <p className={`mt-3 ${publicBody}`}>
-                        This tracking link is invalid or has expired. Check the link in your message and try again.
-                    </p>
-                </PaperCard>
+                <Problem
+                    icon={<SearchX />}
+                    title="We can't find this order"
+                    body="This tracking link may be broken or too old. Open the link in your WhatsApp message again, or ask the business for a new one."
+                />
             )}
             {error === 'error' && (
-                <PaperCard>
-                    <h1 className={publicTitle}>Something went wrong</h1>
-                    <p className={`mt-3 ${publicBody}`}>Please try again in a moment.</p>
-                </PaperCard>
+                <Problem
+                    icon={<CloudOff />}
+                    title="Oops, that didn't work"
+                    body="We couldn't load your order just now. Check your internet connection, then refresh this page."
+                />
             )}
 
-            {data && (
-                <PaperCard>
-                    <p className={publicEyebrow}>{data.businessName}</p>
-                    <h1 className={`${publicTitle} mt-2`}>
-                        Order {data.orderRef}
-                    </h1>
-
-                    {data.status === 'CANCELLED' ? (
-                        <div className="mt-5 rounded-[5px] border border-[#B03A2E]/25 bg-[#B03A2E]/[.06] px-4 py-3 text-[14px] text-[#B03A2E]">
-                            This order has been cancelled.
-                        </div>
-                    ) : (
-                        <ol className="mt-6 space-y-0">
-                            {STEPS.map((label, i) => {
-                                const reached = i <= currentStep(data);
-                                const isLast = i === STEPS.length - 1;
-                                return (
-                                    <li key={label} className="flex gap-3">
-                                        <div className="flex flex-col items-center">
-                                            <span
-                                                className={
-                                                    'w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-semibold tabular-nums ' +
-                                                    (reached
-                                                        ? 'bg-forest-brand text-[#FBFAF7]'
-                                                        : 'bg-forest-ink/[.08] text-[#7F857B]')
-                                                }
-                                            >
-                                                {reached ? '✓' : i + 1}
-                                            </span>
-                                            {!isLast && (
-                                                <span
-                                                    className={
-                                                        'w-px flex-1 min-h-[28px] ' +
-                                                        (i < currentStep(data) ? 'bg-forest-brand' : 'bg-forest-ink/[.12]')
-                                                    }
-                                                />
-                                            )}
-                                        </div>
-                                        <span
-                                            className={
-                                                'pb-6 text-[14px] ' +
-                                                (reached ? 'text-forest-ink font-medium' : 'text-[#7F857B]')
-                                            }
-                                        >
-                                            {label}
-                                        </span>
-                                    </li>
-                                );
-                            })}
-                        </ol>
-                    )}
-
-                    <SummaryCard className="mt-2">
-                        <p className="text-[12px] font-medium text-forest-cream/60 mb-3">Items</p>
-                        <ul className="space-y-1.5">
-                            {data.items.map((it, idx) => (
-                                <li key={idx} className="flex justify-between gap-4 text-[14px] text-forest-cream/80">
-                                    <span>{it.quantity}× {it.name}</span>
-                                    <span className="tabular-nums">{(it.quantity * it.unitPrice).toFixed(2)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                        <div className="flex items-baseline justify-between mt-4 pt-3 border-t border-forest-cream/10">
-                            <span className="text-[13px] text-forest-cream/70">Total</span>
-                            <span className="text-[24px] font-light tracking-[-0.03em] tabular-nums">{data.totalAmount.toFixed(2)}</span>
-                        </div>
-                    </SummaryCard>
-
-                    <p className={`mt-5 ${publicFine}`}>
-                        Last updated {new Date(data.updatedAt).toLocaleString()}
-                    </p>
-                </PaperCard>
-            )}
+            {data && <OrderView data={data} />}
         </PublicPage>
+    );
+}
+
+function OrderView({ data }: { data: TrackData }) {
+    const step = currentStep(data);
+    const pay = PAYMENT_PILL[data.paymentStatus];
+    return (
+        <>
+            <BusinessHero name={data.businessName} />
+            <PublicCard>
+                <p className="text-small text-muted">Your order</p>
+                <h1 className={cn(publicTitle, 'mt-1 break-words')}>{data.orderRef}</h1>
+                <div className="mt-3 flex flex-wrap gap-2">
+                    <StatusPill status={ORDER_PILL[data.status].status} label={ORDER_PILL[data.status].label} />
+                    <StatusPill status={pay.status} label={pay.label} />
+                </div>
+
+                {data.status === 'CANCELLED' ? (
+                    <p role="status" className="mt-5 rounded-control bg-error-soft px-4 py-3 text-body text-error-fg">
+                        This order has been cancelled. Questions? Message the business on WhatsApp.
+                    </p>
+                ) : (
+                    <Steps step={step} />
+                )}
+
+                <section aria-labelledby="items-h" className="mt-2 rounded-card border border-border bg-surface-2 p-4">
+                    <h2 id="items-h" className="text-small text-muted">Items</h2>
+                    <ul className="mt-3 space-y-2">
+                        {data.items.map((it, idx) => (
+                            <li key={idx} className="flex justify-between gap-4 text-body text-text">
+                                <span className="min-w-0 break-words">
+                                    <span className="tabular-nums text-muted">{it.quantity}×</span> {it.name}
+                                </span>
+                                <span className="shrink-0 tabular-nums">{formatCedi(it.quantity * it.unitPrice)}</span>
+                            </li>
+                        ))}
+                    </ul>
+                    <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-border pt-3">
+                        <span className="text-body font-semibold text-text">Total</span>
+                        <span className="font-display text-[28px] font-semibold leading-none tabular-nums text-text">
+                            {formatCedi(data.totalAmount)}
+                        </span>
+                    </div>
+                </section>
+
+                <p className="mt-5 text-small text-muted">Last updated {formatWhen(data.updatedAt)}</p>
+            </PublicCard>
+        </>
+    );
+}
+
+function Steps({ step }: { step: number }) {
+    return (
+        <ol className="mt-6" aria-label="Order progress">
+            {STEPS.map((label, i) => {
+                const reached = i <= step;
+                const isLast = i === STEPS.length - 1;
+                return (
+                    <li key={label} className="flex gap-3" aria-current={i === step ? 'step' : undefined}>
+                        <div className="flex flex-col items-center">
+                            <span
+                                className={cn(
+                                    'flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-bold tabular-nums',
+                                    reached ? 'bg-primary text-primary-fg' : 'border border-border bg-surface text-muted',
+                                )}
+                            >
+                                {reached ? <Check className="h-4 w-4" strokeWidth={3} aria-hidden /> : i + 1}
+                            </span>
+                            {!isLast && (
+                                <span className={cn('min-h-[24px] w-0.5 flex-1', i < step ? 'bg-primary' : 'bg-border')} />
+                            )}
+                        </div>
+                        <span className={cn('pb-6 pt-0.5 text-body', reached ? 'font-semibold text-text' : 'text-muted')}>
+                            {label}
+                            <span className="sr-only">{reached ? ' (done)' : ' (not yet)'}</span>
+                        </span>
+                    </li>
+                );
+            })}
+        </ol>
+    );
+}
+
+function TrackSkeleton() {
+    return (
+        <div aria-busy="true">
+            <h1 className="sr-only">Loading your order…</h1>
+            <div className="mb-5 flex items-center gap-3" aria-hidden>
+                <Skeleton className="h-12 w-12 rounded-control" />
+                <SkeletonLine width="w-1/2" className="h-6" />
+            </div>
+            <div className="rounded-card-lg border border-border bg-surface p-5 shadow-card sm:p-8" aria-hidden>
+                <SkeletonLine width="w-1/4" className="h-3" />
+                <SkeletonLine width="w-1/2" className="mt-3 h-7" />
+                <div className="mt-6 space-y-5">
+                    {[0, 1, 2, 3].map((i) => (
+                        <div key={i} className="flex items-center gap-3">
+                            <Skeleton className="h-7 w-7 rounded-full" />
+                            <SkeletonLine width="w-1/3" />
+                        </div>
+                    ))}
+                </div>
+                <Skeleton className="mt-6 h-28 w-full rounded-card" />
+            </div>
+        </div>
+    );
+}
+
+function Problem({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+    return (
+        <PublicCard>
+            <div className="flex flex-col items-center text-center">
+                <div aria-hidden className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-2 text-muted [&_svg]:h-8 [&_svg]:w-8">
+                    {icon}
+                </div>
+                <h1 className={cn(publicTitle, 'mt-5')}>{title}</h1>
+                <p className={cn(publicBody, 'mt-2')}>{body}</p>
+            </div>
+        </PublicCard>
     );
 }

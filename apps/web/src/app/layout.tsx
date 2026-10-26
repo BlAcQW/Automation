@@ -5,10 +5,6 @@ import {
 } from '@/lib/site';
 import './globals.css';
 import './fonts.css';
-// LEGACY: the `fs-*` marketing classes. The marketing site no longer uses
-// them, but components/auth/auth-frame.tsx and components/pay/* still do.
-// Delete this import and the file once those are migrated.
-import './marketing.css';
 import { Providers } from '@/components/providers';
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
 import { AnalyticsEvents } from '@/components/marketing/analytics-events';

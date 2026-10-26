@@ -2,9 +2,23 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { MessageCircle, Instagram, Facebook, Loader2, ArrowRight, Info } from 'lucide-react';
+import { Instagram, Facebook, Loader2, ArrowRight, Info, Smartphone, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
-import { PageHeader, Card, CardContent, Button, Badge, Modal } from '@bookingflow/ui';
+import {
+    PageHeader,
+    Card,
+    CardContent,
+    Button,
+    Modal,
+    StatusPill,
+    ConfirmDialog,
+    ErrorState,
+    SkeletonCard,
+    TickPop,
+    Stagger,
+    StaggerItem,
+} from '@bookingflow/ui';
+import { notify } from '@/components/brand/toast';
 import { useAuth } from '@/lib/auth';
 
 declare global {
@@ -57,6 +71,8 @@ export default function ChannelsPage() {
     const [connecting, setConnecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
+    const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+    const [disconnecting, setDisconnecting] = useState(false);
 
     // Page picker — we never auto-select, because a person may administer a
     // Page that is not their business.
@@ -126,11 +142,11 @@ export default function ChannelsPage() {
             });
             setPages(null);
             setSelectionToken(null);
-            setNotice(
-                res.data.instagramUsername
-                    ? `Connected ${res.data.pageName} and @${res.data.instagramUsername}.`
-                    : `Connected ${res.data.pageName}. No Instagram account is linked to this Page yet.`,
-            );
+            const message = res.data.instagramUsername
+                ? `Connected ${res.data.pageName} and @${res.data.instagramUsername}.`
+                : `Connected ${res.data.pageName}. No Instagram account is linked to this Page yet.`;
+            setNotice(message);
+            notify.success('Channel connected');
             await fetchStatus();
         } catch (err: any) {
             setError(err?.response?.data?.message ?? 'Could not connect that Page.');
@@ -141,123 +157,142 @@ export default function ChannelsPage() {
 
     async function disconnectFacebook() {
         setError(null);
+        setDisconnecting(true);
         try {
             await api.post('/channels/facebook/disconnect');
-            setNotice('Facebook and Instagram disconnected.');
+            setNotice(null);
+            notify.success('Facebook and Instagram disconnected');
             await fetchStatus();
         } catch {
             setError('Could not disconnect.');
+        } finally {
+            setDisconnecting(false);
+            setConfirmDisconnect(false);
         }
     }
 
     const fbConnected = !!status?.messenger.connected;
 
+    const connectButton = (
+        <Button onClick={connectFacebook} disabled={connecting || !isOwner} isLoading={connecting} loadingText="Connecting…">
+            <Facebook className="h-4 w-4" aria-hidden />
+            Connect
+        </Button>
+    );
+
     return (
         <div className="space-y-6">
             <PageHeader
-                title="Channels"
-                subtitle="Where your customers can reach you. The assistant answers on every channel you connect."
+                title="Your channels"
+                subtitle="Where your customers can reach you. Bookly replies on every channel you connect."
             />
 
-            {error && (
-                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-sm text-red-700 dark:text-red-300">
+            {error && status && (
+                <div role="alert" className="rounded-control border border-error/30 bg-error-soft p-4 text-[15px] text-error-fg">
                     {error}
                 </div>
             )}
             {notice && (
-                <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 text-sm text-emerald-700 dark:text-emerald-300">
-                    {notice}
-                </div>
+                <Card>
+                    <CardContent className="flex items-center gap-4">
+                        <TickPop key={notice} size={44} label="Channel connected" />
+                        <p className="text-[15px] text-text">{notice}</p>
+                    </CardContent>
+                </Card>
             )}
 
             {loading ? (
-                <div className="flex items-center gap-3 py-10 text-slate-500">
-                    <Loader2 className="w-5 h-5 animate-spin text-emerald-500" />
-                    Checking your channels…
+                <div aria-busy="true" className="space-y-4">
+                    <span className="sr-only">Loading…</span>
+                    <SkeletonCard />
+                    <SkeletonCard />
+                    <SkeletonCard />
                 </div>
+            ) : !status ? (
+                <ErrorState
+                    description={error ?? 'We could not load your channels.'}
+                    onRetry={() => { setLoading(true); setError(null); fetchStatus(); }}
+                />
             ) : (
-                <div className="space-y-4">
+                <Stagger className="space-y-4">
                     {/* WhatsApp — owns its own setup screen, so this card links out. */}
-                    <ChannelCard
-                        icon={<MessageCircle className="w-5 h-5 text-[#25D366]" />}
-                        name="WhatsApp"
-                        blurb="Bookings, deposits and reminders. The only channel Meta charges for."
-                        connected={!!status?.whatsapp.connected}
-                        label={status?.whatsapp.label ?? null}
-                        pending={status?.whatsapp.awaitingCode ? 'Waiting for your code' : null}
-                        action={
-                            <Link href="/whatsapp">
-                                <Button variant="outline">
-                                    {status?.whatsapp.connected ? 'Manage' : 'Set up'}
-                                    <ArrowRight className="w-4 h-4" />
-                                </Button>
-                            </Link>
-                        }
-                    />
+                    <StaggerItem>
+                        <ChannelCard
+                            icon={<Smartphone className="h-5 w-5 text-wa-teal" aria-hidden />}
+                            iconClass="bg-wa-green/15"
+                            name="WhatsApp"
+                            blurb="Connect your WhatsApp so customers can book, pay deposits and get reminders. The only channel Meta charges for."
+                            connected={!!status.whatsapp.connected}
+                            label={status.whatsapp.label ?? null}
+                            pending={status.whatsapp.awaitingCode ? 'Waiting for your code' : null}
+                            action={
+                                <Link href="/whatsapp" className="block">
+                                    <Button variant="secondary" fullWidth tabIndex={-1}>
+                                        {status.whatsapp.connected ? 'Manage' : 'Set up'}
+                                        <ArrowRight className="h-4 w-4" aria-hidden />
+                                    </Button>
+                                </Link>
+                            }
+                        />
+                    </StaggerItem>
 
-                    <ChannelCard
-                        icon={<Instagram className="w-5 h-5 text-[#E1306C]" />}
-                        name="Instagram"
-                        blurb="Answers DMs and takes bookings. Free — Meta charges nothing for Instagram messages."
-                        connected={!!status?.instagram.connected}
-                        label={status?.instagram.label ?? null}
-                        pending={fbConnected && !status?.instagram.connected
-                            ? 'Page connected, but no Instagram account is linked to it'
-                            : null}
-                        action={
-                            fbConnected ? null : (
-                                <Button onClick={connectFacebook} disabled={connecting || !isOwner}>
-                                    {connecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Facebook className="w-4 h-4" />}
-                                    Connect
-                                </Button>
-                            )
-                        }
-                    />
+                    <StaggerItem>
+                        <ChannelCard
+                            icon={<Instagram className="h-5 w-5 text-text" aria-hidden />}
+                            name="Instagram"
+                            blurb="Reply to DMs and take bookings. Free — Meta charges nothing for Instagram messages."
+                            connected={!!status.instagram.connected}
+                            label={status.instagram.label ?? null}
+                            pending={fbConnected && !status.instagram.connected
+                                ? 'Your Page is connected, but no Instagram account is linked to it yet'
+                                : null}
+                            action={fbConnected ? null : connectButton}
+                        />
+                    </StaggerItem>
 
-                    <ChannelCard
-                        icon={<Facebook className="w-5 h-5 text-[#1877F2]" />}
-                        name="Facebook Messenger"
-                        blurb="Answers messages to your Page. Free — Meta charges nothing for Messenger."
-                        connected={fbConnected}
-                        label={status?.messenger.label ?? null}
-                        action={
-                            fbConnected ? (
-                                <Button variant="outline" onClick={disconnectFacebook} disabled={!isOwner}>
-                                    Disconnect
-                                </Button>
-                            ) : (
-                                <Button onClick={connectFacebook} disabled={connecting || !isOwner}>
-                                    {connecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Facebook className="w-4 h-4" />}
-                                    Connect
-                                </Button>
-                            )
-                        }
-                    />
+                    <StaggerItem>
+                        <ChannelCard
+                            icon={<Facebook className="h-5 w-5 text-text" aria-hidden />}
+                            name="Facebook Messenger"
+                            blurb="Reply to messages sent to your Page. Free — Meta charges nothing for Messenger."
+                            connected={fbConnected}
+                            label={status.messenger.label ?? null}
+                            action={
+                                fbConnected ? (
+                                    <Button variant="secondary" onClick={() => setConfirmDisconnect(true)} disabled={!isOwner}>
+                                        Disconnect
+                                    </Button>
+                                ) : connectButton
+                            }
+                        />
+                    </StaggerItem>
 
                     {!isOwner && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="flex items-center gap-2 text-small text-muted">
+                            <Lock className="h-4 w-4 shrink-0" aria-hidden />
                             Only the account owner can connect or disconnect channels.
                         </p>
                     )}
 
-                    <Card>
-                        <CardContent className="flex gap-3 text-sm text-slate-600 dark:text-slate-300">
-                            <Info className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
-                            <div className="space-y-1">
-                                <p>
-                                    Instagram and Messenger connect together, because Instagram messages
-                                    are delivered through your Facebook Page. You will pick which Page to
-                                    use.
-                                </p>
-                                <p className="text-slate-500 dark:text-slate-400">
-                                    Reminders only go out on WhatsApp. On Instagram and Messenger, Meta
-                                    does not allow messages once a customer has been quiet for 24 hours —
-                                    so those bookings are reminded by SMS instead.
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                    <StaggerItem>
+                        <Card className="bg-surface-2 shadow-none">
+                            <CardContent className="flex gap-3 text-[15px] text-text">
+                                <Info className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+                                <div className="space-y-2">
+                                    <p>
+                                        Instagram and Messenger connect together, because Instagram messages
+                                        come through your Facebook Page. You will pick which Page to use.
+                                    </p>
+                                    <p className="text-muted">
+                                        Reminders only go out on WhatsApp. On Instagram and Messenger, Meta
+                                        does not allow messages once a customer has been quiet for 24 hours —
+                                        so those bookings are reminded by SMS instead.
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </StaggerItem>
+                </Stagger>
             )}
 
             {/* Page picker. Never auto-selected: a person may administer several
@@ -266,6 +301,7 @@ export default function ChannelsPage() {
                 isOpen={!!pages}
                 onClose={() => { setPages(null); setSelectionToken(null); }}
                 title="Which Page is your business?"
+                description="Pick the Page your customers message. We never choose for you."
             >
                 <div className="space-y-2">
                     {(pages ?? []).map((p) => (
@@ -274,31 +310,42 @@ export default function ChannelsPage() {
                             type="button"
                             onClick={() => choosePage(p.pageId)}
                             disabled={!!savingPage}
-                            className="w-full text-left p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                            className="min-h-[56px] w-full rounded-control border border-border bg-surface p-4 text-left transition-colors duration-ui hover:border-primary hover:bg-primary-soft disabled:opacity-50"
                         >
                             <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="font-medium text-slate-900 dark:text-white text-sm">{p.pageName}</p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                <div className="min-w-0">
+                                    <p className="text-[15px] font-semibold text-text">{p.pageName}</p>
+                                    <p className="mt-0.5 text-small text-muted">
                                         {p.hasInstagram
                                             ? `Instagram @${p.instagramUsername} will connect too`
                                             : 'No Instagram account linked to this Page'}
                                     </p>
                                 </div>
                                 {savingPage === p.pageId
-                                    ? <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
-                                    : <ArrowRight className="w-4 h-4 text-slate-400" />}
+                                    ? <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" aria-hidden />
+                                    : <ArrowRight className="h-5 w-5 shrink-0 text-muted" aria-hidden />}
                             </div>
                         </button>
                     ))}
                 </div>
             </Modal>
+
+            <ConfirmDialog
+                isOpen={confirmDisconnect}
+                onClose={() => setConfirmDisconnect(false)}
+                onConfirm={disconnectFacebook}
+                title="Disconnect Facebook and Instagram?"
+                description="Bookly will stop replying to Messenger and Instagram messages. You can connect again any time."
+                confirmLabel="Disconnect"
+                isLoading={disconnecting}
+            />
         </div>
     );
 }
 
 interface ChannelCardProps {
     icon: React.ReactNode;
+    iconClass?: string;
     name: string;
     blurb: string;
     connected: boolean;
@@ -307,28 +354,28 @@ interface ChannelCardProps {
     action: React.ReactNode;
 }
 
-function ChannelCard({ icon, name, blurb, connected, label, pending, action }: ChannelCardProps) {
+function ChannelCard({ icon, iconClass, name, blurb, connected, label, pending, action }: ChannelCardProps) {
     return (
         <Card>
-            <CardContent className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-700/50 flex items-center justify-center shrink-0">
+            <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-control ${iconClass ?? 'bg-surface-2'}`}>
                     {icon}
                 </div>
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-slate-900 dark:text-white text-sm">{name}</p>
+                <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-[17px] font-bold text-text">{name}</h2>
                         {connected
-                            ? <Badge variant="default" dot>Connected</Badge>
-                            : <Badge variant="slate">Not connected</Badge>}
+                            ? <StatusPill status="connected" size="sm" />
+                            : <StatusPill status="not_connected" tone="neutral" label="Not connected" size="sm" />}
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    <p className="mt-1 text-[15px] text-muted">
                         {connected && label ? label : blurb}
                     </p>
                     {pending && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{pending}</p>
+                        <StatusPill status="pending" label={pending} size="sm" className="mt-2 whitespace-normal" />
                     )}
                 </div>
-                {action && <div className="shrink-0">{action}</div>}
+                {action && <div className="w-full shrink-0 sm:w-auto [&>button]:w-full sm:[&>button]:w-auto">{action}</div>}
             </CardContent>
         </Card>
     );

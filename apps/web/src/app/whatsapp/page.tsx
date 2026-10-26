@@ -3,12 +3,28 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
-import { motion } from 'framer-motion';
 import {
-    MessageCircle, Check, AlertCircle, Loader2,
-    Smartphone, Send, Unplug, Zap, Bot, CalendarCheck, ShieldCheck, Wifi, WifiOff
+    AlertCircle, Smartphone, Send, Unplug, Zap, Store, CalendarCheck, ShieldCheck, Sparkles, Link2,
 } from 'lucide-react';
-import { Card, CardHeader, CardTitle, CardContent, Button, Badge, DashboardInput } from '@bookingflow/ui';
+import {
+    PageHeader,
+    Card,
+    CardHeader,
+    CardTitle,
+    CardContent,
+    Button,
+    StatusPill,
+    DashboardInput,
+    PhoneInput,
+    Textarea,
+    ConfirmDialog,
+    SkeletonLine,
+    Skeleton,
+    TickPop,
+    Stagger,
+    StaggerItem,
+} from '@bookingflow/ui';
+import { notify } from '@/components/brand/toast';
 
 declare global {
     interface Window {
@@ -41,13 +57,18 @@ const FACEBOOK_MESSAGE_ORIGINS = new Set([
     'https://business.facebook.com',
 ]);
 
+/** WhatsApp's own colour, used only for the WhatsApp connect button. */
+const WA_BUTTON = 'bg-wa-dark text-cream hover:bg-wa-dark/90';
+
 export default function WhatsAppSetupPage() {
     const { tenant } = useAuth();
     const [status, setStatus] = useState<WhatsAppStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [connecting, setConnecting] = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
+    const [confirmDisconnect, setConfirmDisconnect] = useState<null | 'disconnect' | 'restart'>(null);
     const [testPhone, setTestPhone] = useState('');
+    const [testE164, setTestE164] = useState<string | null>(null);
     const [testMessage, setTestMessage] = useState('Hello! This is a test message from Bookly.');
     const [sending, setSending] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -58,6 +79,7 @@ export default function WhatsAppSetupPage() {
     // The number is added to Bookly's own WABA, so Meta bills Bookly and the
     // tenant pays us in local currency instead of needing a card Meta accepts.
     const [hostedForm, setHostedForm] = useState({ countryCode: '233', localNumber: '' });
+    const [hostedDisplay, setHostedDisplay] = useState('');
     const [hostedSubmitting, setHostedSubmitting] = useState(false);
     const [otp, setOtp] = useState('');
     const [verifying, setVerifying] = useState(false);
@@ -73,6 +95,7 @@ export default function WhatsAppSetupPage() {
                 type: 'success',
                 text: `We sent a 6-digit code to ${res.data.displayNumber}. Enter it below.`,
             });
+            notify.success('Code sent');
             await fetchStatus();
         } catch (err: any) {
             setMessage({
@@ -92,6 +115,7 @@ export default function WhatsAppSetupPage() {
             await api.post('/whatsapp/hosted/verify', { code: otp });
             setOtp('');
             setMessage({ type: 'success', text: 'Your WhatsApp number is live.' });
+            notify.success('WhatsApp is live');
             await fetchStatus();
         } catch (err: any) {
             setMessage({
@@ -157,7 +181,7 @@ export default function WhatsAppSetupPage() {
             const response = await api.get('/whatsapp/status');
             setStatus(response.data);
         } catch {
-            setMessage({ type: 'error', text: 'Failed to load WhatsApp status.' });
+            setMessage({ type: 'error', text: 'We could not check your WhatsApp connection. Refresh to try again.' });
         } finally {
             setLoading(false);
         }
@@ -192,7 +216,7 @@ export default function WhatsAppSetupPage() {
         script.crossOrigin = 'anonymous';
         script.onerror = () => {
             setSdkFailed(true);
-            setMessage({ type: 'error', text: 'Facebook SDK blocked. Please disable ad-blockers for this page and try again.' });
+            setMessage({ type: 'error', text: 'Facebook could not load. Turn off any ad-blocker for this page and try again.' });
         };
         document.body.appendChild(script);
     };
@@ -209,7 +233,7 @@ export default function WhatsAppSetupPage() {
         const configId = process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID;
 
         if (!window.FB) {
-            setMessage({ type: 'error', text: 'Facebook SDK not loaded. Please disable ad-blockers and refresh the page.' });
+            setMessage({ type: 'error', text: 'Facebook could not load. Turn off any ad-blocker and refresh the page.' });
             return;
         }
 
@@ -250,7 +274,7 @@ export default function WhatsAppSetupPage() {
                             exchangeCodeForToken(response.authResponse.code, sessionInfo);
                         } else {
                             setConnecting(false);
-                            setMessage({ type: 'error', text: 'WhatsApp signup was cancelled or failed.' });
+                            setMessage({ type: 'error', text: 'WhatsApp setup was cancelled. You can try again any time.' });
                         }
                     }, 300);
                 },
@@ -279,10 +303,11 @@ export default function WhatsAppSetupPage() {
                 type: 'success',
                 text: `WhatsApp connected: ${res.data.displayNumber}${verified}`,
             });
+            notify.success('WhatsApp connected');
         } catch (err: any) {
             setMessage({
                 type: 'error',
-                text: err.response?.data?.message || 'Failed to complete WhatsApp signup',
+                text: err.response?.data?.message || "Oops, we couldn't finish connecting WhatsApp. Let's try again.",
             });
         } finally {
             setConnecting(false);
@@ -312,12 +337,13 @@ export default function WhatsAppSetupPage() {
                 displayNumber: manualForm.displayNumber.trim() || undefined,
             });
             await fetchStatus();
-            setMessage({ type: 'success', text: 'WhatsApp connected via manual values.' });
+            setMessage({ type: 'success', text: 'WhatsApp connected with your own details.' });
+            notify.success('WhatsApp connected');
             setManualForm({ phoneNumberId: '', accountId: '', accessToken: '', displayNumber: '' });
         } catch (err: any) {
             setMessage({
                 type: 'error',
-                text: err.response?.data?.message || 'Manual WhatsApp connect failed',
+                text: err.response?.data?.message || "Those details didn't work. Check them and try again.",
             });
         } finally {
             setManualSubmitting(false);
@@ -325,17 +351,17 @@ export default function WhatsAppSetupPage() {
     };
 
     const disconnect = async () => {
-        if (!confirm('Disconnect WhatsApp? This will stop all bot conversations.')) return;
-
         setDisconnecting(true);
         try {
             await api.post('/whatsapp/disconnect');
             setStatus({ connected: false });
             setMessage({ type: 'success', text: 'WhatsApp disconnected.' });
+            notify.success('WhatsApp disconnected');
         } catch (err) {
-            setMessage({ type: 'error', text: 'Failed to disconnect WhatsApp' });
+            setMessage({ type: 'error', text: "Oops, we couldn't disconnect WhatsApp. Let's try again." });
         } finally {
             setDisconnecting(false);
+            setConfirmDisconnect(null);
         }
     };
 
@@ -347,108 +373,80 @@ export default function WhatsAppSetupPage() {
         setMessage(null);
         try {
             await api.post('/whatsapp/send-test', {
-                to: testPhone.replace(/\D/g, ''),
+                to: (testE164 ?? testPhone).replace(/\D/g, ''),
                 message: testMessage,
             });
             setMessage({ type: 'success', text: 'Test message sent!' });
+            notify.success('Test message sent');
         } catch (err: any) {
-            setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to send message' });
+            setMessage({ type: 'error', text: err.response?.data?.message || "Oops, the message didn't send. Let's try again." });
         } finally {
             setSending(false);
         }
     };
 
     const steps = [
-        {
-            step: 1,
-            title: 'Connect WhatsApp Business',
-            desc: 'Link your Meta Business account via the official signup flow',
-            icon: Smartphone,
-            color: 'text-emerald-600 dark:text-emerald-400',
-            bg: 'bg-emerald-50 dark:bg-emerald-900/30',
-        },
-        {
-            step: 2,
-            title: 'Customer messages you',
-            desc: 'They text your business number on WhatsApp',
-            icon: MessageCircle,
-            color: 'text-emerald-600 dark:text-emerald-400',
-            bg: 'bg-emerald-50 dark:bg-emerald-900/30',
-        },
-        {
-            step: 3,
-            title: 'AI handles booking',
-            desc: 'The bot guides them through scheduling automatically',
-            icon: Bot,
-            color: 'text-emerald-600 dark:text-emerald-400',
-            bg: 'bg-emerald-50 dark:bg-emerald-900/30',
-        },
-        {
-            step: 4,
-            title: 'Booking confirmed',
-            desc: 'Both parties receive a confirmation instantly',
-            icon: CalendarCheck,
-            color: 'text-emerald-600 dark:text-emerald-400',
-            bg: 'bg-emerald-50 dark:bg-emerald-900/30',
-        },
+        { step: 1, title: 'Connect your WhatsApp', desc: 'Link your business number in a few taps', icon: Link2 },
+        { step: 2, title: 'A customer messages you', desc: 'They text your business number on WhatsApp', icon: Smartphone },
+        { step: 3, title: 'Bookly takes the booking', desc: 'We guide them to pick a time, any hour of the day', icon: Store },
+        { step: 4, title: 'Booking confirmed', desc: 'You and your customer both get a confirmation right away', icon: CalendarCheck },
     ];
 
     return (
-        <div className="space-y-6 max-w-3xl animate-in fade-in duration-500">
-            {/* Page Header */}
-            <div>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-slate-900 dark:text-white">
-                    WhatsApp Integration
-                </h1>
-                <p className="text-slate-500 dark:text-slate-400 mt-1">
-                    Connect your WhatsApp Business account to receive bookings
-                </p>
-            </div>
+        <div className="max-w-3xl space-y-6">
+            <PageHeader
+                title="WhatsApp"
+                subtitle="Connect your WhatsApp so customers can book with you, any time."
+            />
 
-            {/* Alert Banner */}
             {message && (
-                <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm ${message.type === 'success'
-                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700/50 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/50 text-red-700 dark:text-red-300'
+                <div
+                    role={message.type === 'error' ? 'alert' : 'status'}
+                    className={`flex items-center gap-3 rounded-control border px-4 py-3 text-[15px] ${message.type === 'success'
+                        ? 'border-success/30 bg-success-soft text-success-fg'
+                        : 'border-error/30 bg-error-soft text-error-fg'
                         }`}
                 >
                     {message.type === 'success'
-                        ? <Check className="w-4 h-4 flex-shrink-0" />
-                        : <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        ? <TickPop key={message.text} size={28} label="Done" className="shrink-0" />
+                        : <AlertCircle className="h-5 w-5 shrink-0" aria-hidden />
                     }
-                    <span>{message.text}</span>
-                </motion.div>
+                    <span className="min-w-0 break-words">{message.text}</span>
+                </div>
             )}
 
-            {/* Connection Status Card */}
+            {/* Connection status */}
             <Card>
                 <CardHeader>
-                    <CardTitle>
-                        <Smartphone className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                        Connection Status
+                    <CardTitle className="flex flex-wrap items-center gap-2">
+                        <Smartphone className="h-5 w-5 text-primary" aria-hidden />
+                        Your connection
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
                     {loading ? (
-                        <div className="flex items-center gap-3 py-4">
-                            <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-                            <span className="text-slate-500 dark:text-slate-400">Checking connection...</span>
+                        <div aria-busy="true" className="space-y-3 py-2">
+                            <span className="sr-only">Loading…</span>
+                            <div className="flex items-center gap-3">
+                                <Skeleton className="h-12 w-12 rounded-control" />
+                                <div className="flex-1 space-y-2">
+                                    <SkeletonLine width="w-1/2" />
+                                    <SkeletonLine width="w-3/4" />
+                                </div>
+                            </div>
+                            <Skeleton className="h-11 w-48 rounded-control" />
                         </div>
                     ) : status?.awaitingCode ? (
                         <div className="space-y-5">
-                            <div className="flex items-center gap-3 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700/50">
-                                <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
-                                    <MessageCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                            <div className="flex items-start gap-3 rounded-control border border-warning/40 bg-warning-soft p-4">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control bg-surface text-warning-fg">
+                                    <ShieldCheck className="h-5 w-5" aria-hidden />
                                 </div>
-                                <div>
-                                    <p className="font-medium text-amber-900 dark:text-amber-200 text-sm">
+                                <div className="min-w-0">
+                                    <p className="text-[15px] font-semibold text-text">
                                         Enter the code we sent to {status.displayNumber}
                                     </p>
-                                    <p className="text-amber-700 dark:text-amber-300 text-xs">
+                                    <p className="text-small text-warning-fg">
                                         It is a 6-digit code, by SMS. It can take a minute to arrive.
                                     </p>
                                 </div>
@@ -464,15 +462,15 @@ export default function WhatsAppSetupPage() {
                                     autoComplete="one-time-code"
                                     maxLength={8}
                                     required
+                                    className="text-[20px] tracking-[0.3em] tabular-nums"
                                 />
-                                <div className="flex flex-wrap gap-3">
-                                    <Button type="submit" disabled={verifying || otp.trim().length < 4}>
-                                        {verifying ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                                    <Button type="submit" disabled={otp.trim().length < 4} isLoading={verifying} loadingText="Checking…">
                                         Verify and go live
                                     </Button>
                                     <Button
                                         type="button"
-                                        variant="outline"
+                                        variant="secondary"
                                         disabled={resending}
                                         onClick={() => resendCode('SMS')}
                                     >
@@ -480,7 +478,7 @@ export default function WhatsAppSetupPage() {
                                     </Button>
                                     <Button
                                         type="button"
-                                        variant="outline"
+                                        variant="secondary"
                                         disabled={resending}
                                         onClick={() => resendCode('VOICE')}
                                     >
@@ -489,62 +487,60 @@ export default function WhatsAppSetupPage() {
                                 </div>
                             </form>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                            <p className="text-small text-muted">
                                 Wrong number?{' '}
-                                <button type="button" onClick={disconnect} className="underline hover:text-slate-700 dark:hover:text-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmDisconnect('restart')}
+                                    className="inline-flex min-h-[44px] items-center font-semibold text-primary underline underline-offset-2"
+                                >
                                     Start again
                                 </button>
                             </p>
                         </div>
                     ) : status?.connected ? (
                         <div className="space-y-6">
-                            {/* Connected Banner */}
-                            <div className="flex items-center justify-between p-4 bg-wa-green/10 dark:bg-wa-green/[0.08] rounded-xl border border-wa-green/30 dark:border-wa-green/25">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-wa-green/15 flex items-center justify-center">
-                                        <Wifi className="w-5 h-5 text-wa-dark dark:text-wa-green" />
+                            <div className="flex flex-col gap-3 rounded-control border border-wa-green/30 bg-wa-green/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control bg-wa-green/20 text-wa-teal">
+                                        <Smartphone className="h-5 w-5" aria-hidden />
                                     </div>
-                                    <div>
-                                        <p className="font-medium text-slate-900 dark:text-white text-sm">WhatsApp Connected</p>
-                                        <p className="text-slate-600 dark:text-slate-300 text-xs">
+                                    <div className="min-w-0">
+                                        <h2 className="text-[17px] font-bold text-text">WhatsApp is connected</h2>
+                                        <p className="break-words text-[15px] text-muted">
                                             {status.displayNumber || 'WhatsApp Business'}
                                         </p>
                                     </div>
                                 </div>
-                                <Badge variant="default" dot pulse>Connected</Badge>
+                                <StatusPill status="connected" className="self-start sm:self-auto" />
                             </div>
 
-                            {/* Quick Stats */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <Stagger className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                                 {[
-                                    { label: 'Status', value: 'Active', icon: ShieldCheck, color: 'text-emerald-600 dark:text-emerald-400' },
-                                    { label: 'Bot', value: 'Running', icon: Bot, color: 'text-emerald-600 dark:text-emerald-400' },
-                                    { label: 'Auto-Reply', value: 'On', icon: Zap, color: 'text-emerald-600 dark:text-emerald-400' },
-                                ].map(({ label, value, icon: Icon, color }, i) => (
-                                    <motion.div
+                                    { label: 'Status', value: 'Active', icon: ShieldCheck },
+                                    { label: 'Bookings', value: 'Taking bookings', icon: CalendarCheck },
+                                    { label: 'Auto-replies', value: 'On', icon: Sparkles },
+                                ].map(({ label, value, icon: Icon }) => (
+                                    <StaggerItem
                                         key={label}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: i * 0.1 }}
-                                        className="text-center p-3 rounded-xl bg-slate-50 dark:bg-slate-700/30 border border-slate-200 dark:border-slate-700"
+                                        className="flex items-center gap-3 rounded-control border border-border bg-surface-2 p-3 sm:flex-col sm:text-center"
                                     >
-                                        <Icon className={`w-5 h-5 mx-auto mb-1.5 ${color}`} />
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
-                                        <p className="text-sm font-medium text-slate-900 dark:text-white">{value}</p>
-                                    </motion.div>
+                                        <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                                        <div>
+                                            <p className="text-small text-muted">{label}</p>
+                                            <p className="text-[15px] font-semibold text-text">{value}</p>
+                                        </div>
+                                    </StaggerItem>
                                 ))}
-                            </div>
+                            </Stagger>
 
                             <Button
-                                variant="destructive"
-                                onClick={disconnect}
-                                disabled={disconnecting}
-                                className="w-full sm:w-auto"
+                                variant="secondary"
+                                onClick={() => setConfirmDisconnect('disconnect')}
+                                isLoading={disconnecting}
+                                className="w-full text-error-fg sm:w-auto"
                             >
-                                {disconnecting
-                                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                                    : <Unplug className="w-4 h-4" />
-                                }
+                                <Unplug className="h-4 w-4" aria-hidden />
                                 Disconnect WhatsApp
                             </Button>
                         </div>
@@ -553,136 +549,116 @@ export default function WhatsAppSetupPage() {
                             {/* Hosted path — we own the number on Bookly's WABA, so Meta
                                 bills us and the tenant never needs a card Meta accepts. */}
                             {status?.hostedAvailable && (
-                                <div className="p-5 rounded-xl border-2 border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/60 dark:bg-emerald-900/10 space-y-4">
+                                <section className="space-y-4 rounded-card border-2 border-primary/30 bg-primary-soft p-5">
                                     <div>
-                                        <div className="flex items-center gap-2">
-                                            <p className="font-medium text-slate-900 dark:text-white text-sm">
-                                                Use a Bookly number
-                                            </p>
-                                            <Badge variant="default">Recommended</Badge>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h2 className="text-[17px] font-bold text-text">Use a Bookly number</h2>
+                                            <span className="rounded-full bg-primary px-2.5 py-0.5 text-[12px] font-semibold text-primary-fg">
+                                                Recommended
+                                            </span>
                                         </div>
-                                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                                        <p className="mt-1 text-[15px] text-muted">
                                             We set the number up for you and handle the WhatsApp fees — you pay us
                                             in one bill, by Mobile Money or card. No Facebook account needed.
                                         </p>
                                     </div>
 
                                     <form onSubmit={startHosted} className="space-y-3">
-                                        <div className="flex gap-3">
-                                            <div className="w-28 shrink-0">
-                                                <DashboardInput
-                                                    label="Code"
-                                                    value={hostedForm.countryCode}
-                                                    onChange={(e) => setHostedForm({ ...hostedForm, countryCode: e.target.value })}
-                                                    placeholder="233"
-                                                    inputMode="numeric"
-                                                    required
-                                                />
-                                            </div>
-                                            <div className="flex-1">
-                                                <DashboardInput
-                                                    label="Business phone number"
-                                                    value={hostedForm.localNumber}
-                                                    onChange={(e) => setHostedForm({ ...hostedForm, localNumber: e.target.value })}
-                                                    placeholder="024 123 4567"
-                                                    inputMode="tel"
-                                                    required
-                                                />
-                                            </div>
-                                        </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                                            This number must not already have WhatsApp on a phone. Use a spare
-                                            SIM, or delete WhatsApp on that number first.
-                                        </p>
-                                        <Button type="submit" disabled={hostedSubmitting}>
-                                            {hostedSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
+                                        <PhoneInput
+                                            id="wa-hosted-number"
+                                            label="Business phone number"
+                                            value={hostedDisplay}
+                                            onChange={(display, e164) => {
+                                                setHostedDisplay(display);
+                                                setHostedForm({
+                                                    ...hostedForm,
+                                                    localNumber: e164 ? `0${e164.slice(4)}` : display,
+                                                });
+                                            }}
+                                            hint="This number must not already have WhatsApp on a phone. Use a spare SIM, or delete WhatsApp on that number first."
+                                            required
+                                        />
+                                        <Button type="submit" variant="accent" isLoading={hostedSubmitting} loadingText="Sending…" className="w-full sm:w-auto">
                                             Send me a code
                                         </Button>
                                     </form>
-                                </div>
+                                </section>
                             )}
 
                             {status?.hostedAvailable && (
-                                <div className="flex items-center gap-3">
-                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
-                                    <span className="text-xs font-medium text-slate-400 dark:text-slate-500">or</span>
-                                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                                <div className="flex items-center gap-3" aria-hidden>
+                                    <div className="h-px flex-1 bg-border" />
+                                    <span className="text-small text-muted">or</span>
+                                    <div className="h-px flex-1 bg-border" />
                                 </div>
                             )}
 
-                            {/* Not Connected Banner */}
-                            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-200 dark:border-slate-600">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
-                                        <WifiOff className="w-5 h-5 text-slate-500" />
+                            <div className="flex flex-col gap-3 rounded-control border border-border bg-surface-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control bg-surface text-muted">
+                                        <Link2 className="h-5 w-5" aria-hidden />
                                     </div>
-                                    <div>
-                                        <p className="font-medium text-slate-900 dark:text-slate-200 text-sm">Not Connected</p>
-                                        <p className="text-slate-500 dark:text-slate-400 text-xs">
-                                            Connect to start receiving bookings via WhatsApp
+                                    <div className="min-w-0">
+                                        <h2 className="text-[17px] font-bold text-text">Use your own WhatsApp Business</h2>
+                                        <p className="text-[15px] text-muted">
+                                            Connect it to start getting bookings on WhatsApp.
                                         </p>
                                     </div>
                                 </div>
                                 {/* "SDK ready" means nothing to a business owner; only
                                     surface the two states they can act on. */}
                                 {sdkFailed ? (
-                                    <Badge variant="red" dot>Blocked</Badge>
+                                    <StatusPill status="failed" label="Blocked" className="self-start sm:self-auto" />
                                 ) : !sdkReady ? (
-                                    <Badge variant="yellow" dot pulse>Preparing</Badge>
-                                ) : null}
+                                    <StatusPill status="pending" label="Getting ready" className="self-start sm:self-auto" />
+                                ) : (
+                                    <StatusPill status="not_connected" tone="neutral" label="Not connected" className="self-start sm:self-auto" />
+                                )}
                             </div>
 
-                            {/* SDK Failed Warning */}
                             {sdkFailed && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-xl"
-                                >
+                                <div className="rounded-control border border-warning/40 bg-warning-soft p-4">
                                     <div className="flex items-start gap-3">
-                                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                                        <div>
-                                            <p className="font-medium text-amber-900 dark:text-amber-200 text-sm">Facebook SDK could not load</p>
-                                            <p className="text-amber-700 dark:text-amber-300 text-xs mt-1">
+                                        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning-fg" aria-hidden />
+                                        <div className="min-w-0">
+                                            <p className="text-[15px] font-semibold text-text">Facebook could not load</p>
+                                            <p className="mt-1 text-small text-warning-fg">
                                                 This usually happens when an ad-blocker or browser extension is blocking{' '}
-                                                <code className="bg-amber-200/50 dark:bg-amber-800/50 px-1.5 py-0.5 rounded text-xs">connect.facebook.net</code>
+                                                <code className="break-all rounded bg-surface px-1.5 py-0.5 text-[13px] text-text">connect.facebook.net</code>
                                             </p>
-                                            <ul className="list-disc ml-5 mt-2 text-amber-700 dark:text-amber-300 text-xs space-y-0.5">
-                                                <li>Disable ad-blockers for this page</li>
-                                                <li>Try in an Incognito/Private window</li>
+                                            <ul className="ml-5 mt-2 list-disc space-y-0.5 text-small text-text">
+                                                <li>Turn off ad-blockers for this page</li>
+                                                <li>Try a private (incognito) window</li>
                                                 <li>Use a different browser</li>
                                             </ul>
-                                            <Button variant="outline" size="sm" onClick={retrySDK} className="mt-3">
-                                                Retry SDK
+                                            <Button variant="secondary" size="sm" onClick={retrySDK} className="mt-3">
+                                                Try again
                                             </Button>
                                         </div>
                                     </div>
-                                </motion.div>
+                                </div>
                             )}
 
-                            {/* Connect Button */}
                             <Button
                                 onClick={launchWhatsAppSignup}
-                                disabled={connecting || !sdkReady}
-                                className="w-full sm:w-auto rounded-[3px] bg-wa-green hover:bg-[#20bd5a] text-white border-none shadow-[inset_0_1px_0_rgba(255,255,255,.14)] disabled:shadow-none"
+                                disabled={!sdkReady}
+                                isLoading={connecting}
+                                loadingText="Connecting…"
+                                className={`w-full sm:w-auto ${WA_BUTTON}`}
                             >
-                                {connecting ? (
-                                    <Loader2 className="w-5 h-5 animate-spin" />
-                                ) : (
-                                    <MessageCircle className="w-5 h-5" />
-                                )}
+                                <Smartphone className="h-5 w-5" aria-hidden />
                                 Connect WhatsApp Business
                             </Button>
 
                             {/* Manual fallback — collapsed by default. For tenants
                                 where Embedded Signup can't run (ad-blocker, region,
                                 third-party-cookie disabled). */}
-                            <details className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 p-4 group">
-                                <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300 group-open:mb-4">
-                                    Advanced: connect with your own Meta credentials
+                            <details className="group rounded-control border border-border p-4">
+                                <summary className="flex min-h-[44px] cursor-pointer items-center text-[15px] font-semibold text-text group-open:mb-3">
+                                    Advanced: connect with your own Meta details
                                 </summary>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-                                    Only needed if the green button above does not work for you. Your
+                                <p className="mb-3 text-small text-muted">
+                                    Only needed if the button above does not work for you. Your
                                     developer or IT person can find these values in Meta Business
                                     Manager (WhatsApp → API Setup, and Business Settings → System Users).
                                 </p>
@@ -713,7 +689,7 @@ export default function WhatsAppSetupPage() {
                                         required
                                     />
                                     <DashboardInput
-                                        label="Display Phone Number (optional, e.g. +1 555 0100)"
+                                        label="Display phone number (optional, e.g. +233 24 412 3456)"
                                         value={manualForm.displayNumber}
                                         onChange={(e) =>
                                             setManualForm({ ...manualForm, displayNumber: e.target.value })
@@ -721,11 +697,11 @@ export default function WhatsAppSetupPage() {
                                     />
                                     <Button
                                         type="submit"
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={manualSubmitting}
+                                        variant="secondary"
+                                        isLoading={manualSubmitting}
+                                        loadingText="Connecting…"
                                     >
-                                        {manualSubmitting ? 'Connecting…' : 'Connect with these values'}
+                                        Connect with these details
                                     </Button>
                                 </form>
                             </details>
@@ -734,91 +710,89 @@ export default function WhatsAppSetupPage() {
                 </CardContent>
             </Card>
 
-            {/* How It Works */}
+            {/* How it works */}
             <Card>
                 <CardHeader>
-                    <CardTitle>
-                        <Zap className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    <CardTitle className="flex items-center gap-2">
+                        <Zap className="h-5 w-5 text-primary" aria-hidden />
                         How it works
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="space-y-4">
-                        {steps.map(({ step, title, desc, icon: Icon, color, bg }, index) => (
-                            <motion.div
+                    <Stagger as="ol" className="space-y-2">
+                        {steps.map(({ step, title, desc, icon: Icon }) => (
+                            <StaggerItem
+                                as="li"
                                 key={step}
-                                initial={{ opacity: 0, x: -15 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.1 }}
-                                className="flex items-center gap-4 group p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
+                                className="flex items-center gap-4 rounded-control p-3 transition-colors duration-ui hover:bg-surface-2"
                             >
-                                <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0 transition-transform group-hover:-translate-y-0.5`}>
-                                    <Icon className={`w-5 h-5 ${color}`} />
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
+                                    <Icon className="h-5 w-5" aria-hidden />
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-medium text-slate-900 dark:text-white text-sm group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                                        {title}
-                                    </p>
-                                    <p className="text-xs text-slate-500 dark:text-slate-400">{desc}</p>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[15px] font-semibold text-text">{title}</p>
+                                    <p className="text-small text-muted">{desc}</p>
                                 </div>
-                                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-medium tabular-nums text-slate-400 dark:text-slate-500">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-2 text-[13px] font-semibold tabular-nums text-muted" aria-label={`Step ${step}`}>
                                     {step}
                                 </span>
-                            </motion.div>
+                            </StaggerItem>
                         ))}
-                    </div>
+                    </Stagger>
                 </CardContent>
             </Card>
 
-            {/* Test Message (only when connected) */}
+            {/* Test message (only when connected) */}
             {status?.connected && (
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>
-                                <Send className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                                Send Test Message
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <form onSubmit={sendTestMessage} className="space-y-4">
-                                <DashboardInput
-                                    label="Phone Number (with country code)"
-                                    type="tel"
-                                    value={testPhone}
-                                    onChange={(e) => setTestPhone(e.target.value)}
-                                    placeholder="+1234567890"
-                                />
-                                <div className="space-y-1.5">
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                                        Message
-                                    </label>
-                                    <textarea
-                                        value={testMessage}
-                                        onChange={(e) => setTestMessage(e.target.value)}
-                                        rows={3}
-                                        className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500/50 hover:border-slate-300 dark:hover:border-slate-500 transition-all"
-                                    />
-                                </div>
-                                <Button
-                                    type="submit"
-                                    disabled={sending || !testPhone}
-                                >
-                                    {sending
-                                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                                        : <Send className="w-4 h-4" />
-                                    }
-                                    Send Test
-                                </Button>
-                            </form>
-                        </CardContent>
-                    </Card>
-                </motion.div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Send className="h-5 w-5 text-primary" aria-hidden />
+                            Send a test message
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={sendTestMessage} className="space-y-4">
+                            <PhoneInput
+                                id="wa-test-phone"
+                                label="Send it to"
+                                value={testPhone}
+                                onChange={(display, e164) => { setTestPhone(display); setTestE164(e164); }}
+                                hint="Try your own number to see what customers get."
+                            />
+                            <Textarea
+                                id="wa-test-message"
+                                label="Message"
+                                value={testMessage}
+                                onChange={(e) => setTestMessage(e.target.value)}
+                                rows={3}
+                            />
+                            <Button
+                                type="submit"
+                                disabled={!testPhone}
+                                isLoading={sending}
+                                loadingText="Sending…"
+                                className="w-full sm:w-auto"
+                            >
+                                <Send className="h-4 w-4" aria-hidden />
+                                Send test
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
             )}
+
+            <ConfirmDialog
+                isOpen={confirmDisconnect !== null}
+                onClose={() => setConfirmDisconnect(null)}
+                onConfirm={disconnect}
+                title={confirmDisconnect === 'restart' ? 'Start again with a new number?' : 'Disconnect WhatsApp?'}
+                description={confirmDisconnect === 'restart'
+                    ? 'We will cancel this number so you can enter a different one.'
+                    : 'Bookly will stop replying to your customers on WhatsApp until you connect again.'}
+                confirmLabel={confirmDisconnect === 'restart' ? 'Start again' : 'Disconnect'}
+                isLoading={disconnecting}
+            />
         </div>
     );
 }

@@ -6,10 +6,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { PauseCircle, PlayCircle } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Badge, Button } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { Button, PageHeader, StatusPill } from '@bookingflow/ui';
 import { useAdmin } from '../admin-context';
-import { Empty, Panel, ReasonModal, Table, Td, Th } from '../_components/parts';
+import { Empty, LoadingBlock, Panel, ReasonModal, THead, Table, Td, Th, Tr } from '../_components/parts';
 import { errorMessage, formatDateTime } from '../_components/format';
 
 type Kind = 'outbound' | 'payouts';
@@ -41,36 +40,36 @@ export default function AdminSafetyPage() {
             setPausing(null);
             queryClient.invalidateQueries({ queryKey: ['admin', 'platform-switches'] });
         },
-        onError: (err) => toast.error(errorMessage(err, 'Could not change the switch')),
+        onError: (err) => toast.error(errorMessage(err, "Couldn't change the switch. Let's try again.")),
     });
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Safety switches</h1>
-                <p className="text-slate-400">Platform-wide emergency stops, and who has been looking at organisations. Per-organisation switches are on each organisation&apos;s page.</p>
-            </div>
+            <PageHeader
+                title="Safety switches"
+                subtitle="Platform-wide emergency stops, and who has been looking at businesses. Each business has its own switches on its page."
+            />
 
             <Panel title="Platform-wide switches">
-                {switches.isLoading ? <div className="flex h-24 items-center justify-center"><BooklyDots size="md" /></div> : (
-                    <ul className="divide-y divide-white/5">
+                {switches.isLoading ? <LoadingBlock /> : (
+                    <ul className="divide-y divide-border">
                         {(['payouts', 'outbound'] as Kind[]).map((kind) => {
                             const state = switches.data?.[kind];
                             const meta = META[kind];
                             return (
-                                <li key={kind} className="flex items-center justify-between gap-4 px-6 py-4">
+                                <li key={kind} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                                     <div>
-                                        <p className="text-sm font-medium text-white">
-                                            {meta.label} {state?.paused ? <Badge variant="red">Paused</Badge> : <Badge variant="default">Running</Badge>}
+                                        <p className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-text">
+                                            {meta.label} {state?.paused ? <StatusPill size="sm" status="paused" tone="error" /> : <StatusPill size="sm" status="running" tone="success" />}
                                         </p>
-                                        {state?.paused && state.reason && <p className="mt-1 text-xs text-slate-400">Reason: {state.reason}</p>}
-                                        <p className="mt-1 text-xs text-slate-500">{meta.hint}</p>
+                                        {state?.paused && state.reason && <p className="mt-1 text-[14px] text-muted">Reason: {state.reason}</p>}
+                                        <p className="mt-1 text-[14px] text-muted">{meta.hint}</p>
                                     </div>
                                     {can(meta.permission) && (
                                         state?.paused ? (
-                                            <Button size="sm" variant="outline" isLoading={set.isPending} onClick={() => set.mutate({ kind, paused: false })}><PlayCircle className="h-4 w-4" /> Resume</Button>
+                                            <Button size="sm" variant="secondary" isLoading={set.isPending} onClick={() => set.mutate({ kind, paused: false })}><PlayCircle className="h-4 w-4" aria-hidden /> Resume</Button>
                                         ) : (
-                                            <Button size="sm" variant="destructive" onClick={() => setPausing(kind)}><PauseCircle className="h-4 w-4" /> Pause</Button>
+                                            <Button size="sm" variant="destructive" onClick={() => setPausing(kind)}><PauseCircle className="h-4 w-4" aria-hidden /> Pause</Button>
                                         )
                                     )}
                                 </li>
@@ -82,27 +81,27 @@ export default function AdminSafetyPage() {
 
             {can('audit:read') && (
                 <Panel title="Support access sessions">
-                    {sessions.isLoading ? <div className="flex h-24 items-center justify-center"><BooklyDots size="md" /></div> : !sessions.data?.length ? <Empty>No support sessions yet.</Empty> : (
+                    {sessions.isLoading ? <LoadingBlock /> : !sessions.data?.length ? <Empty>No support sessions yet.</Empty> : (
                         <Table>
-                            <thead><tr><Th>Started</Th><Th>Admin</Th><Th>Organisation</Th><Th>Reason</Th><Th>Status</Th></tr></thead>
+                            <THead><tr><Th>Started</Th><Th>Admin</Th><Th>Business</Th><Th>Reason</Th><Th>Status</Th></tr></THead>
                             <tbody>
                                 {sessions.data.map((s) => {
                                     const live = !s.endedAt && new Date(s.expiresAt) > new Date();
                                     return (
-                                        <tr key={s.id} className="border-t border-white/5">
+                                        <Tr key={s.id}>
                                             <Td className="whitespace-nowrap">{formatDateTime(s.createdAt)}</Td>
-                                            <Td>{s.admin?.name ?? s.adminId}</Td>
-                                            <Td><Link href={`/admin/tenants/${s.tenantId}`} className="text-white hover:text-emerald-400">{s.tenant?.name ?? s.tenantId}</Link></Td>
-                                            <Td>{s.reason}</Td>
-                                            <Td><Badge variant={live ? 'blue' : 'slate'}>{live ? 'Live' : s.endedAt ? 'Ended' : 'Expired'}</Badge></Td>
-                                        </tr>
+                                            <Td label="Admin">{s.admin?.name ?? s.adminId}</Td>
+                                            <Td label="Business"><Link href={`/admin/tenants/${s.tenantId}`} className="font-medium text-text hover:text-primary">{s.tenant?.name ?? s.tenantId}</Link></Td>
+                                            <Td label="Reason">{s.reason}</Td>
+                                            <Td label="Status"><StatusPill size="sm" status={live ? 'live' : s.endedAt ? 'ended' : 'expired'} tone={live ? 'warning' : 'neutral'} /></Td>
+                                        </Tr>
                                     );
                                 })}
                             </tbody>
                         </Table>
                     )}
-                    <p className="px-6 py-3 text-xs text-slate-500">
-                        Everything done during a session is in the <Link href="/admin/audit?actionPrefix=support." className="text-emerald-400 hover:underline">audit log</Link> (filter &quot;support.&quot;).
+                    <p className="px-4 py-3 text-[14px] text-muted sm:px-6">
+                        Everything done during a session is in the <Link href="/admin/audit?actionPrefix=support." className="font-semibold text-primary hover:underline">audit log</Link> (filter &quot;support.&quot;).
                     </p>
                 </Panel>
             )}

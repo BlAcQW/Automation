@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Download, X, Share } from 'lucide-react';
-import { BooklyIcon } from '@/components/primitives/bookly-icon';
+import { BrandLogo, Button } from '@bookingflow/ui';
 
 /** The non-standard `beforeinstallprompt` event (Chromium browsers). */
 interface BeforeInstallPromptEvent extends Event {
@@ -88,43 +88,48 @@ export function InstallPrompt() {
     if (!visible || pathname !== '/dashboard') return null;
 
     return (
-        <div className="fixed inset-x-3 z-50 bottom-24 lg:bottom-4 lg:left-auto lg:right-4 lg:max-w-sm">
-            <div className="flex items-start gap-3 rounded-2xl bg-forest-night p-4 text-forest-cream shadow-[0_30px_50px_-28px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.06)] dark:bg-forest-card dark:shadow-[0_0_0_1px_rgba(236,235,225,0.08),0_30px_50px_-28px_rgba(0,0,0,0.8)]">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-forest-paper">
-                    <BooklyIcon size="sm" />
+        <div
+            className="fixed inset-x-4 bottom-24 z-50 lg:bottom-6 lg:left-auto lg:right-6 lg:max-w-sm"
+        >
+            <div className="overflow-hidden rounded-card border border-border bg-surface text-text shadow-card-lg">
+                {/* Thin brand stripe: green with a gold tip, no logo art. */}
+                <div className="flex h-1.5" aria-hidden>
+                    <span className="flex-1 bg-primary" />
+                    <span className="w-12 bg-accent" />
                 </div>
-                <div className="min-w-0 flex-1">
-                    <p className="text-[15px] font-medium tracking-[-0.02em] text-forest-cream">
-                        Put Bookly on your home screen
-                    </p>
-                    {showIosHint ? (
-                        <p className="mt-0.5 text-[13px] leading-snug text-forest-cream/65">
-                            Tap <Share className="inline h-3.5 w-3.5 -mt-0.5" aria-label="Share" /> at the
-                            bottom of Safari, then <span className="font-medium text-forest-cream">Add to Home Screen</span>.
-                            It opens like an app.
+                <div className="flex items-start gap-3 p-4">
+                    <div className="min-w-0 flex-1">
+                        <BrandLogo size="sm" />
+                        <p id="install-prompt-title" className="mt-2 text-base font-semibold text-text">
+                            Put Bookly on your home screen
                         </p>
-                    ) : (
-                        <p className="mt-0.5 text-[13px] leading-snug text-forest-cream/65">
-                            Opens like an app, no browser bar.
-                        </p>
-                    )}
-                    {!showIosHint && (
-                        <button
-                            onClick={install}
-                            className="mt-3 inline-flex min-h-[36px] items-center gap-1.5 rounded bg-forest-cream px-3.5 text-[13px] font-medium text-forest-night hover:bg-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forest-glow"
-                        >
-                            <Download className="h-3.5 w-3.5" />
-                            Install
-                        </button>
-                    )}
+                        {showIosHint ? (
+                            <p className="mt-1 text-[15px] leading-relaxed text-muted">
+                                Tap <Share className="-mt-0.5 inline h-4 w-4" aria-label="Share" /> at the bottom of
+                                Safari, then <span className="font-semibold text-text">Add to Home Screen</span>. It opens
+                                like an app.
+                            </p>
+                        ) : (
+                            <p className="mt-1 text-[15px] leading-relaxed text-muted">
+                                Open your shop in one tap, like an app. No browser bar.
+                            </p>
+                        )}
+                        {!showIosHint && (
+                            <Button onClick={install} size="sm" className="mt-3">
+                                <Download className="h-4 w-4" aria-hidden />
+                                Install
+                            </Button>
+                        )}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={dismiss}
+                        aria-label="Not now"
+                        className="-mr-1 -mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted transition-colors duration-ui hover:bg-text/[0.06] hover:text-text"
+                    >
+                        <X className="h-5 w-5" aria-hidden />
+                    </button>
                 </div>
-                <button
-                    onClick={dismiss}
-                    aria-label="Not now"
-                    className="shrink-0 rounded p-1.5 text-forest-cream/60 hover:bg-white/[0.08] hover:text-forest-cream transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-forest-glow"
-                >
-                    <X className="h-4 w-4" />
-                </button>
             </div>
         </div>
     );

@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
-import toast from 'react-hot-toast';
-import { Button, DashboardInput, Modal, cn } from '@bookingflow/ui';
+
+import { notify } from '@/components/brand/toast';
+import { Button, ConfirmDialog, DashboardInput, Modal, SkeletonList, cn } from '@bookingflow/ui';
 import { api } from '@/lib/api';
 import { SecretReveal } from './secret-reveal';
 import { DEFAULT_GRACE_HOURS, GRACE_OPTIONS, errorText, maskedPrefix, timeUntil, type ApiKey, type ScopeInfo } from './types';
 
 const KEY_NOTE = (
     <p>
-        Send it as <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-slate-800">Authorization: Bearer &lt;key&gt;</code>.
+        Send it as <code className="rounded bg-surface-2 px-1.5 py-0.5 text-[13px]">Authorization: Bearer &lt;key&gt;</code>.
         Keep it on your server; never put it in a website or mobile app.
     </p>
 );
@@ -44,7 +44,7 @@ export function CreateKeyDialog({ isOpen, onClose, onChanged }: CreateKeyDialogP
     const create = useMutation({
         mutationFn: async () => (await api.post('/developer/api-keys', { name: name.trim(), scopes })).data.data as { key: string; apiKey: ApiKey },
         onSuccess: (d) => { setCreated(d.key); onChanged(); },
-        onError: (err) => toast.error(errorText(err, 'Could not create the key. Try again.')),
+        onError: (err) => notify.error(errorText(err, 'Could not create the key. Try again.')),
     });
 
     const toggle = (scope: string) =>
@@ -69,11 +69,11 @@ export function CreateKeyDialog({ isOpen, onClose, onChanged }: CreateKeyDialogP
                         autoFocus
                     />
                     <fieldset className="space-y-2">
-                        <legend className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">What can this key do?</legend>
+                        <legend className="mb-1 text-small font-medium text-text">What can this key do?</legend>
                         <ScopePicker query={scopesQuery} selected={scopes} onToggle={toggle} />
                     </fieldset>
-                    <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" onClick={onClose} disabled={create.isPending}>Cancel</Button>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <Button type="button" variant="secondary" onClick={onClose} disabled={create.isPending}>Cancel</Button>
                         <Button type="submit" disabled={!valid} isLoading={create.isPending}>Create key</Button>
                     </div>
                 </form>
@@ -87,36 +87,36 @@ function ScopePicker({ query, selected, onToggle }: {
     selected: string[];
     onToggle: (scope: string) => void;
 }) {
-    if (query.isLoading) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>;
+    if (query.isLoading) return <div aria-busy="true" className="space-y-2"><span className="sr-only">Loading…</span><SkeletonList rows={4} /></div>;
     if (query.isError || !query.data) {
         return (
-            <p className="text-sm text-rose-500">
+            <p className="text-[15px] text-error-fg">
                 Could not load the permissions.{' '}
-                <button type="button" className="underline" onClick={() => query.refetch()}>Try again</button>
+                <button type="button" className="min-h-[44px] font-semibold underline" onClick={() => query.refetch()}>Try again</button>
             </p>
         );
     }
     return (
-        <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+        <div className="max-h-72 space-y-1 overflow-y-auto rounded-control border border-border p-1">
             {query.data.map((s) => {
                 const on = selected.includes(s.scope);
                 return (
                     <label
                         key={s.scope}
                         className={cn(
-                            'flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition-colors',
-                            on ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60',
+                            'flex min-h-[44px] cursor-pointer items-start gap-3 rounded-[10px] px-3 py-2.5 transition-colors duration-ui',
+                            on ? 'bg-primary-soft' : 'hover:bg-surface-2',
                         )}
                     >
                         <input
                             type="checkbox"
                             checked={on}
                             onChange={() => onToggle(s.scope)}
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                            className="mt-1 h-5 w-5 rounded border-border accent-primary"
                         />
                         <span className="min-w-0">
-                            <span className="block font-mono text-xs font-medium text-slate-900 dark:text-white">{s.scope}</span>
-                            <span className="block text-xs text-slate-500 dark:text-slate-400">{s.description}</span>
+                            <span className="block font-mono text-[13px] font-semibold text-text">{s.scope}</span>
+                            <span className="block text-[14px] text-muted">{s.description}</span>
                         </span>
                     </label>
                 );
@@ -146,7 +146,7 @@ export function RotateKeyDialog({ apiKey, onClose, onChanged }: KeyDialogProps) 
     const rotate = useMutation({
         mutationFn: async () => (await api.post(`/developer/api-keys/${apiKey!.id}/rotate`, { graceHours })).data.data as { key: string },
         onSuccess: (d) => { setCreated(d.key); onChanged(); },
-        onError: (err) => toast.error(errorText(err, 'Could not rotate the key. Try again.')),
+        onError: (err) => notify.error(errorText(err, 'Could not rotate the key. Try again.')),
     });
 
     const choice = GRACE_OPTIONS.find((o) => o.hours === graceHours);
@@ -167,21 +167,21 @@ export function RotateKeyDialog({ apiKey, onClose, onChanged }: KeyDialogProps) 
                 <SecretReveal label="API key" secret={created} note={note} onDone={onClose} />
             ) : (
                 <form className="space-y-5" onSubmit={(e) => { e.preventDefault(); rotate.mutate(); }}>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                    <p className="text-[15px] leading-relaxed text-text">
                         You get a new key with the same name and permissions. To avoid downtime, keep the old key working
                         while you put the new one in place.
                     </p>
                     <fieldset>
-                        <legend className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Old key stops working</legend>
+                        <legend className="mb-2 text-small font-medium text-text">Old key stops working</legend>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="radiogroup">
                             {GRACE_OPTIONS.map((o) => (
                                 <label
                                     key={o.hours}
                                     className={cn(
-                                        'cursor-pointer rounded-[3px] border px-3 py-2.5 text-center text-sm font-medium transition-colors',
+                                        'flex min-h-[44px] cursor-pointer items-center justify-center rounded-control border px-3 py-2.5 text-center text-[15px] font-semibold transition-colors duration-ui has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus',
                                         graceHours === o.hours
-                                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
-                                            : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300 dark:hover:border-slate-600',
+                                            ? 'border-primary bg-primary-soft text-primary'
+                                            : 'border-border text-text hover:border-text/30',
                                     )}
                                 >
                                     <input
@@ -196,13 +196,13 @@ export function RotateKeyDialog({ apiKey, onClose, onChanged }: KeyDialogProps) 
                                 </label>
                             ))}
                         </div>
-                        {choice && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{choice.hint}</p>}
-                        <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+                        {choice && <p className="mt-2 text-[14px] text-muted">{choice.hint}</p>}
+                        <p className="mt-3 rounded-control bg-warning-soft p-3 text-[14px] font-medium text-warning-fg">
                             If this key leaked or was shared by mistake, choose Now: a grace period keeps the leaked key working too.
                         </p>
                     </fieldset>
-                    <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" onClick={onClose} disabled={rotate.isPending}>Cancel</Button>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <Button type="button" variant="secondary" onClick={onClose} disabled={rotate.isPending}>Cancel</Button>
                         <Button type="submit" isLoading={rotate.isPending}>Rotate key</Button>
                     </div>
                 </form>
@@ -217,29 +217,30 @@ export function RotateKeyDialog({ apiKey, onClose, onChanged }: KeyDialogProps) 
 export function RevokeKeyDialog({ apiKey, onClose, onChanged }: KeyDialogProps) {
     const revoke = useMutation({
         mutationFn: async () => (await api.delete(`/developer/api-keys/${apiKey!.id}`)).data,
-        onSuccess: () => { toast.success('Key revoked'); onChanged(); onClose(); },
-        onError: (err) => toast.error(errorText(err, 'Could not revoke the key. Try again.')),
+        onSuccess: () => { notify.success('Key revoked'); onChanged(); onClose(); },
+        onError: (err) => notify.error(errorText(err, 'Could not revoke the key. Try again.')),
     });
     const inGrace = apiKey?.status === 'expiring' && apiKey.expiresAt;
 
     return (
-        <Modal isOpen={apiKey !== null} onClose={onClose} title={inGrace ? 'Stop the old key now?' : 'Revoke this key?'}>
-            <div className="space-y-4">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                    <span className="font-medium text-slate-900 dark:text-white">{apiKey?.name}</span>{' '}
-                    <code className="text-xs">{apiKey ? maskedPrefix(apiKey.prefix) : ''}</code>{' '}
+        <ConfirmDialog
+            isOpen={apiKey !== null}
+            onClose={onClose}
+            onConfirm={() => revoke.mutate()}
+            isLoading={revoke.isPending}
+            title={inGrace ? 'Stop the old key now?' : 'Revoke this key?'}
+            description={
+                <>
+                    <span className="font-semibold text-text">{apiKey?.name}</span>{' '}
+                    <code className="text-[13px]">{apiKey ? maskedPrefix(apiKey.prefix) : ''}</code>{' '}
                     {inGrace
                         ? `would keep working for another ${timeUntil(apiKey.expiresAt!)}. Revoking ends that now.`
-                        : 'will stop working immediately.'}{' '}
-                    Anything still using it gets an error. This cannot be undone.
-                </p>
-                <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={onClose} disabled={revoke.isPending}>Cancel</Button>
-                    <Button type="button" variant="destructive" onClick={() => revoke.mutate()} isLoading={revoke.isPending}>
-                        {inGrace ? 'Stop it now' : 'Revoke key'}
-                    </Button>
-                </div>
-            </div>
-        </Modal>
+                        : 'will stop working straight away.'}{' '}
+                    Anything still using it gets an error. You can&apos;t undo this.
+                </>
+            }
+            confirmLabel={inGrace ? 'Stop it now' : 'Revoke key'}
+            cancelLabel="Keep it"
+        />
     );
 }

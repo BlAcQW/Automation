@@ -3,15 +3,22 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { adminApi } from '@/lib/api';
-import { Badge, Button } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
-import { Empty, Panel, Table, Td, Th } from '../_components/parts';
+import { PageHeader, Select, StatusPill, type StatusTone } from '@bookingflow/ui';
+import { Empty, LoadingBlock, Pager as ListPager, Panel, THead, Table, Td, Th, Tr } from '../_components/parts';
 import { formatDateTime, formatMinor } from '../_components/format';
 
 const STATUSES = ['', 'REQUESTED', 'PROCESSING', 'PAID', 'FAILED', 'CANCELLED'] as const;
-const STATUS_VARIANT: Record<string, 'default' | 'yellow' | 'red' | 'slate'> = { PAID: 'default', FAILED: 'red', PROCESSING: 'yellow', REQUESTED: 'yellow', CANCELLED: 'slate' };
+const STATUS_TONE: Record<string, StatusTone> = { PAID: 'success', FAILED: 'error', PROCESSING: 'warning', REQUESTED: 'warning', CANCELLED: 'neutral' };
+const STATUS_LABEL: Record<string, string> = { REQUESTED: 'Requested', PROCESSING: 'Processing', PAID: 'Paid', FAILED: 'Failed', CANCELLED: 'Cancelled' };
+
+function PayoutStatus({ status }: { status: string }) {
+    return <StatusPill size="sm" status={status} tone={STATUS_TONE[status] ?? 'neutral'} label={STATUS_LABEL[status]} />;
+}
+
+const businessLink = (id: string, name: string | null) => (
+    <Link href={`/admin/tenants/${id}`} className="font-medium text-text hover:text-primary">{name ?? id}</Link>
+);
 
 export default function AdminMoneyPage() {
     const [status, setStatus] = useState<(typeof STATUSES)[number]>('');
@@ -37,43 +44,40 @@ export default function AdminMoneyPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Money</h1>
-                <p className="text-slate-400">Read-only oversight of balances, payouts, refunds and fees. Nothing here moves money.</p>
-            </div>
+            <PageHeader title="Money" subtitle="A view-only look at balances, payouts, refunds and fees. Nothing on this page moves money." />
 
-            {overview.isLoading ? <div className="flex h-32 items-center justify-center"><BooklyDots size="md" /></div> : overview.data && (
+            {overview.isLoading ? <LoadingBlock /> : overview.data && (
                 <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                    <Panel title="Tenant balances by currency">
+                    <Panel title="Business balances by currency">
                         {!overview.data.balances.length ? <Empty>No wallets yet.</Empty> : (
                             <Table>
-                                <thead><tr><Th>Currency</Th><Th>Available</Th><Th>Pending</Th><Th>Wallets</Th></tr></thead>
+                                <THead><tr><Th>Currency</Th><Th>Available</Th><Th>Pending</Th><Th>Wallets</Th></tr></THead>
                                 <tbody>
                                     {overview.data.balances.map((b: any) => (
-                                        <tr key={b.currency} className="border-t border-white/5">
-                                            <Td className="text-white">{b.currency}</Td>
-                                            <Td className="tabular-nums">{formatMinor(b.availableMinor, b.currency)}</Td>
-                                            <Td className="tabular-nums">{formatMinor(b.pendingMinor, b.currency)}</Td>
-                                            <Td className="tabular-nums">{b.wallets}</Td>
-                                        </tr>
+                                        <Tr key={b.currency}>
+                                            <Td className="font-semibold">{b.currency}</Td>
+                                            <Td label="Available" className="whitespace-nowrap tabular-nums">{formatMinor(b.availableMinor, b.currency)}</Td>
+                                            <Td label="Pending" className="whitespace-nowrap tabular-nums">{formatMinor(b.pendingMinor, b.currency)}</Td>
+                                            <Td label="Wallets" className="tabular-nums">{b.wallets}</Td>
+                                        </Tr>
                                     ))}
                                 </tbody>
                             </Table>
                         )}
-                        <p className="px-6 py-3 text-xs text-slate-500">{overview.data.note}</p>
+                        <p className="px-4 py-3 text-[14px] text-muted sm:px-6">{overview.data.note}</p>
                     </Panel>
 
                     <Panel title="Payouts by status">
                         {!overview.data.payouts.length ? <Empty>No payouts yet.</Empty> : (
                             <Table>
-                                <thead><tr><Th>Status</Th><Th>Count</Th><Th>Total</Th></tr></thead>
+                                <THead><tr><Th>Status</Th><Th>Count</Th><Th>Total</Th></tr></THead>
                                 <tbody>
                                     {overview.data.payouts.map((p: any) => (
-                                        <tr key={`${p.status}-${p.currency}`} className="border-t border-white/5">
-                                            <Td><Badge variant={STATUS_VARIANT[p.status] ?? 'slate'}>{p.status}</Badge></Td>
-                                            <Td className="tabular-nums">{p.count}</Td>
-                                            <Td className="tabular-nums">{formatMinor(p.totalMinor, p.currency)}</Td>
-                                        </tr>
+                                        <Tr key={`${p.status}-${p.currency}`}>
+                                            <Td><PayoutStatus status={p.status} /></Td>
+                                            <Td label="Count" className="tabular-nums">{p.count}</Td>
+                                            <Td label="Total" className="whitespace-nowrap tabular-nums">{formatMinor(p.totalMinor, p.currency)}</Td>
+                                        </Tr>
                                     ))}
                                 </tbody>
                             </Table>
@@ -81,18 +85,21 @@ export default function AdminMoneyPage() {
                     </Panel>
 
                     <Panel title="Refunds">
-                        <div className="grid grid-cols-3 gap-4 px-6 py-5 text-center">
-                            <div><p className="text-2xl font-light tracking-[-0.04em] tabular-nums text-amber-300">{overview.data.refunds.pending}</p><p className="text-xs text-slate-500">Waiting to retry</p></div>
-                            <div><p className="text-2xl font-light tracking-[-0.04em] tabular-nums text-white">{overview.data.refunds.refunding}</p><p className="text-xs text-slate-500">In flight</p></div>
-                            <div><p className="text-2xl font-light tracking-[-0.04em] tabular-nums text-emerald-300">{overview.data.refunds.refunded}</p><p className="text-xs text-slate-500">Refunded</p></div>
+                        <div className="grid grid-cols-3 gap-3 px-4 py-5 text-center sm:px-6">
+                            <RefundFigure value={overview.data.refunds.pending} label="Waiting to retry" tone="text-warning-fg" />
+                            <RefundFigure value={overview.data.refunds.refunding} label="In flight" tone="text-text" />
+                            <RefundFigure value={overview.data.refunds.refunded} label="Refunded" tone="text-success-fg" />
                         </div>
                     </Panel>
 
                     <Panel title={`Platform fees (last ${overview.data.fees.windowDays} days)`}>
                         {!overview.data.fees.byCurrency.length ? <Empty>No fees taken in this window.</Empty> : (
-                            <ul className="divide-y divide-white/5">
+                            <ul className="divide-y divide-border">
                                 {overview.data.fees.byCurrency.map((f: any) => (
-                                    <li key={f.currency} className="flex justify-between px-6 py-3 text-sm"><span className="text-slate-300">{f.currency}</span><span className="tabular-nums text-white">{formatMinor(f.totalMinor, f.currency)}</span></li>
+                                    <li key={f.currency} className="flex justify-between px-4 py-3 text-[15px] sm:px-6">
+                                        <span className="font-medium text-text">{f.currency}</span>
+                                        <span className="tabular-nums text-text">{formatMinor(f.totalMinor, f.currency)}</span>
+                                    </li>
                                 ))}
                             </ul>
                         )}
@@ -103,30 +110,40 @@ export default function AdminMoneyPage() {
             <Panel
                 title="Payouts"
                 action={
-                    <select aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value as typeof status); setPage(1); }}
-                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-1 text-sm text-white">
-                        {STATUSES.map((s) => <option key={s} value={s}>{s || 'All statuses'}</option>)}
-                    </select>
+                    <div className="w-full sm:w-52">
+                        <Select aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value as typeof status); setPage(1); }}>
+                            {STATUSES.map((s) => <option key={s} value={s}>{s ? STATUS_LABEL[s] : 'All statuses'}</option>)}
+                        </Select>
+                    </div>
                 }
             >
-                {payouts.isLoading ? <div className="flex h-24 items-center justify-center"><BooklyDots size="md" /></div> : !payouts.data?.data.length ? <Empty>No payouts match.</Empty> : (
+                {payouts.isLoading ? <LoadingBlock /> : !payouts.data?.data.length ? <Empty>No payouts match.</Empty> : (
                     <>
                         <Table>
-                            <thead><tr><Th>When</Th><Th>Organisation</Th><Th>Amount</Th><Th>To</Th><Th>Status</Th><Th>Note</Th></tr></thead>
+                            <THead><tr><Th>When</Th><Th>Business</Th><Th>Amount</Th><Th>To</Th><Th>Status</Th><Th>Note</Th></tr></THead>
                             <tbody>
                                 {payouts.data.data.map((p: any) => (
-                                    <tr key={p.id} className="border-t border-white/5">
-                                        <Td className="whitespace-nowrap">{formatDateTime(p.createdAt)}</Td>
-                                        <Td><Link href={`/admin/tenants/${p.tenantId}`} className="text-white hover:text-emerald-400">{p.tenantName ?? p.tenantId}</Link></Td>
-                                        <Td className="tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
-                                        <Td>{p.recipient.accountName}<p className="text-xs text-slate-500">{p.recipient.accountNumberMasked}</p></Td>
-                                        <Td><Badge variant={STATUS_VARIANT[p.status] ?? 'slate'}>{p.status}</Badge></Td>
-                                        <Td>{p.failureReason ?? '—'}</Td>
-                                    </tr>
+                                    <Tr key={p.id}>
+                                        <Td className="whitespace-nowrap font-medium">{formatDateTime(p.createdAt)}</Td>
+                                        <Td label="Business">{businessLink(p.tenantId, p.tenantName)}</Td>
+                                        <Td label="Amount" className="whitespace-nowrap tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
+                                        <Td label="To">{p.recipient.accountName}<p className="text-[13px] text-muted">{p.recipient.accountNumberMasked}</p></Td>
+                                        <Td label="Status"><PayoutStatus status={p.status} /></Td>
+                                        <Td label="Note">{p.failureReason ?? '—'}</Td>
+                                    </Tr>
                                 ))}
                             </tbody>
                         </Table>
-                        <Pager page={page} totalPages={payouts.data.pagination.totalPages} total={payouts.data.pagination.total} onPage={setPage} />
+                        {payouts.data.pagination.totalPages <= 1 ? (
+                            <p className="border-t border-border px-4 py-3 text-[14px] text-muted sm:px-6">{payouts.data.pagination.total} payouts</p>
+                        ) : (
+                            <ListPager
+                                page={page}
+                                totalPages={payouts.data.pagination.totalPages}
+                                onPage={setPage}
+                                summary={`${payouts.data.pagination.total} payouts`}
+                            />
+                        )}
                     </>
                 )}
             </Panel>
@@ -134,25 +151,26 @@ export default function AdminMoneyPage() {
             <Panel
                 title="Refunds"
                 action={
-                    <select aria-label="Refund state" value={refundState} onChange={(e) => setRefundState(e.target.value as typeof refundState)}
-                        className="rounded-lg border border-slate-700 bg-slate-900/60 px-2 py-1 text-sm text-white">
-                        <option value="pending">Waiting to retry</option><option value="refunding">In flight</option><option value="refunded">Refunded</option>
-                    </select>
+                    <div className="w-full sm:w-52">
+                        <Select aria-label="Refund state" value={refundState} onChange={(e) => setRefundState(e.target.value as typeof refundState)}>
+                            <option value="pending">Waiting to retry</option><option value="refunding">In flight</option><option value="refunded">Refunded</option>
+                        </Select>
+                    </div>
                 }
             >
-                {refunds.isLoading ? <div className="flex h-24 items-center justify-center"><BooklyDots size="md" /></div> : !refunds.data?.data.length ? <Empty>No refunds in this state.</Empty> : (
+                {refunds.isLoading ? <LoadingBlock /> : !refunds.data?.data.length ? <Empty>No refunds in this state.</Empty> : (
                     <Table>
-                        <thead><tr><Th>Booking</Th><Th>Organisation</Th><Th>Amount</Th><Th>Attempts</Th><Th>Last error</Th><Th>Next try</Th></tr></thead>
+                        <THead><tr><Th>Booking</Th><Th>Business</Th><Th>Amount</Th><Th>Attempts</Th><Th>Last error</Th><Th>Next try</Th></tr></THead>
                         <tbody>
                             {refunds.data.data.map((r: any) => (
-                                <tr key={r.bookingId} className="border-t border-white/5">
-                                    <Td className="font-mono text-xs">{r.reference}</Td>
-                                    <Td><Link href={`/admin/tenants/${r.tenantId}`} className="text-white hover:text-emerald-400">{r.tenantName ?? r.tenantId}</Link></Td>
-                                    <Td className="tabular-nums">{r.amount ?? '—'}</Td>
-                                    <Td className="tabular-nums">{r.attempts}</Td>
-                                    <Td>{r.lastError ?? '—'}</Td>
-                                    <Td className="whitespace-nowrap">{formatDateTime(r.nextAttemptAt)}</Td>
-                                </tr>
+                                <Tr key={r.bookingId}>
+                                    <Td className="font-mono text-[13px] font-semibold">{r.reference}</Td>
+                                    <Td label="Business">{businessLink(r.tenantId, r.tenantName)}</Td>
+                                    <Td label="Amount" className="tabular-nums">{r.amount ?? '—'}</Td>
+                                    <Td label="Attempts" className="tabular-nums">{r.attempts}</Td>
+                                    <Td label="Last error">{r.lastError ?? '—'}</Td>
+                                    <Td label="Next try" className="whitespace-nowrap">{formatDateTime(r.nextAttemptAt)}</Td>
+                                </Tr>
                             ))}
                         </tbody>
                     </Table>
@@ -162,16 +180,11 @@ export default function AdminMoneyPage() {
     );
 }
 
-function Pager({ page, totalPages, total, onPage }: { page: number; totalPages: number; total: number; onPage: (p: number) => void }) {
-    if (totalPages <= 1) return <p className="px-6 py-3 text-xs text-slate-500">{total} payouts</p>;
+function RefundFigure({ value, label, tone }: { value: number; label: string; tone: string }) {
     return (
-        <div className="flex items-center justify-between border-t border-white/5 px-6 py-3">
-            <p className="text-sm text-slate-400">{total} payouts</p>
-            <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => onPage(page - 1)} aria-label="Previous page"><ChevronLeft className="h-4 w-4" /></Button>
-                <span className="px-2 text-sm text-white">Page {page} of {totalPages}</span>
-                <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => onPage(page + 1)} aria-label="Next page"><ChevronRight className="h-4 w-4" /></Button>
-            </div>
+        <div className="rounded-control bg-surface-2 px-2 py-3">
+            <p className={`text-[1.75rem] font-bold leading-none tabular-nums ${tone}`}>{value}</p>
+            <p className="mt-1 text-[13px] text-muted">{label}</p>
         </div>
     );
 }

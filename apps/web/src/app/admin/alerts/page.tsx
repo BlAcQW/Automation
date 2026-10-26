@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Bell, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import Link from 'next/link';
 import { adminApi } from '@/lib/api';
-import { Card, Badge, Button } from '@bookingflow/ui';
-import { BooklyDots } from '@/components/primitives/bookly-dots';
+import { Button, Card, EmptyState, PageHeader, SkeletonTableRow, StatusPill } from '@bookingflow/ui';
+import { Pager, Table, THead, Td, Th, Tr } from '../_components/parts';
+import { SEVERITY_TONE } from '../_components/attention-panel';
+import { formatDateTime } from '../_components/format';
 
 interface PlatformAlert {
     id: string;
@@ -19,12 +21,6 @@ interface PlatformAlert {
     count: number;
     lastSeenAt: string;
 }
-
-const SEVERITY_VARIANT: Record<string, 'red' | 'yellow' | 'blue'> = {
-    critical: 'red',
-    warning: 'yellow',
-    info: 'blue',
-};
 
 export default function AdminAlertsPage() {
     const queryClient = useQueryClient();
@@ -47,87 +43,82 @@ export default function AdminAlertsPage() {
             toast.success('Alert resolved');
             queryClient.invalidateQueries({ queryKey: ['admin', 'alerts'] });
         },
-        onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Could not resolve the alert'),
+        onError: (err: any) => toast.error(err?.response?.data?.message ?? "Couldn't resolve the alert. Let's try again."),
     });
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-[28px] sm:text-[34px] font-normal leading-none tracking-[-0.045em] text-white">Alerts</h1>
-                <p className="text-slate-400">Open platform alerts, newest activity first. Repeats of the same problem raise the count instead of adding rows.</p>
-            </div>
+            <PageHeader
+                title="Alerts"
+                subtitle="Open platform alerts, newest first. When the same problem repeats, its count goes up instead of adding a row."
+            />
 
-            <Card className="glass-card border-white/5">
+            <Card className="overflow-hidden">
                 {isLoading ? (
-                    <div className="flex items-center justify-center h-48"><BooklyDots size="md" /></div>
-                ) : !data?.data.length ? (
-                    <div className="px-6 py-12 text-center">
-                        <Bell className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                        <p className="text-slate-400">No open alerts</p>
+                    <div aria-busy="true">
+                        <span className="sr-only">Loading alerts…</span>
+                        {Array.from({ length: 5 }).map((_, i) => <SkeletonTableRow key={i} columns={5} />)}
                     </div>
+                ) : !data?.data.length ? (
+                    <EmptyState
+                        icon={<Bell className="h-6 w-6" aria-hidden />}
+                        title="No open alerts"
+                        description="All calm. New problems will show up here."
+                    />
                 ) : (
                     <>
-                        <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead>
-                                    <tr className="text-left text-sm text-slate-400 border-b border-white/5">
-                                        <th className="px-6 py-4 font-medium">Severity</th>
-                                        <th className="px-6 py-4 font-medium">Tenant</th>
-                                        <th className="px-6 py-4 font-medium">Message</th>
-                                        <th className="px-6 py-4 font-medium">Count</th>
-                                        <th className="px-6 py-4 font-medium">Last seen</th>
-                                        <th className="px-6 py-4 font-medium w-1"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {data.data.map((a) => (
-                                        <tr key={a.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <Badge variant={SEVERITY_VARIANT[a.severity] ?? 'slate'}>{a.severity.toUpperCase()}</Badge>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm">
-                                                {a.tenantId ? (
-                                                    <Link href={`/admin/tenants/${a.tenantId}`} className="text-white hover:text-emerald-400 transition-colors">
-                                                        {a.tenantName ?? a.tenantId}
-                                                    </Link>
-                                                ) : (
-                                                    <span className="text-slate-500">Platform</span>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-300 max-w-xl">
-                                                <p>{a.message}</p>
-                                                <p className="text-xs text-slate-500 font-mono">{a.kind}</p>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-slate-300 tabular-nums">{a.count.toLocaleString()}</td>
-                                            <td className="px-6 py-4 text-sm text-slate-400">{new Date(a.lastSeenAt).toLocaleString('en-GB')}</td>
-                                            <td className="px-6 py-4">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => resolve.mutate(a.id)}
-                                                    disabled={resolve.isPending && resolve.variables === a.id}
-                                                >
-                                                    Resolve
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                        <Table>
+                            <THead>
+                                <tr>
+                                    <Th>Severity</Th>
+                                    <Th>Business</Th>
+                                    <Th>Message</Th>
+                                    <Th>Count</Th>
+                                    <Th>Last seen</Th>
+                                    <Th className="w-1" />
+                                </tr>
+                            </THead>
+                            <tbody>
+                                {data.data.map((a) => (
+                                    <Tr key={a.id}>
+                                        <Td><StatusPill size="sm" status={a.severity} tone={SEVERITY_TONE[a.severity] ?? 'neutral'} /></Td>
+                                        <Td label="Business">
+                                            {a.tenantId ? (
+                                                <Link href={`/admin/tenants/${a.tenantId}`} className="font-medium text-text hover:text-primary">
+                                                    {a.tenantName ?? a.tenantId}
+                                                </Link>
+                                            ) : (
+                                                <span className="text-muted">Platform</span>
+                                            )}
+                                        </Td>
+                                        <Td label="Message" className="md:max-w-xl">
+                                            <p>{a.message}</p>
+                                            <p className="font-mono text-[13px] text-muted">{a.kind}</p>
+                                        </Td>
+                                        <Td label="Count" className="tabular-nums">{a.count.toLocaleString()}</Td>
+                                        <Td label="Last seen" className="whitespace-nowrap text-muted">{formatDateTime(a.lastSeenAt)}</Td>
+                                        <Td>
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="w-full md:w-auto"
+                                                onClick={() => resolve.mutate(a.id)}
+                                                isLoading={resolve.isPending && resolve.variables === a.id}
+                                            >
+                                                Resolve
+                                            </Button>
+                                        </Td>
+                                    </Tr>
+                                ))}
+                            </tbody>
+                        </Table>
                         {data.pagination.totalPages > 1 && (
-                            <div className="px-6 py-4 border-t border-white/5 flex items-center justify-between">
-                                <p className="text-sm text-slate-400">{data.pagination.total} open alerts</p>
-                                <div className="flex items-center space-x-2">
-                                    <Button variant="outline" size="icon" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1} className="h-8 w-8">
-                                        <ChevronLeft className="w-4 h-4" />
-                                    </Button>
-                                    <span className="text-white px-3 text-sm">Page {page} of {data.pagination.totalPages}</span>
-                                    <Button variant="outline" size="icon" onClick={() => setPage(Math.min(data.pagination.totalPages, page + 1))} disabled={page >= data.pagination.totalPages} className="h-8 w-8">
-                                        <ChevronRight className="w-4 h-4" />
-                                    </Button>
-                                </div>
-                            </div>
+                            <Pager
+                                page={page}
+                                totalPages={data.pagination.totalPages}
+                                onPage={setPage}
+                                summary={`${data.pagination.total} open alerts`}
+                            />
                         )}
                     </>
                 )}

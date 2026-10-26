@@ -4,6 +4,7 @@ import { AwningDivider } from '@bookingflow/ui';
 import { cx as cn } from './cx';
 import type { AnalyticsEvent } from '@/lib/analytics';
 import styles from './marketing.module.css';
+import { RotatingChannel } from '@/components/brand/rotating-channel';
 
 /**
  * Server-rendered building blocks for the public site. Everything here is
@@ -243,7 +244,7 @@ export function PageHero({
 export function ClosingCTA({
     title, sub, secondary = { href: '/pricing', label: 'See pricing' },
 }: {
-    title: string; sub: string; secondary?: { href: string; label: string } | null;
+    title: React.ReactNode; sub: string; secondary?: { href: string; label: string } | null;
 }) {
     return (
         <section aria-labelledby="closing-cta" className="bg-green text-cream">

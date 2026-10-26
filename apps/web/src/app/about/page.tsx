@@ -4,6 +4,7 @@ import { SiteShell } from '@/components/marketing/site-shell';
 import { ButtonLink, CheckList, ClosingCTA, PageHero, Panel, Section, SectionTitle } from '@/components/marketing/primitives';
 import { breadcrumbJsonLd, pageMetadata } from '@/lib/seo';
 import { LEGAL_EMAIL, SITE_TAGLINE, supportWhatsAppUrl } from '@/lib/site';
+import { RotatingChannel } from '@/components/brand/rotating-channel';
 
 const CRUMBS = [{ name: 'About and contact', path: '/about' }];
 
@@ -90,7 +91,7 @@ export default function AboutPage() {
                 </p>
             </Section>
 
-            <ClosingCTA title="Open your shop on WhatsApp." sub="Free to start. Nothing to set up first." secondary={{ href: '/features', label: 'See what it does' }} />
+            <ClosingCTA title={<>Open your shop on <RotatingChannel />.</>} sub="Free to start. Nothing to set up first." secondary={{ href: '/features', label: 'See what it does' }} />
         </SiteShell>
     );
 }

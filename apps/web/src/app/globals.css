@@ -463,3 +463,15 @@ body {
     .theme-site .site-reveal.is-armed > * { opacity: 1 !important; }
     .theme-site .site-lift:hover { transform: none; }
 }
+
+/* RotatingChannel: the next channel name rises into place. Never rests hidden. */
+@keyframes rotating-word-in {
+    from { opacity: 0.15; transform: translateY(0.35em); }
+    to { opacity: 1; transform: none; }
+}
+.rotating-word {
+    animation: rotating-word-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+    .rotating-word { animation: none; }
+}

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { AlertCircle, Info } from 'lucide-react';
 import { AwningDivider, BrandLogo, StatusPill, cn } from '@bookingflow/ui';
+import { RotatingChannel } from '@/components/brand/rotating-channel';
 
 /**
  * Auth frame: the cream page every sign-in / sign-up / reset screen sits on.
@@ -65,7 +66,7 @@ export function AuthFrame({
 
 const DEFAULT_STATEMENT = (
     <>
-        Your customers book on WhatsApp.{' '}
+        Your customers book on <RotatingChannel />.{' '}
         <span className="text-cream/70">You get on with your day.</span>
     </>
 );
@@ -75,11 +76,11 @@ function DepositProof() {
     return (
         <div className="max-w-sm rounded-card bg-surface p-5 text-text shadow-card">
             <div className="flex items-center justify-between gap-3">
-                <p className="text-small font-medium text-muted">Glow Hair Studio</p>
+                <p className="text-small font-medium text-muted">Maison Skin Clinic</p>
                 <StatusPill status="paid" label="Deposit paid" size="sm" />
             </div>
-            <p className="mt-3 text-[28px] font-bold leading-none tabular-nums">GH₵ 50.00</p>
-            <p className="mt-2 text-small text-muted">Saturday, 10:30 · Braids with Akosua</p>
+            <p className="mt-3 text-[28px] font-bold leading-none tabular-nums">GH₵ 200.00</p>
+            <p className="mt-2 text-small text-muted">Thursday, 4:30 pm · HydraFacial for Efua</p>
         </div>
     );
 }

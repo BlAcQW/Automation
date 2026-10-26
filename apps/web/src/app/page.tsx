@@ -11,6 +11,7 @@ import { ChatDemo } from '@/components/marketing/chat-demo';
 import { LEAKS } from '@/components/marketing/content';
 import { pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
 import { SITE_TAGLINE } from '@/lib/site';
+import { RotatingChannel } from '@/components/brand/rotating-channel';
 
 export const metadata = pageMetadata({
     title: 'Bookly: WhatsApp booking system for Ghana businesses',
@@ -38,7 +39,7 @@ export default function HomePage() {
                             {SITE_TAGLINE}
                         </h1>
                         <p className={cn('mt-5 max-w-xl text-[1.0625rem] text-muted sm:text-xl sm:leading-relaxed', m.enter, m.d1)}>
-                            Bookly answers your WhatsApp while you work. It books customers into times you&apos;re really
+                            Bookly answers your <RotatingChannel /> while you work. It books customers into times you&apos;re really
                             free, takes the deposit by Mobile Money and sends the reminder, so they show up.
                         </p>
                         <div className={cn('mt-8 flex flex-col gap-3 sm:flex-row', m.enter, m.d2)}>

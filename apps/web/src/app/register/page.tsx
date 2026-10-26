@@ -10,6 +10,7 @@ import { Badge, Button, Input, cn, ease } from '@bookingflow/ui';
 import { AuthAlert, AuthFootnote, AuthFrame, AuthTitle, authLink, authMutedLink } from '@/components/auth/auth-frame';
 import { useInlineValidation } from '@/components/auth/use-inline-validation';
 import { PRODUCT_MODE_ENABLED } from '@/lib/feature-flags';
+import { RotatingChannel } from '@/components/brand/rotating-channel';
 
 type BusinessType = 'PRODUCT' | 'SERVICE';
 
@@ -100,7 +101,7 @@ export default function RegisterPage() {
             statement={
                 <>
                     Set up this afternoon.{' '}
-                    <span className="text-cream/70">Taking bookings on WhatsApp by tonight.</span>
+                    <span className="text-cream/70">Taking bookings on <RotatingChannel /> by tonight.</span>
                 </>
             }
         >
@@ -186,7 +187,7 @@ export default function RegisterPage() {
                                 name="businessName"
                                 value={formData.businessName}
                                 onChange={handleChange}
-                                placeholder={formData.businessType === 'PRODUCT' ? "Ama's Fabrics" : "Ama's Hair Studio"}
+                                placeholder={formData.businessType === 'PRODUCT' ? "Ama's Fabrics" : "Maison Skin Clinic"}
                                 autoComplete="organization"
                                 required
                                 {...fields.businessName.props}

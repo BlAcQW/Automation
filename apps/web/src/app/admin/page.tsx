@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
-import { Building2, Users, Calendar, MessageSquare, TrendingUp, ArrowRight } from 'lucide-react';
+import { Building2, Users, Calendar, Inbox, TrendingUp, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { StatCard, Card, PageHeader, SkeletonCard, StatusPill, buttonVariants } from '@bookingflow/ui';
 import { useAdmin } from './admin-context';
@@ -43,7 +43,7 @@ export default function AdminDashboardPage() {
         { name: 'Businesses', value: stats?.tenants?.total || 0, icon: Building2 },
         { name: 'Users', value: stats?.users?.total || 0, icon: Users },
         { name: 'Bookings', value: stats?.bookings?.total || 0, icon: Calendar },
-        { name: 'Conversations', value: stats?.conversations?.total || 0, icon: MessageSquare },
+        { name: 'Conversations', value: stats?.conversations?.total || 0, icon: Inbox },
         { name: 'New this month', value: stats?.tenants?.newThisMonth || 0, icon: TrendingUp },
     ];
 

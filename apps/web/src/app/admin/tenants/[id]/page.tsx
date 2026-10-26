@@ -241,7 +241,7 @@ export default function OrganisationPage() {
                                 <THead><tr><Th>Payouts</Th><Th>Count</Th><Th>Total</Th></tr></THead>
                                 <tbody>
                                     {money.payoutsByStatus.map((p: any) => (
-                                        <Tr key={p.status}><Td><StatusPill size="sm" status={p.status} /></Td><Td label="Count" className="tabular-nums">{p.count}</Td><Td label="Total" className="tabular-nums">{formatMinor(p.totalMinor, money.wallet?.currency)}</Td></Tr>
+                                        <Tr key={p.status}><Td><StatusPill size="sm" status={p.status} /></Td><Td label="Count" className="tabular-nums">{p.count}</Td><Td label="Total" className="whitespace-nowrap tabular-nums">{formatMinor(p.totalMinor, money.wallet?.currency)}</Td></Tr>
                                     ))}
                                 </tbody>
                             </Table>

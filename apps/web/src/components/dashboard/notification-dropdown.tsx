@@ -165,7 +165,7 @@ export function NotificationDropdown() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98, transition: { duration: 0.15, ease: [0.4, 0, 1, 1] } }}
                         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                        className="absolute right-0 top-full z-50 mt-2 max-h-[480px] w-[min(380px,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-card border border-border bg-surface text-text shadow-card-lg"
+                        className="fixed inset-x-4 top-[calc(env(safe-area-inset-top,0px)+4.25rem)] z-50 max-h-[min(480px,calc(100dvh-6rem))] origin-top sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[380px] sm:origin-top-right flex flex-col overflow-hidden rounded-card border border-border bg-surface text-text shadow-card-lg"
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
@@ -187,7 +187,7 @@ export function NotificationDropdown() {
                         </div>
 
                         {/* Notification List */}
-                        <div className="max-h-[400px] overflow-y-auto">
+                        <div className="min-h-0 flex-1 overflow-y-auto sm:max-h-[400px]">
                             {loading ? (
                                 <div aria-busy="true" className="divide-y divide-border">
                                     <span className="sr-only">Loading…</span>

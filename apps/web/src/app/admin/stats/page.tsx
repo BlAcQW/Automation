@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
-import { Building2, Users, Calendar, MessageSquare, TrendingUp, CalendarCheck } from 'lucide-react';
+import { Building2, Users, Calendar, Inbox, TrendingUp, CalendarCheck } from 'lucide-react';
 import { ErrorState, PageHeader, SkeletonCard, StatCard } from '@bookingflow/ui';
 
 export default function AdminStatsPage() {
@@ -43,7 +43,7 @@ export default function AdminStatsPage() {
         { name: 'Users', value: data.users.total, icon: Users },
         { name: 'Bookings', value: data.bookings.total, icon: Calendar, sub: `${data.bookings.today} today` },
         { name: 'Bookings today', value: data.bookings.today, icon: CalendarCheck },
-        { name: 'Conversations', value: data.conversations.total, icon: MessageSquare },
+        { name: 'Conversations', value: data.conversations.total, icon: Inbox },
     ];
 
     return (

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminApi } from '@/lib/api';
-import { Building2, MessageCircle, Instagram, Facebook } from 'lucide-react';
+import { Building2, Phone, Instagram, Facebook } from 'lucide-react';
 import Link from 'next/link';
 import { Badge, Button, Card, EmptyState, PageHeader, SearchInput, Select, SkeletonTableRow, StatusPill } from '@bookingflow/ui';
 import { NewOrganisation } from './new-organisation';
@@ -80,9 +80,9 @@ export default function AdminTenantsPage() {
                                     <Th>Business</Th>
                                     <Th>Plan</Th>
                                     <Th>Messages (month)</Th>
-                                    <Th>Timezone</Th>
+                                    <Th className="md:hidden 2xl:table-cell">Timezone</Th>
                                     <Th>Users</Th>
-                                    <Th>Services</Th>
+                                    <Th className="md:hidden 2xl:table-cell">Services</Th>
                                     <Th>Bookings</Th>
                                     <Th>Channels</Th>
                                     <Th>Status</Th>
@@ -92,7 +92,7 @@ export default function AdminTenantsPage() {
                             <tbody>
                                 {data?.data?.map((tenant: any) => (
                                     <Tr key={tenant.id}>
-                                        <Td>
+                                        <Td className="md:min-w-[11rem]">
                                             <Link href={`/admin/tenants/${tenant.id}`} className="font-semibold text-text hover:text-primary">
                                                 {tenant.name}
                                             </Link>
@@ -106,9 +106,9 @@ export default function AdminTenantsPage() {
                                             </Badge>
                                         </Td>
                                         <Td label="Messages" className="font-mono tabular-nums">{(tenant.messagesThisMonth ?? 0).toLocaleString()}</Td>
-                                        <Td label="Timezone" className="text-muted">{tenant.timezone}</Td>
+                                        <Td label="Timezone" className="text-muted md:hidden 2xl:table-cell">{tenant.timezone}</Td>
                                         <Td label="Users" className="tabular-nums">{tenant.usersCount}</Td>
-                                        <Td label="Services" className="tabular-nums">{tenant.servicesCount}</Td>
+                                        <Td label="Services" className="tabular-nums md:hidden 2xl:table-cell">{tenant.servicesCount}</Td>
                                         <Td label="Bookings" className="tabular-nums">{tenant.bookingsCount}</Td>
                                         <Td label="Channels"><ChannelIcons channels={tenant.channels} /></Td>
                                         <Td label="Status">
@@ -149,7 +149,7 @@ function ChannelIcons({ channels }: { channels?: { whatsapp: string; whatsappMod
     const waLabel = `${wa.label}${channels.whatsappMode === 'BOOKLY_HOSTED' ? ' (Bookly-hosted)' : channels.whatsappMode ? ' (own account)' : ''}`;
     return (
         <span className="flex items-center gap-2">
-            <span title={waLabel} aria-label={waLabel}><MessageCircle className={`h-4 w-4 ${wa.cls}`} /></span>
+            <span title={waLabel} aria-label={waLabel}><Phone className={`h-4 w-4 ${wa.cls}`} /></span>
             <span title={channels.instagram ? 'Instagram connected' : 'Instagram not connected'} aria-label={channels.instagram ? 'Instagram connected' : 'Instagram not connected'}>
                 <Instagram className={`h-4 w-4 ${channels.instagram ? 'text-success-fg' : 'text-muted/50'}`} />
             </span>

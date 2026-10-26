@@ -115,7 +115,7 @@ export function AttentionPanel() {
                                     {payouts.items.map((p: any) => (
                                         <Tr key={p.id}>
                                             <Td label="Business">{orgLink(p.tenantId, p.tenantName)}</Td>
-                                            <Td label="Amount" className="tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
+                                            <Td label="Amount" className="whitespace-nowrap tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
                                             <Td label="Status"><StatusPill size="sm" status={p.status} tone={p.status === 'FAILED' ? 'error' : 'warning'} /></Td>
                                             <Td label="Reason">{p.failureReason ?? '—'}</Td>
                                         </Tr>

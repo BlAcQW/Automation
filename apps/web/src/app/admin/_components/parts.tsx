@@ -59,12 +59,12 @@ export function Tr({ children, className = '' }: { children: ReactNode; classNam
 }
 
 export function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
-    return <th className={cn('px-6 py-3 text-left text-[13px] font-semibold text-muted', className)}>{children}</th>;
+    return <th className={cn('px-4 py-3 text-left text-[13px] font-semibold text-muted xl:px-5', className)}>{children}</th>;
 }
 
 export function Td({ children, className = '', label }: { children?: ReactNode; className?: string; label?: string }) {
     return (
-        <td className={cn('flex items-start justify-between gap-4 py-1.5 text-[15px] text-text md:table-cell md:px-6 md:py-3', className)}>
+        <td className={cn('flex items-start justify-between gap-4 py-1.5 text-[15px] text-text md:table-cell md:px-4 md:py-3 xl:px-5', className)}>
             {label && <span className="shrink-0 text-[13px] font-medium text-muted md:hidden">{label}</span>}
             <div className={cn('min-w-0', label ? 'text-right md:text-left' : 'flex-1')}>{children}</div>
         </td>

@@ -56,8 +56,8 @@ export default function AdminMoneyPage() {
                                     {overview.data.balances.map((b: any) => (
                                         <Tr key={b.currency}>
                                             <Td className="font-semibold">{b.currency}</Td>
-                                            <Td label="Available" className="tabular-nums">{formatMinor(b.availableMinor, b.currency)}</Td>
-                                            <Td label="Pending" className="tabular-nums">{formatMinor(b.pendingMinor, b.currency)}</Td>
+                                            <Td label="Available" className="whitespace-nowrap tabular-nums">{formatMinor(b.availableMinor, b.currency)}</Td>
+                                            <Td label="Pending" className="whitespace-nowrap tabular-nums">{formatMinor(b.pendingMinor, b.currency)}</Td>
                                             <Td label="Wallets" className="tabular-nums">{b.wallets}</Td>
                                         </Tr>
                                     ))}
@@ -76,7 +76,7 @@ export default function AdminMoneyPage() {
                                         <Tr key={`${p.status}-${p.currency}`}>
                                             <Td><PayoutStatus status={p.status} /></Td>
                                             <Td label="Count" className="tabular-nums">{p.count}</Td>
-                                            <Td label="Total" className="tabular-nums">{formatMinor(p.totalMinor, p.currency)}</Td>
+                                            <Td label="Total" className="whitespace-nowrap tabular-nums">{formatMinor(p.totalMinor, p.currency)}</Td>
                                         </Tr>
                                     ))}
                                 </tbody>
@@ -126,7 +126,7 @@ export default function AdminMoneyPage() {
                                     <Tr key={p.id}>
                                         <Td className="whitespace-nowrap font-medium">{formatDateTime(p.createdAt)}</Td>
                                         <Td label="Business">{businessLink(p.tenantId, p.tenantName)}</Td>
-                                        <Td label="Amount" className="tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
+                                        <Td label="Amount" className="whitespace-nowrap tabular-nums">{formatMinor(p.amountMinor, p.currency)}</Td>
                                         <Td label="To">{p.recipient.accountName}<p className="text-[13px] text-muted">{p.recipient.accountNumberMasked}</p></Td>
                                         <Td label="Status"><PayoutStatus status={p.status} /></Td>
                                         <Td label="Note">{p.failureReason ?? '—'}</Td>

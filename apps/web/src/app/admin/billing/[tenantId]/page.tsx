@@ -275,21 +275,21 @@ export default function AdminTenantBillingPage() {
                                 <p className="text-[15px] text-muted">Nothing to bill for this month.</p>
                             ) : (
                                 <div className="overflow-x-auto">
-                                    <table className="w-full min-w-[20rem]">
+                                    <table className="w-full">
                                         <thead>
                                             <tr className="border-b border-border text-left text-[13px] text-muted">
                                                 <th className="py-3 pr-3 font-semibold">Item</th>
                                                 <th className="py-3 pr-3 text-right font-semibold">Qty</th>
-                                                <th className="py-3 pr-3 text-right font-semibold">Unit</th>
+                                                <th className="hidden py-3 pr-3 text-right font-semibold sm:table-cell">Unit</th>
                                                 <th className="py-3 text-right font-semibold">Amount</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {statement.lines.map((l) => (
                                                 <tr key={l.code} className="border-b border-border text-[15px] tabular-nums text-text">
-                                                    <td className="py-3 pr-3">{l.description}</td>
+                                                    <td className="py-3 pr-3">{l.description}<span className="block text-[13px] text-muted sm:hidden">{formatMoney(l.unitAmountMinor, statement.currency)} each</span></td>
                                                     <td className="py-3 pr-3 text-right">{l.quantity.toLocaleString('en-GB')}</td>
-                                                    <td className="whitespace-nowrap py-3 pr-3 text-right">{formatMoney(l.unitAmountMinor, statement.currency)}</td>
+                                                    <td className="hidden whitespace-nowrap py-3 pr-3 text-right sm:table-cell">{formatMoney(l.unitAmountMinor, statement.currency)}</td>
                                                     <td className="whitespace-nowrap py-3 text-right">{formatMoney(l.amountMinor, statement.currency)}</td>
                                                 </tr>
                                             ))}

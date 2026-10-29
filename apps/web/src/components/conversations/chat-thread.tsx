@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { ArrowLeft, Bot, Hand, MessageCircle, Phone, UserRound } from 'lucide-react';
-import { Avatar, Button, EmptyState, Skeleton, cn } from '@bookingflow/ui';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Bot, Hand, MessageCircle, Phone, StickyNote, UserRound } from 'lucide-react';
+import { Avatar, Button, Drawer, EmptyState, Skeleton, cn } from '@bookingflow/ui';
+import { CustomerNotePanel } from '@/components/customers/customer-note-panel';
 import type { Conversation, Message } from './types';
 import { MessageBubble } from './message-bubble';
 import { ChatComposer } from './chat-composer';
@@ -37,9 +38,11 @@ export function ChatThread({
     // Messages already on screen when the thread opened don't animate; only
     // ones that arrive while it's open slide in.
     const seenRef = useRef<Set<string> | null>(null);
+    const [notesOpen, setNotesOpen] = useState(false);
 
     useEffect(() => {
         seenRef.current = null;
+        setNotesOpen(false);
     }, [conversation.id]);
 
     useEffect(() => {
@@ -73,6 +76,16 @@ export function ChatThread({
                         <span className="truncate tabular-nums">{contactLine(conversation)}</span>
                     </p>
                 </div>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setNotesOpen(true)}
+                    aria-label="Notes about this customer"
+                    className="shrink-0"
+                >
+                    <StickyNote className="h-4 w-4" aria-hidden />
+                    <span className="hidden lg:inline">Notes</span>
+                </Button>
                 {isHuman ? (
                     <Button
                         variant="secondary"
@@ -149,6 +162,10 @@ export function ChatThread({
             </div>
 
             <ChatComposer onSend={onSend} onSendMedia={onSendMedia} inputRef={composerRef} />
+
+            <Drawer isOpen={notesOpen} onClose={() => setNotesOpen(false)} title={`Notes on ${title}`}>
+                <CustomerNotePanel conversationId={conversation.id} />
+            </Drawer>
         </div>
     );
 }

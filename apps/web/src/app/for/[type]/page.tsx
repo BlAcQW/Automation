@@ -35,7 +35,7 @@ export default function BusinessTypePage({ params }: { params: { type: string } 
     return (
         <SiteShell jsonLd={[breadcrumbJsonLd(crumbs), faqJsonLd(page.faq)]}>
             <PageHero crumbs={crumbs} eyebrow={page.eyebrow} title={page.title} sub={page.sub}>
-                <SignupLink>Start free</SignupLink>
+                <SignupLink />
                 <ButtonLink href="/features/whatsapp-bookings" variant="secondary">How it works</ButtonLink>
             </PageHero>
 

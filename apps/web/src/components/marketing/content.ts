@@ -2,6 +2,7 @@ import {
     BellRing, CalendarCheck, Clock3, Instagram, MessageCircle, ShieldCheck, Smartphone, Store, Users, Wallet,
     type LucideIcon,
 } from 'lucide-react';
+import { REGISTRATION_OPEN } from '@/lib/feature-flags';
 
 /**
  * Marketing copy shared across pages. Only things Bookly really does today.
@@ -97,10 +98,21 @@ export const FAQ_GROUPS: readonly { title: string; items: readonly QA[] }[] = [
     },
 ];
 
+// While sign-up is closed (lib/feature-flags.ts) the answers point at the waitlist.
 export const PRICING_FAQ: readonly QA[] = [
-    { q: 'How much does Bookly cost?', a: "We're still setting the prices for Solo, Team and Enterprise. You can start free today, with no card." },
+    {
+        q: 'How much does Bookly cost?',
+        a: REGISTRATION_OPEN
+            ? "We're still setting the prices for Solo, Team and Enterprise. You can start free today, with no card."
+            : "We're still setting the prices for Solo, Team and Enterprise. For now we're letting businesses in a few at a time from the waitlist.",
+    },
     { q: 'Do I pay for WhatsApp messages?', a: "You pay Meta's own WhatsApp message rates directly. We add nothing on top. Instagram and Messenger cost nothing at all." },
-    { q: 'Do I need a card to start?', a: 'No. Sign up, connect your WhatsApp and take your first booking without a card.' },
+    {
+        q: 'Do I need a card to start?',
+        a: REGISTRATION_OPEN
+            ? 'No. Sign up, connect your WhatsApp and take your first booking without a card.'
+            : "No. When it's your turn on the waitlist, sign up, connect your WhatsApp and take your first booking without a card.",
+    },
 ];
 
 /* ------------------------------------------------------------------ */

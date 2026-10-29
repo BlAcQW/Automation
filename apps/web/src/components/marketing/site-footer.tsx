@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { SITE_TAGLINE } from '@/lib/site';
+import { SIGNUP_CTA } from '@/lib/signup-cta';
 import { SiteLogo } from './site-logo';
 import { Container } from './primitives';
 
@@ -27,7 +28,7 @@ const COLUMNS = [
             ['About and contact', '/about'],
             ['Support', '/support'],
             ['Log in', '/login'],
-            ['Start free', '/register'],
+            [SIGNUP_CTA.label, SIGNUP_CTA.href],
         ],
     },
     {
@@ -61,7 +62,7 @@ export function SiteFooter() {
                                         <li key={href}>
                                             <Link
                                                 href={href}
-                                                data-analytics={href === '/register' ? 'Signup' : undefined}
+                                                data-analytics={href === SIGNUP_CTA.href ? SIGNUP_CTA.event : undefined}
                                                 className="inline-flex min-h-[44px] items-center text-[15px] text-cream/80 underline-offset-4 transition-colors duration-ui hover:text-cream hover:underline"
                                             >
                                                 {label}

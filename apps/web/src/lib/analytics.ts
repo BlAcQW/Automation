@@ -11,9 +11,14 @@
  * the click. Every wa.me link is reported as `WhatsApp Click` automatically.
  */
 
-export type AnalyticsEvent = 'Signup' | 'Demo Request' | 'WhatsApp Click';
+export type AnalyticsEvent = 'Signup' | 'Demo Request' | 'WhatsApp Click' | 'Waitlist';
 
-export const ANALYTICS_EVENTS: readonly AnalyticsEvent[] = ['Signup', 'Demo Request', 'WhatsApp Click'];
+/**
+ * `Waitlist` is reported by the /waitlist form itself once a join succeeds
+ * (not on a click), so it counts real sign-ups to the list. Add it as a
+ * custom-event goal in Plausible.
+ */
+export const ANALYTICS_EVENTS: readonly AnalyticsEvent[] = ['Signup', 'Demo Request', 'WhatsApp Click', 'Waitlist'];
 
 type PlausibleFn = (event: string, options?: { props?: Record<string, string> }) => void;
 

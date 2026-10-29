@@ -1,4 +1,5 @@
 import type { BusinessType, QA } from './content';
+import { REGISTRATION_OPEN } from '@/lib/feature-flags';
 
 /**
  * Copy for the /for/* landing pages. Honest about what works today:
@@ -29,7 +30,7 @@ export const BUSINESS_PAGES: Record<BusinessType['slug'], BusinessPage> = {
         crumb: 'Salons and barbers',
         seoTitle: 'Salon booking app for Ghana on WhatsApp | Bookly',
         seoDescription:
-            'Braids, cuts, nails and lashes booked on WhatsApp into your real free times, with a Mobile Money deposit and a reminder. Start free.',
+            `Braids, cuts, nails and lashes booked on WhatsApp into your real free times, with a Mobile Money deposit and a reminder. ${REGISTRATION_OPEN ? 'Start free.' : 'Join the waitlist.'}`,
         eyebrow: 'For salons, barbers, nail and lash techs',
         title: 'Keep the chair full, even when your hands are busy.',
         sub: "You can't put down the comb to answer WhatsApp. Bookly answers for you, books the slot and takes the deposit, so the booking doesn't go to the salon down the road.",

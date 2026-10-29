@@ -164,7 +164,7 @@ export function ChatThread({
             <ChatComposer onSend={onSend} onSendMedia={onSendMedia} inputRef={composerRef} />
 
             <Drawer isOpen={notesOpen} onClose={() => setNotesOpen(false)} title={`Notes on ${title}`}>
-                <CustomerNotePanel conversationId={conversation.id} />
+                <CustomerNotePanel key={conversation.id} conversationId={conversation.id} />
             </Drawer>
         </div>
     );

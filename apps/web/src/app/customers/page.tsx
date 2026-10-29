@@ -71,7 +71,7 @@ function CustomerDetails({ customer }: { customer: Customer }) {
                 <h3 id="customer-notes-heading" className="flex items-center gap-2 text-base font-bold text-text">
                     <StickyNote className="h-5 w-5 text-primary" aria-hidden /> Notes
                 </h3>
-                <CustomerNotePanel conversationId={customer.conversationId} />
+                <CustomerNotePanel key={customer.conversationId} conversationId={customer.conversationId} />
             </section>
         </div>
     );

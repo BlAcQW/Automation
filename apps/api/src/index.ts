@@ -52,6 +52,7 @@ import webhooksRoutes from './routes/webhooks/index.js';
 import v1Routes from './routes/v1/index.js';
 import developerRoutes from './routes/developer/index.js';
 import ridesRoutes from './routes/rides/index.js';
+import assistantRoutes from './routes/assistant/index.js';
 import csrfPlugin from './plugins/csrf.js';
 import { registerConsoleProxyClientIp } from './plugins/console-proxy.js';
 import { registerExternalAppFulfiller } from './services/external-app.js';
@@ -210,6 +211,8 @@ async function buildApp() {
     // Public API for external apps (API-key auth, server-to-server).
     await app.register(v1Routes, { prefix: '/v1' });
     await app.register(developerRoutes, { prefix: '/developer' });
+    // What the assistant knows about the business, and the dashboard preview.
+    await app.register(assistantRoutes, { prefix: '/assistant' });
     // TURBO console API (RIDES pack); staff login, cross-site when CROSS_SITE_AUTH is on.
     await app.register(ridesRoutes, { prefix: '/rides' });
     // Live updates over WebSocket (GET /ws). Registered after the plugin so the

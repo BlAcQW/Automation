@@ -500,6 +500,10 @@ export interface ShopPromptInput {
     isFirstTurn: boolean;
     isReturning: boolean;
     customerName: string | null;
+    /** Rules + delimited block for the owner's knowledge (business-knowledge.ts); empty = none. */
+    knowledge?: string[];
+    /** Private staff note block (customer-notes.ts); '' unless the identity is verified. */
+    customerNote?: string;
 }
 
 /** System prompt for a shop. No appointment, slot or deposit language: none of that exists here. */
@@ -545,6 +549,9 @@ export function shopSystemPrompt(i: ShopPromptInput): string {
         '  will send it shortly.',
     ];
 
+    // The owner's reference information: after the hard rules, never above them.
+    if (i.knowledge?.length) lines.push('', ...i.knowledge);
+
     if (i.isFirstTurn) {
         lines.push(
             '',
@@ -557,5 +564,6 @@ export function shopSystemPrompt(i: ShopPromptInput): string {
             'If you can see you have ALREADY welcomed them in this conversation, skip the welcome and just answer.',
         );
     }
+    if (i.customerNote) lines.push('', i.customerNote);
     return lines.join('\n');
 }

@@ -158,6 +158,11 @@ const envSchema = z.object({
     // signup and the PRODUCT-side dashboard. The frontend reads a sibling
     // NEXT_PUBLIC_ENABLE_PRODUCT_MODE for its own gating.
     ENABLE_PRODUCT_MODE: z.string().optional(),
+
+    // Self sign-up (POST /auth/register). CLOSED unless exactly "true": while
+    // closed a sign-up needs a waitlist invite (services/registration-gate.ts,
+    // which reads it per request). The web reads NEXT_PUBLIC_REGISTRATION_OPEN.
+    REGISTRATION_OPEN: z.string().optional(),
 });
 
 // In test mode, fall back to deterministic dummy values so unit tests that

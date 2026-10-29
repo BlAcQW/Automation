@@ -15,6 +15,12 @@ describe('Meta reviewer account helper', () => {
         expect(parseReviewerArgs(['node', 's', '--api', 'http://localhost:3001', '--email', 'a@b.co']).api).toBe('http://localhost:3001');
         expect(() => parseReviewerArgs(['node', 's', '--api', 'https://x.example'])).toThrow(/--email/);
     });
+    it('takes an optional --invite token (self sign-up is closed while the waitlist is on)', () => {
+        const base = ['node', 's', '--api', 'https://api.bookly.example', '--email', 'a@b.co'];
+        expect(parseReviewerArgs(base)).not.toHaveProperty('invite');
+        expect(parseReviewerArgs([...base, '--invite', 'tok_abc-123']).invite).toBe('tok_abc-123');
+        expect(parseReviewerArgs([...base, '--invite', 'https://bookly.example/register?invite=tok_abc-123']).invite).toBe('tok_abc-123');
+    });
     it('makes a strong password with letters, digits and a symbol', () => {
         const p = reviewerPassword();
         expect(p.length).toBeGreaterThanOrEqual(16);

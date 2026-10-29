@@ -29,6 +29,11 @@ import {
 
 const idParam = z.object({ id: z.string().min(1).max(64) });
 
+/** Plenty for a team typing notes; stops a script hammering the customer table. */
+const NOTE_WRITE_LIMIT = {
+    rateLimit: { max: 60, timeWindow: '1 minute', keyGenerator: (req: FastifyRequest) => `${req.user?.tenantId ?? req.ip}:customer-note` },
+};
+
 const NOT_VERIFIED =
     'Notes can only be saved for customers with a verified WhatsApp number. This chat has no verified number yet.';
 
@@ -76,7 +81,7 @@ const customerNotesRoutes: FastifyPluginAsync = async (fastify) => {
         return noteView(request.user.tenantId, customer);
     });
 
-    fastify.put('/:id/note', async (request) => {
+    fastify.put('/:id/note', { config: NOTE_WRITE_LIMIT }, async (request) => {
         const { id } = idParam.parse(request.params);
         const { note } = noteBodySchema.parse(request.body);
         const { tenantId, userId } = request.user;
@@ -98,7 +103,7 @@ const customerNotesRoutes: FastifyPluginAsync = async (fastify) => {
         return { eligible: true, ...(await noteView(tenantId, customer)) };
     });
 
-    fastify.put('/by-conversation/:id/note', async (request) => {
+    fastify.put('/by-conversation/:id/note', { config: NOTE_WRITE_LIMIT }, async (request) => {
         const { id } = idParam.parse(request.params);
         const { note } = noteBodySchema.parse(request.body);
         const { tenantId, userId } = request.user;

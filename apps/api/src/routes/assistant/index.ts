@@ -84,7 +84,8 @@ const assistantRoutes: FastifyPluginAsync = async (fastify) => {
     }, async (request) => {
         const { tenantId, userId, role } = request.user;
         // Same rule as the other business settings (templates, channels, payments).
-        if (role !== 'OWNER') {
+        // A support session is read-only (auth refuses its writes too); say so here as well.
+        if (role !== 'OWNER' || request.user.support) {
             throw fastify.httpErrors.forbidden('Only the account owner can change what your assistant knows.');
         }
         const input = knowledgeInputSchema.parse(request.body);

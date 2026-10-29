@@ -313,12 +313,25 @@ export const BLOCK_START = '<<BUSINESS INFORMATION START: reference written by t
 export const BLOCK_END = '<<BUSINESS INFORMATION END>>';
 
 /**
+ * Remove every "<<" and ">>" so a value can never open or close a block. One
+ * pass is not enough: removing a pair can join its neighbours into a new one
+ * ("<>><" becomes "<<"), so repeat until nothing changes.
+ */
+export function stripMarkers(value: string): string {
+    let out = value;
+    for (let prev = ''; prev !== out;) {
+        prev = out;
+        out = out.replace(/<<|>>/g, '');
+    }
+    return out;
+}
+
+/**
  * One line, no markers. Lines are joined with a space after sentence-ending
  * punctuation and " / " otherwise, so "MoMo\nCards" stays readable as a list.
  */
 export function promptLine(value: string): string {
-    const parts = value
-        .replace(/<<|>>/g, '')
+    const parts = stripMarkers(value)
         .split(/\n+/)
         .map((p) => p.replace(/\s+/g, ' ').trim())
         .filter(Boolean);

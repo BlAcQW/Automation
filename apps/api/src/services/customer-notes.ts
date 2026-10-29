@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod';
-import { cleanText } from './business-knowledge.js';
+import { cleanText, stripMarkers } from './business-knowledge.js';
 import { normalizeCustomerPhone } from './customer-phone.js';
 import { linkConversationToCustomer, upsertCustomerByPhone, type CustomerDb } from './customers.js';
 import { isWhatsAppPhoneId } from './whatsapp-identity.js';
@@ -143,8 +143,7 @@ export const NOTE_END = '<<STAFF NOTE END>>';
 
 /** The private-note block for the system prompt, or '' when there is no note. */
 export function renderCustomerNoteBlock(note: string): string {
-    const line = note
-        .replace(/<<|>>/g, '')
+    const line = stripMarkers(note)
         .split(/\s*\n\s*/)
         .map((p) => p.replace(/\s+/g, ' ').trim())
         .filter(Boolean)

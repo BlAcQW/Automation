@@ -158,6 +158,15 @@ describe('PUT /assistant/knowledge', () => {
         expect(queries.some((q) => q.op === 'upsert')).toBe(false);
     });
 
+    it('a support session (read-only by design) cannot save, even with an owner role', async () => {
+        const app = await build();
+        const support = app.jwt.sign({ userId: 'owner-a', tenantId: A, role: 'OWNER', type: 'access' });
+        app.addHook('preHandler', async (req: any) => { req.user.support = { sessionId: 's', adminId: 'adm' }; });
+        const res = await call(app, 'PUT', '/assistant/knowledge', support, body);
+        expect(res.statusCode).toBe(403);
+        expect(queries.some((q) => q.op === 'upsert')).toBe(false);
+    });
+
     it('refuses a tenantId in the body (cannot write another tenant\'s row)', async () => {
         const app = await build();
         const res = await call(app, 'PUT', '/assistant/knowledge', tokenFor(app, B, 'OWNER'), { ...body, tenantId: A });

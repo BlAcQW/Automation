@@ -1,21 +1,46 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Mail, Lock, User, Building, ArrowRight, ArrowLeft, Package, Scissors, AlertCircle } from 'lucide-react';
-import { Badge, Button, Input, cn, ease } from '@bookingflow/ui';
+import { Badge, Button, Input, Skeleton, cn, ease } from '@bookingflow/ui';
 import { AuthAlert, AuthFootnote, AuthFrame, AuthTitle, authLink, authMutedLink } from '@/components/auth/auth-frame';
 import { useInlineValidation } from '@/components/auth/use-inline-validation';
-import { PRODUCT_MODE_ENABLED } from '@/lib/feature-flags';
+import { PRODUCT_MODE_ENABLED, REGISTRATION_OPEN } from '@/lib/feature-flags';
 import { RotatingChannel } from '@/components/brand/rotating-channel';
 
 type BusinessType = 'PRODUCT' | 'SERVICE';
 
 /** Where a brand-new account lands: the short setup checklist. */
 const AFTER_SIGNUP = '/onboarding';
+
+/**
+ * Sign-up is closed while the waitlist is on (lib/feature-flags.ts): the form
+ * only shows for a valid ?invite= link, with the invited email fixed. Without
+ * an invite, middleware.ts sends people to /waitlist before this renders.
+ * The sign-up flow itself is unchanged and comes back as it was when the
+ * flag is flipped.
+ */
+type Gate =
+    | { kind: 'open' }
+    | { kind: 'checking' }
+    | { kind: 'invited'; token: string; email: string; businessName: string; expiresAt: string }
+    | { kind: 'refused'; reason: RefusedReason };
+
+type RefusedReason = 'expired' | 'used' | 'invalid' | 'error';
+
+/** API refusals (services/registration-gate.ts) that mean "this invite won't do". */
+const INVITE_CODES: Record<string, RefusedReason> = {
+    WAITLIST_ONLY: 'invalid',
+    INVITE_INVALID: 'invalid',
+    INVITE_EMAIL_MISMATCH: 'invalid',
+    INVITE_EXPIRED: 'expired',
+    INVITE_USED: 'used',
+};
 
 export default function RegisterPage() {
     const router = useRouter();
@@ -33,6 +58,38 @@ export default function RegisterPage() {
         businessType: (PRODUCT_MODE_ENABLED ? '' : 'SERVICE') as BusinessType | '',
     });
     const [error, setError] = useState('');
+    const [gate, setGate] = useState<Gate>(REGISTRATION_OPEN ? { kind: 'open' } : { kind: 'checking' });
+
+    // Read ?invite= in an effect (not useSearchParams) so the page still prerenders.
+    useEffect(() => {
+        const token = new URLSearchParams(window.location.search).get('invite')?.trim();
+        if (!token) {
+            if (!REGISTRATION_OPEN) router.replace('/waitlist');
+            return;
+        }
+        let cancelled = false;
+        api.get('/waitlist/invite', { params: { token } })
+            .then(({ data }) => {
+                if (cancelled) return;
+                if (data?.status === 'valid') {
+                    setGate({ kind: 'invited', token, email: data.email, businessName: data.businessName ?? '', expiresAt: data.expiresAt });
+                    setFormData((f) => ({
+                        ...f,
+                        email: data.email,
+                        name: f.name || data.name || '',
+                        businessName: f.businessName || data.businessName || '',
+                    }));
+                } else if (!REGISTRATION_OPEN) {
+                    setGate({ kind: 'refused', reason: data?.status === 'expired' || data?.status === 'used' ? data.status : 'invalid' });
+                }
+            })
+            .catch(() => {
+                if (!cancelled && !REGISTRATION_OPEN) setGate({ kind: 'refused', reason: 'error' });
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [router]);
     const [termsError, setTermsError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [agreed, setAgreed] = useState(false);
@@ -74,12 +131,18 @@ export default function RegisterPage() {
                 ...formData,
                 businessType: formData.businessType as BusinessType,
                 acceptTerms: true,
+                ...(gate.kind === 'invited' && { inviteToken: gate.token }),
                 // The browser knows where the business is; the server would
                 // otherwise default to UTC and every slot would be off.
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Accra',
             });
             router.push(AFTER_SIGNUP);
         } catch (err: any) {
+            const refusal = INVITE_CODES[err.response?.data?.code as string];
+            if (refusal && !REGISTRATION_OPEN) {
+                setGate({ kind: 'refused', reason: refusal });
+                return;
+            }
             setError(err.response?.data?.message || 'Registration failed');
         } finally {
             setIsLoading(false);
@@ -106,7 +169,20 @@ export default function RegisterPage() {
             }
         >
             <AnimatePresence mode="wait" initial={false}>
-                {step === 1 ? (
+                {gate.kind === 'checking' ? (
+                    <motion.div key="checking" aria-busy="true" {...slide(1)}>
+                        <span className="sr-only">Checking your invite…</span>
+                        <Skeleton className="h-10 w-3/4" />
+                        <Skeleton className="mt-4 h-5 w-2/3" />
+                        <div className="mt-8 space-y-5">
+                            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-control" />)}
+                        </div>
+                    </motion.div>
+                ) : gate.kind === 'refused' ? (
+                    <motion.div key="refused" {...slide(1)}>
+                        <InviteRefused reason={gate.reason} />
+                    </motion.div>
+                ) : step === 1 ? (
                     <motion.div key="step-1" {...slide(-1)}>
                         <AuthTitle sub="Pick the one that sounds most like you. You can change it later.">
                             What kind of business?
@@ -156,6 +232,14 @@ export default function RegisterPage() {
                             Create your account
                         </AuthTitle>
 
+                        {gate.kind === 'invited' && (
+                            <AuthAlert tone="notice" title="You've been invited">
+                                Welcome off the waitlist
+                                {gate.businessName ? <>, <strong className="text-text">{gate.businessName}</strong></> : null}. This invite is for{' '}
+                                <strong className="break-all text-text">{gate.email}</strong> and works until {formatDay(gate.expiresAt)}.
+                            </AuthAlert>
+                        )}
+
                         {error && (
                             <AuthAlert>
                                 {error.replace(/\.\s*$/, '')}. Check the details below and try again. Already signed up?{' '}
@@ -203,7 +287,9 @@ export default function RegisterPage() {
                                 placeholder="you@example.com"
                                 autoComplete="email"
                                 inputMode="email"
-                                hint="We'll send a link to confirm it."
+                                hint={gate.kind === 'invited' ? 'Your invite is for this address.' : "We'll send a link to confirm it."}
+                                readOnly={gate.kind === 'invited'}
+                                className={gate.kind === 'invited' ? 'bg-surface-2' : undefined}
                                 required
                                 {...fields.email.props}
                             />
@@ -280,6 +366,55 @@ export default function RegisterPage() {
                 )}
             </AnimatePresence>
         </AuthFrame>
+    );
+}
+
+function formatDay(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? 'its expiry date' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+}
+
+const REFUSED: Record<RefusedReason, { title: string; body: string }> = {
+    expired: {
+        title: 'This invite has expired',
+        body: 'Invites work for 14 days. Message us and we will send you a fresh one.',
+    },
+    used: {
+        title: 'This invite has already been used',
+        body: 'An account was made with it. If it was yours, log in. You can reset your password from there.',
+    },
+    invalid: {
+        title: "This invite link doesn't work",
+        body: "Check you opened the whole link from your message. Bookly is invite-only for now, so if you don't have one, join the waitlist.",
+    },
+    error: {
+        title: "We couldn't check your invite",
+        body: 'Check your connection and open the link again.',
+    },
+};
+
+/** An invite that can't be used: say why and where to go next. */
+function InviteRefused({ reason }: { reason: RefusedReason }) {
+    const copy = REFUSED[reason];
+    const used = reason === 'used';
+    return (
+        <>
+            <AuthTitle sub={copy.body}>{copy.title}</AuthTitle>
+            <div className="flex flex-col gap-3 sm:flex-row">
+                <Link
+                    href={used ? '/login' : '/waitlist'}
+                    className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-control bg-primary px-6 text-base font-semibold text-primary-fg shadow-soft transition-colors duration-ui hover:bg-primary-hover"
+                >
+                    {used ? 'Log in' : 'Join the waitlist'} <ArrowRight className="h-5 w-5" aria-hidden />
+                </Link>
+                <Link
+                    href={used ? '/forgot-password' : '/login'}
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-control border border-border bg-surface px-6 text-base font-semibold text-text transition-colors duration-ui hover:bg-surface-2"
+                >
+                    {used ? 'Reset my password' : 'I already have an account'}
+                </Link>
+            </div>
+        </>
     );
 }
 

@@ -10,6 +10,8 @@
  * is a config change only: set NEXT_PUBLIC_SITE_URL and rebuild.
  */
 
+import { REGISTRATION_OPEN } from './feature-flags';
+
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://bookly.ikieguy.online').replace(/\/$/, '');
 
 /** `/pricing` → `https://…/pricing`. The one way to make an absolute URL. */
@@ -81,9 +83,12 @@ export const PUBLIC_PAGES: { path: string; updated: string; priority: number; ch
     { path: '/faq', updated: '2026-10-26', priority: 0.7, changeFrequency: 'monthly' },
     { path: '/about', updated: '2026-10-26', priority: 0.6, changeFrequency: 'monthly' },
     { path: '/support', updated: '2026-10-26', priority: 0.5, changeFrequency: 'monthly' },
-    { path: '/register', updated: '2026-10-26', priority: 0.6, changeFrequency: 'monthly' },
+    // While sign-up is closed /register only works with an invite: list the waitlist instead.
+    ...(REGISTRATION_OPEN
+        ? [{ path: '/register', updated: '2026-10-26', priority: 0.6, changeFrequency: 'monthly' as const }]
+        : [{ path: '/waitlist', updated: '2026-10-29', priority: 0.8, changeFrequency: 'monthly' as const }]),
     { path: '/login', updated: '2026-10-26', priority: 0.3, changeFrequency: 'yearly' },
-    { path: '/privacy', updated: '2026-10-26', priority: 0.3, changeFrequency: 'yearly' },
+    { path: '/privacy', updated: '2026-10-29', priority: 0.3, changeFrequency: 'yearly' },
     { path: '/terms', updated: '2026-05-14', priority: 0.3, changeFrequency: 'yearly' },
 ];
 

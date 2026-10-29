@@ -140,8 +140,8 @@ export default function AdminWaitlistPage() {
                 ) : (
                     <>
                         <StatCard name="On the list" value={s?.total ?? 0} icon={<Users />} index={0} />
-                        <StatCard name="New this week" value={s?.newThisWeek ?? 0} icon={<CalendarPlus />} index={1} />
-                        <StatCard name="Waiting (new)" value={s?.byStatus?.NEW ?? 0} icon={<Hourglass />} index={2} />
+                        <StatCard name="This week" value={s?.newThisWeek ?? 0} icon={<CalendarPlus />} index={1} />
+                        <StatCard name="Waiting" value={s?.byStatus?.NEW ?? 0} icon={<Hourglass />} index={2} />
                         <StatCard name="Invited" value={s?.byStatus?.INVITED ?? 0} icon={<Send />} index={3} />
                     </>
                 )}
@@ -153,7 +153,7 @@ export default function AdminWaitlistPage() {
                         value={search}
                         onChange={setSearch}
                         label="Search the waitlist"
-                        placeholder="Name, business, email or phone…"
+                        placeholder="Search the waitlist…"
                         className="w-full md:max-w-md md:flex-1"
                     />
                     <div className="md:w-72">

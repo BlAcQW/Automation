@@ -51,6 +51,11 @@ export function WaitlistDrawer({
     const linkRef = useRef<HTMLInputElement>(null);
     const entryId = entry?.id;
 
+    // A fresh link is the thing the admin came for: bring it into view, selected.
+    useEffect(() => {
+        if (invite) linkRef.current?.focus();
+    }, [invite]);
+
     useEffect(() => {
         setNotes(entry?.adminNotes ?? '');
         setInvite(null);

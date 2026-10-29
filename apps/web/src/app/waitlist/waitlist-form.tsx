@@ -133,7 +133,6 @@ export function WaitlistForm() {
                 </h2>
                 <p className="mt-3 max-w-md text-body text-muted sm:text-[1.0625rem]">
                     We&apos;ll message you on WhatsApp or email when it&apos;s your turn.
-                    {values.email && <> We&apos;ve also sent a note to <span className="font-semibold text-text break-all">{values.email.trim()}</span>.</>}
                 </p>
                 <div className="mt-8 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
                     <Link

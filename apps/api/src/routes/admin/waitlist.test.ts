@@ -216,6 +216,16 @@ describe('POST /admin/waitlist/:id/invite', () => {
         expect(store.rows.get('w1')!.inviteTokenHash).toBe(hashInviteToken(second));
     });
 
+    it('an invite racing a sign-up changes nothing once they have joined (guarded write)', async () => {
+        await build();
+        // They sign up between the read and the write.
+        store.updateMany.mockImplementationOnce(async () => ({ count: 0 }));
+        const res = await invite();
+        expect(res.statusCode).toBe(409);
+        expect(store.rows.get('w1')!.inviteTokenHash).toBeNull();
+        expect(prisma.audits).toHaveLength(0);
+    });
+
     it('409 for someone who already joined; 404 for an unknown entry', async () => {
         await build([waitlistRow({ status: 'JOINED', joinedTenantId: 't1', inviteUsedAt: new Date() })]);
         expect((await invite()).statusCode).toBe(409);

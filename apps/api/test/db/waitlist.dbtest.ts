@@ -66,7 +66,7 @@ const signUp = (payload: Record<string, unknown>) => app.inject({
 });
 
 describe('joining', () => {
-    it('one email is one row: a second join (other case) updates it, the status is kept', async () => {
+    it('one email is one row: a second join (other case) updates it; status, name and number are kept', async () => {
         const prisma = await guardedPrisma();
         const first = await joinWaitlist(prisma, form());
         await rawPrisma().waitlistEntry.update({ where: { id: first.entry.id }, data: { status: 'CONTACTED' } });
@@ -75,7 +75,7 @@ describe('joining', () => {
         expect(second.created).toBe(false);
         const rows = await rawPrisma().waitlistEntry.findMany();
         expect(rows).toHaveLength(1);
-        expect(rows[0]).toMatchObject({ email: 'ama@glow.com', city: 'Osu', phone: '+233201112222', status: 'CONTACTED' });
+        expect(rows[0]).toMatchObject({ email: 'ama@glow.com', city: 'Osu', phone: '+233244123456', name: 'Ama Mensah', status: 'CONTACTED' });
     });
 
     it('concurrent joins with the same email never fail and never duplicate', async () => {

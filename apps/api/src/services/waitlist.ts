@@ -141,8 +141,12 @@ const LOCKED_ON_REJOIN: readonly WaitlistStatus[] = ['INVITED', 'JOINED'];
 /**
  * Join, or update the existing entry for this email. The caller answers the
  * same way either way, so the form never reveals who is already listed.
- * An INVITED or JOINED entry is left as it is: its invite is bound to the
- * address and number the admin saw.
+ *
+ * Joining again refreshes the business details, note and consent but keeps
+ * the original name and WhatsApp number: anyone who knows an email can
+ * submit the form, and must not be able to point the team's WhatsApp
+ * outreach (and the invite link sent there) at their own number. An INVITED
+ * or JOINED entry is left exactly as it is.
  */
 export async function joinWaitlist(
     db: WaitlistDb,
@@ -150,11 +154,9 @@ export async function joinWaitlist(
     now: Date = new Date(),
 ): Promise<{ created: boolean; entry: WaitlistEntry }> {
     const email = input.email.trim().toLowerCase();
-    const details = {
-        name: input.name,
+    const refreshable = {
         businessName: input.businessName,
         businessType: input.businessType,
-        phone: input.phone,
         city: input.city,
         heardFrom: input.heardFrom ?? null,
         message: input.message ?? null,
@@ -165,8 +167,8 @@ export async function joinWaitlist(
     // Native upsert (INSERT ... ON CONFLICT): two people racing on one email never fail.
     const entry = await db.waitlistEntry.upsert({
         where: { email },
-        create: { email, ...details },
-        update: details,
+        create: { email, name: input.name, phone: input.phone, ...refreshable },
+        update: refreshable,
     });
     return { created: !existing, entry };
 }
@@ -223,17 +225,20 @@ export async function createInvite(
     if (current.status === 'JOINED' || current.inviteUsedAt) throw new AlreadyJoinedError();
     const { token, hash } = newInviteToken();
     const expiresAt = new Date(now.getTime() + INVITE_TTL_DAYS * DAY_MS);
-    const entry = await db.waitlistEntry.update({
-        where: { id: args.id },
+    // Guarded write: if they signed up (or were deleted) since the read above, nothing changes.
+    const { count } = await db.waitlistEntry.updateMany({
+        where: { id: args.id, inviteUsedAt: null, status: { not: 'JOINED' } },
         data: {
             status: 'INVITED',
             inviteTokenHash: hash,
             invitedAt: now,
             inviteExpiresAt: expiresAt,
             invitedByAdminId: args.adminId,
-            inviteUsedAt: null,
         },
     });
+    if (count !== 1) throw new AlreadyJoinedError();
+    const entry = await db.waitlistEntry.findUnique({ where: { id: args.id } });
+    if (!entry) throw new WaitlistEntryNotFoundError();
     return { token, expiresAt, entry, previousStatus: current.status };
 }
 

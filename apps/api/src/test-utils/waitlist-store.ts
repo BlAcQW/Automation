@@ -51,6 +51,7 @@ function matches(row: WaitlistRow, where: Where): boolean {
             const op = want as { gt?: Date; in?: unknown[]; not?: unknown };
             if (op.gt !== undefined) return have instanceof Date && have.getTime() > op.gt.getTime();
             if (op.in !== undefined) return op.in.includes(have);
+            if ('not' in op) return have !== op.not;
             return false;
         }
         return have === want;

@@ -127,11 +127,18 @@ describe('POST /waitlist', () => {
     it('the same email again (any case) updates the entry instead of adding one; the answer is identical', async () => {
         await build();
         const first = await join(form);
-        const second = await join({ ...form, email: 'AMA@glow.COM', phone: '0201112222', city: 'Osu', message: 'Now two branches.' });
+        const second = await join({ ...form, email: 'AMA@glow.COM', businessType: 'spa', city: 'Osu', message: 'Now two branches.' });
         expect(second.statusCode).toBe(first.statusCode);
         expect(second.body).toBe(first.body);
         expect(store.rows.size).toBe(1);
-        expect([...store.rows.values()][0]).toMatchObject({ phone: '+233201112222', city: 'Osu', message: 'Now two branches.', status: 'NEW' });
+        expect([...store.rows.values()][0]).toMatchObject({ businessType: 'spa', city: 'Osu', message: 'Now two branches.', status: 'NEW' });
+    });
+
+    it('joining again cannot change the name or WhatsApp number (no redirecting our outreach to another phone)', async () => {
+        await build();
+        await join(form);
+        await join({ ...form, name: 'Someone Else', phone: '0559998888' });
+        expect([...store.rows.values()][0]).toMatchObject({ name: 'Ama Mensah', phone: '+233244123456' });
     });
 
     it('joining again does not email or alert a second time', async () => {

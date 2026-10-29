@@ -1629,3 +1629,56 @@ model PaygDay {
 
   @@unique([tenantId, day])
 }
+
+// ============================================
+// WAITLIST (self sign-up closed while Meta verification is ongoing)
+// ============================================
+
+enum WaitlistStatus {
+  NEW
+  CONTACTED
+  INVITED
+  JOINED
+  DECLINED
+}
+
+/// A business asking to join while self sign-up is closed (REGISTRATION_OPEN).
+/// Platform-level, not tenant data: no tenantId, so the tenant guard ignores it.
+/// One row per email (stored lower-case): joining again updates the row.
+model WaitlistEntry {
+  id               String         @id @default(cuid())
+  name             String         @db.VarChar(120)
+  businessName     String         @db.VarChar(120)
+  /// skin_clinic | spa | dental | tailoring | private_chef | photography |
+  /// fitness | car_detailing | salon_barber | boutique | food | other
+  /// (services/waitlist.ts). A String so a new type needs no migration.
+  businessType     String         @db.VarChar(32)
+  /// E.164, e.g. +233244123456.
+  phone            String         @db.VarChar(20)
+  email            String         @unique @db.VarChar(254)
+  city             String         @db.VarChar(120)
+  heardFrom        String?        @db.VarChar(120)
+  message          String?        @db.VarChar(500)
+  status           WaitlistStatus @default(NEW)
+  adminNotes       String?        @db.VarChar(2000)
+  /// SHA-256 (hex) of the invite token. The token itself is never stored: it
+  /// exists only in the link shown to the admin once and/or emailed.
+  inviteTokenHash  String?        @unique @db.VarChar(64)
+  invitedAt        DateTime?
+  inviteExpiresAt  DateTime?
+  /// Admin who made the latest invite. Plain string, no FK (like PlatformSetting.updatedBy).
+  invitedByAdminId String?
+  inviteUsedAt     DateTime?
+  /// The organisation created with the invite. No FK: deleting that
+  /// organisation must not rewrite the waitlist history.
+  joinedTenantId   String?
+  /// When they ticked the consent box (renewed when they join again).
+  consentAt        DateTime
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status, createdAt])
+  @@index([businessType])
+  @@index([createdAt])
+  @@index([joinedTenantId])
+}

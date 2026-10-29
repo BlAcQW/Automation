@@ -41,6 +41,7 @@ import templatesRoutes from './routes/templates/index.js';
 import paymentsRoutes from './routes/payments/index.js';
 import billingRoutes from './routes/billing/index.js';
 import publicRoutes from './routes/public/index.js';
+import waitlistRoutes from './routes/waitlist/index.js';
 import smsRoutes from './routes/sms/index.js';
 import emailRoutes from './routes/email/index.js';
 import devicesRoutes from './routes/devices/index.js';
@@ -199,6 +200,8 @@ async function buildApp() {
     await app.register(paymentsRoutes, { prefix: '/payments' });
     await app.register(billingRoutes, { prefix: '/billing' });
     await app.register(publicRoutes, { prefix: '/public' });
+    // Public waitlist (join + invite check) while self sign-up is closed.
+    await app.register(waitlistRoutes, { prefix: '/waitlist' });
     await app.register(smsRoutes, { prefix: '/sms' });
     await app.register(emailRoutes, { prefix: '/email' });
     await app.register(devicesRoutes, { prefix: '/devices' });

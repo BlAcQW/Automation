@@ -22,7 +22,7 @@ export default function FeaturesPage() {
                 title="A front desk that never takes lunch."
                 sub="Seven jobs Bookly takes off your hands, in the order you'll feel them."
             >
-                <SignupLink>Start free</SignupLink>
+                <SignupLink />
                 <ButtonLink href="/features/whatsapp-bookings" variant="secondary">
                     How WhatsApp bookings work <ArrowRight className="h-4 w-4" aria-hidden />
                 </ButtonLink>

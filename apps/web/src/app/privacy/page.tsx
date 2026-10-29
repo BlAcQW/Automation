@@ -14,7 +14,7 @@ export const metadata = pageMetadata({
     path: '/privacy',
 });
 
-const LAST_UPDATED = 'October 26, 2026';
+const LAST_UPDATED = 'October 29, 2026';
 const CONTACT_EMAIL = LEGAL_EMAIL;
 
 export default function PrivacyPolicyPage() {
@@ -49,6 +49,13 @@ export default function PrivacyPolicyPage() {
                             <li>
                                 <strong>Account data</strong>: the business owner&apos;s name, email address, hashed
                                 password, and business name when they register.
+                            </li>
+                            <li>
+                                <strong>Waitlist data</strong>: when you join the waitlist, your name, business name
+                                and type, WhatsApp number, email address, town or area, and anything you choose to tell
+                                us (how you heard about us, a short note), with the time you agreed to be contacted.
+                                We use it only to contact you about joining Bookly, and you can ask us to delete it at
+                                any time.
                             </li>
                             <li>
                                 <strong>WhatsApp Business credentials</strong>: when a business connects their WhatsApp
@@ -113,8 +120,8 @@ export default function PrivacyPolicyPage() {
                     <Clause title="3a. Cookies and website analytics" id="cookies">
                         <p>
                             Our public website uses <strong>Plausible Analytics</strong> to count page visits and a
-                            few anonymous actions, such as clicks on &ldquo;Start free&rdquo;, demo requests and
-                            WhatsApp links. Plausible is cookieless: it sets <strong>no cookies</strong>, does not
+                            few anonymous actions, such as clicks on &ldquo;Start free&rdquo;, joining the waitlist, demo
+                            requests and WhatsApp links. Plausible is cookieless: it sets <strong>no cookies</strong>, does not
                             collect personal data, does not store your IP address, and does not follow you across
                             other websites. Because of this, we do not show a cookie banner.
                         </p>

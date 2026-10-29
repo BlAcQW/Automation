@@ -43,7 +43,7 @@ export default function WhatsAppBookingsPage() {
                 title="Bookings that happen in the chat."
                 sub="Your customers already message you on WhatsApp. Bookly turns those messages into confirmed, paid bookings, while you get on with the work."
             >
-                <SignupLink>Start free</SignupLink>
+                <SignupLink />
                 <ButtonLink href="/pricing" variant="secondary">See pricing</ButtonLink>
             </PageHero>
 

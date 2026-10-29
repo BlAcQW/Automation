@@ -8,6 +8,7 @@ import { Mail, Lock, ArrowRight } from 'lucide-react';
 import { Button, Input } from '@bookingflow/ui';
 import { AuthAlert, AuthFootnote, AuthFrame, AuthTitle, authLink, authMutedLink } from '@/components/auth/auth-frame';
 import { useInlineValidation } from '@/components/auth/use-inline-validation';
+import { SIGNUP_CTA } from '@/lib/signup-cta';
 
 /** Log in. Cream form on the left; on large screens a green panel on the right. */
 export default function LoginPage() {
@@ -119,8 +120,8 @@ export default function LoginPage() {
 
             <AuthFootnote>
                 New to Bookly?{' '}
-                <Link href="/register" className={authLink}>
-                    Start free
+                <Link href={SIGNUP_CTA.href} className={authLink} data-analytics={SIGNUP_CTA.event}>
+                    {SIGNUP_CTA.inline}
                 </Link>
             </AuthFootnote>
         </AuthFrame>

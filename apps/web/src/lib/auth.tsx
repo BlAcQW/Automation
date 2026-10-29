@@ -24,6 +24,8 @@ type Tenant = TenantWith<BookingTenantFields>;
 interface RegisterData extends CoreRegisterData {
     businessName: string;
     businessType: 'PRODUCT' | 'SERVICE';
+    /** Waitlist invite from /register?invite=; required while sign-up is closed. */
+    inviteToken?: string;
 }
 
 // The access-token presence cookie (read by the Edge middleware) is on by

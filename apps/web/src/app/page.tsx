@@ -11,6 +11,7 @@ import { ChatDemo } from '@/components/marketing/chat-demo';
 import { LEAKS } from '@/components/marketing/content';
 import { pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
 import { SITE_TAGLINE } from '@/lib/site';
+import { SIGNUP_REASSURANCE } from '@/lib/signup-cta';
 import { RotatingChannel } from '@/components/brand/rotating-channel';
 
 export const metadata = pageMetadata({
@@ -48,16 +49,14 @@ export default function HomePage() {
                             free, takes the deposit by Mobile Money and sends the reminder, so they show up.
                         </p>
                         <div className={cn('mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:flex sm:justify-center lg:justify-start', m.enter, m.d2)}>
-                            <SignupLink size="xl" className="px-3 sm:px-7">
-                                Start free <ArrowRight className="h-5 w-5" aria-hidden />
-                            </SignupLink>
+                            <SignupLink size="xl" className="px-3 sm:px-7" arrow />
                             <ButtonLink href="/features" variant="secondary" size="xl" className="px-3 sm:px-7">
                                 <span className="sm:hidden">How it works</span>
                                 <span className="hidden sm:inline">See what it does</span>
                             </ButtonLink>
                         </div>
                         <p className={cn('mt-4 hidden text-small text-muted sm:block', m.enter, m.d3)}>
-                            No card needed. Nothing to set up first.
+                            {SIGNUP_REASSURANCE}
                         </p>
                     </div>
                     <div className={cn('relative mx-auto w-full max-w-md lg:max-w-none', m.enter, m.d2)}>
@@ -163,6 +162,7 @@ export default function HomePage() {
             <ClosingCTA
                 title="Stop losing bookings because you were busy."
                 sub="Set it up this afternoon. Bookly answers the next message that comes in."
+                waitlist={{ sub: "Join the waitlist. When it's your turn, set it up in an afternoon and Bookly answers the next message that comes in." }}
             />
         </SiteShell>
     );

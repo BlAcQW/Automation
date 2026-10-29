@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { REGISTRATION_OPEN } from '@/lib/feature-flags';
 
 // Edge middleware that prevents flash-of-protected-content. It checks for
 // the presence of the auth cookie before any protected page renders; the
@@ -24,6 +25,17 @@ function publicUrl(request: NextRequest, pathname: string, search = ''): URL {
 export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
+    // ----------------- Sign-up while it is closed -----------------
+    // Without an invite there is nothing to sign up with: send people to the
+    // waitlist before the form ever renders. With ?invite= the page checks the
+    // invite itself (and the API refuses a sign-up without a valid one anyway).
+    if (pathname === '/register') {
+        if (!REGISTRATION_OPEN && !request.nextUrl.searchParams.get('invite')) {
+            return NextResponse.redirect(publicUrl(request, '/waitlist'));
+        }
+        return NextResponse.next();
+    }
+
     // ----------------- Admin routes -----------------
     // The admin console has its own session. Its login page must be reachable
     // with no cookie at all; before this, it fell through to the tenant check
@@ -47,11 +59,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
 }
 
-// Match only the routes that actually require auth. Public routes (/, /login,
-// /register) are deliberately omitted; static assets and Next.js internals
-// are excluded by the negative lookahead inside each matcher.
+// Match only the routes that actually require auth, plus /register (the
+// waitlist redirect above, never an auth check). Other public routes (/,
+// /login, /waitlist) are deliberately omitted.
 export const config = {
     matcher: [
+        '/register',
         '/dashboard/:path*',
         '/services/:path*',
         '/products/:path*',

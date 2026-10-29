@@ -93,6 +93,12 @@ const TABLE: Row[] = [
     ['GET', '/admin/tenants/t1/packs', 'tenants:read'],
     ['POST', '/admin/tenants/t1/packs/turbo-founding/install', 'flows:write'],
     ['POST', '/admin/tenants/t1/instagram/disconnect', 'channels:manage'],
+    ['GET', '/admin/waitlist', 'waitlist:read'],
+    ['GET', '/admin/waitlist/summary', 'waitlist:read'],
+    ['GET', '/admin/waitlist/export.csv', 'waitlist:export'],
+    ['PATCH', '/admin/waitlist/w1', 'waitlist:write'],
+    ['DELETE', '/admin/waitlist/w1', 'waitlist:write'],
+    ['POST', '/admin/waitlist/w1/invite', 'waitlist:write'],
     // /admin/billing/** lives in routes/admin-billing but is part of the same admin surface.
     ['GET', '/admin/billing/event-types', 'billing:read'],
     ['GET', '/admin/billing/tenants', 'billing:read'],

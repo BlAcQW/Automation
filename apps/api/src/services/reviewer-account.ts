@@ -11,6 +11,18 @@ export interface ReviewerArgs {
     email: string;
     name: string;
     businessName: string;
+    /** Waitlist invite token: needed while self sign-up is closed (REGISTRATION_OPEN). */
+    invite?: string;
+}
+
+/** Accept the bare token or the whole /register?invite=... link. */
+function inviteToken(raw: string | undefined): string | undefined {
+    if (!raw) return undefined;
+    try {
+        return new URL(raw).searchParams.get('invite') ?? raw;
+    } catch {
+        return raw;
+    }
 }
 
 function flag(argv: string[], name: string): string | undefined {
@@ -32,6 +44,7 @@ export function parseReviewerArgs(argv: string[]): ReviewerArgs {
         email,
         name: flag(argv, 'name') ?? 'Meta Reviewer',
         businessName: flag(argv, 'business') ?? 'Review Salon',
+        ...(flag(argv, 'invite') && { invite: inviteToken(flag(argv, 'invite')) }),
     };
 }
 

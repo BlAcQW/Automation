@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import sensible from '@fastify/sensible';
@@ -10,6 +10,14 @@ vi.mock('../../services/gmail-smtp.js', () => ({
     resolveGmailCreds: () => null,
     sendEmail: vi.fn(async () => ({ ok: true })),
 }));
+
+// Self sign-up is closed by default (waitlist); these tests are about an open sign-up.
+const ORIGINAL_OPEN = process.env.REGISTRATION_OPEN;
+beforeAll(() => { process.env.REGISTRATION_OPEN = 'true'; });
+afterAll(() => {
+    if (ORIGINAL_OPEN === undefined) delete process.env.REGISTRATION_OPEN;
+    else process.env.REGISTRATION_OPEN = ORIGINAL_OPEN;
+});
 
 async function build() {
     const created: Record<string, any> = {};

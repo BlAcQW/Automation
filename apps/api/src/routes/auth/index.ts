@@ -14,6 +14,7 @@ import { issueResetLink, resetLinkConfig, sendResetEmail } from '../../services/
 import { resolveResetBase } from '../../services/reset-link.js';
 import { claimOwnerEmail, EmailTakenError } from '../../services/email-claim.js';
 import { createVerifyToken, verifyEmailToken, verificationEmail } from '../../services/email-verification.js';
+import { consumeInvite, isRegistrationOpen, resolveRegistrationGate } from '../../services/registration-gate.js';
 
 // Validation schemas. `businessType` is optional and defaults to SERVICE so
 // older / SERVICE-only clients can omit it. The handler decides whether to
@@ -27,6 +28,9 @@ const registerSchema = z.object({
     timezone: z.string().default('Africa/Accra'),
     // The checkbox on the sign-up form. Recorded with a timestamp on the user.
     acceptTerms: z.boolean().default(false),
+    // Waitlist invite from /register?invite=. Required while self sign-up is
+    // closed (services/registration-gate.ts).
+    inviteToken: z.string().max(500).optional(),
 });
 
 const loginSchema = z.object({
@@ -66,6 +70,15 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
         if (!body.acceptTerms) {
             throw fastify.httpErrors.badRequest('Please agree to the Terms and Privacy Policy to create an account.');
         }
+
+        // Waitlist gate, BEFORE the "email taken" check so a closed sign-up
+        // cannot be used to probe which addresses have accounts. Throws a 403
+        // with a stable code (WAITLIST_ONLY, INVITE_*) when refused.
+        const invite = await resolveRegistrationGate(fastify.prisma, {
+            open: isRegistrationOpen(),
+            inviteToken: body.inviteToken,
+            email: body.email,
+        });
 
         // One email, one account. Login looks users up by email alone, so a
         // second account with the same address could never be signed into.
@@ -140,6 +153,9 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 data: defaultHours,
             });
 
+            // Last, so a lost race for the invite rolls everything above back.
+            if (invite) await consumeInvite(tx, invite, tenant.id, now);
+
             return { tenant, user };
         });
         } catch (err) {
@@ -147,6 +163,19 @@ const authRoutes: FastifyPluginAsync = async (fastify) => {
                 throw fastify.httpErrors.conflict('An account with this email already exists. Sign in, or reset your password.');
             }
             throw err;
+        }
+
+        if (invite) {
+            await audit({
+                prisma: fastify.prisma,
+                action: 'waitlist.joined',
+                actorType: 'USER',
+                tenantId: result.tenant.id,
+                actorId: result.user.id,
+                targetType: 'WaitlistEntry',
+                targetId: invite.entryId,
+                ipAddress: request.ip,
+            });
         }
 
         // Verification email, best-effort: a mail outage must not block sign-up.

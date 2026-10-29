@@ -15,6 +15,7 @@
  *             read-only flows. No money, no payout switches, no admin management.
  *             SUPPORT can email a user the standard reset link (users:write)
  *             but not mint a copyable one (users:reset_link, OWNER only).
+ *             SUPPORT runs the waitlist (read, write, invite, export).
  *   READONLY  GET requests for read permissions only. Nothing else, ever.
  *
  * `self` (own password, own 2FA, who am I) is open to every role: it touches
@@ -65,6 +66,13 @@ export const ALL_PERMISSIONS = [
     // password, so this is an account-takeover capability: OWNER only.
     // Emailing the standard reset link to the user is users:write.
     'users:reset_link',
+    // Waitlist (businesses waiting while self sign-up is closed). Read: the
+    // list and counts. Write: status, notes, delete, and invites (an invite
+    // lets one business sign up, no more than tenants:write already allows).
+    // Export: a bulk CSV of names, phones and emails, so not a plain read.
+    'waitlist:read',
+    'waitlist:write',
+    'waitlist:export',
 ] as const;
 export type AdminPermission = (typeof ALL_PERMISSIONS)[number];
 
@@ -82,6 +90,7 @@ const READ_ONLY_PERMISSIONS: readonly AdminPermission[] = [
     'promos:read',
     'billing:read',
     'flows:read',
+    'waitlist:read',
 ];
 
 export const ROLE_PERMISSIONS: Record<AdminRole, ReadonlySet<AdminPermission>> = {
@@ -123,6 +132,9 @@ export const ROLE_PERMISSIONS: Record<AdminRole, ReadonlySet<AdminPermission>> =
         'apikeys:revoke',
         'channels:manage',
         'flows:read',
+        'waitlist:read',
+        'waitlist:write',
+        'waitlist:export',
     ]),
     READONLY: new Set<AdminPermission>(READ_ONLY_PERMISSIONS),
 };

@@ -45,7 +45,11 @@ export default function FaqPage() {
                 </p>
             </Section>
 
-            <ClosingCTA title="Still wondering? Just try it." sub="Free to start, and you can be taking bookings this afternoon." />
+            <ClosingCTA
+                title="Still wondering? Just try it."
+                sub="Free to start, and you can be taking bookings this afternoon."
+                waitlist={{ title: 'Still wondering? Get on the list.' }}
+            />
         </SiteShell>
     );
 }

@@ -49,7 +49,7 @@ export function SiteHeader({ current }: { current?: string }) {
                     <ButtonLink href="/login" variant="ghost" size="md" className="hidden sm:inline-flex">
                         Log in
                     </ButtonLink>
-                    <SignupLink variant="primary" size="md" className="px-4">Start free</SignupLink>
+                    <SignupLink variant="primary" size="md" className="px-4" />
 
                     <details className={cn('relative lg:hidden', styles.menu)}>
                         <summary

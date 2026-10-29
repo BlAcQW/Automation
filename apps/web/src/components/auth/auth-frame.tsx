@@ -144,7 +144,7 @@ export const authLink =
 export const authMutedLink =
     'inline-flex min-h-[44px] items-center gap-1.5 rounded-control text-[15px] font-medium text-muted hover:text-text transition-colors duration-ui';
 
-/** Footer line under a form ("New to Bookly? Start free"). */
+/** Footer line under a form ("New to Bookly? Join the waitlist"). */
 export function AuthFootnote({ children }: { children: ReactNode }) {
     return <p className="mt-8 text-center text-[15px] text-muted">{children}</p>;
 }

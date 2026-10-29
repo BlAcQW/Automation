@@ -84,6 +84,19 @@ describe('role -> permission map', () => {
         expect(allow('FINANCE', 'users:write', 'POST')).toBe(false);
     });
 
+    it('waitlist: reading is OWNER, SUPPORT and READONLY; changing, inviting and exporting are OWNER and SUPPORT only', () => {
+        for (const p of ['waitlist:read', 'waitlist:write', 'waitlist:export'] as const) expect(ALL_PERMISSIONS).toContain(p);
+        expect(allow('OWNER', 'waitlist:write', 'POST')).toBe(true);
+        expect(allow('SUPPORT', 'waitlist:read')).toBe(true);
+        expect(allow('SUPPORT', 'waitlist:write', 'PATCH')).toBe(true);
+        expect(allow('SUPPORT', 'waitlist:export')).toBe(true);
+        expect(allow('READONLY', 'waitlist:read')).toBe(true);
+        expect(allow('READONLY', 'waitlist:write', 'PATCH')).toBe(false);
+        // A bulk download of names, phones and emails is not a "read" a read-only role gets.
+        expect(allow('READONLY', 'waitlist:export')).toBe(false);
+        for (const p of ['waitlist:read', 'waitlist:write', 'waitlist:export'] as const) expect(allow('FINANCE', p)).toBe(false);
+    });
+
     it('READONLY holds read permissions only', () => {
         for (const [perm, ] of Object.entries(ROLE_PERMISSIONS)) void perm;
         const writes = ALL_PERMISSIONS.filter((p) => !p.endsWith(':read') && p !== 'self');

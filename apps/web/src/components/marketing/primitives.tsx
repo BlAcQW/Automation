@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { Check, ChevronRight } from 'lucide-react';
+import { ArrowRight, Check, ChevronRight } from 'lucide-react';
 import { AwningDivider } from '@bookingflow/ui';
 import { cx as cn } from './cx';
 import type { AnalyticsEvent } from '@/lib/analytics';
+import { REGISTRATION_OPEN } from '@/lib/feature-flags';
+import { SIGNUP_CTA, SIGNUP_REASSURANCE } from '@/lib/signup-cta';
 import styles from './marketing.module.css';
 import { RotatingChannel } from '@/components/brand/rotating-channel';
 
@@ -71,15 +73,26 @@ export function ButtonLink({
     );
 }
 
-/** The sign-up CTA. Always reported as the `Signup` goal. */
+/**
+ * The "get started" CTA. Its words and target follow the sign-up flag
+ * (lib/signup-cta.ts): "Start free" → /register (goal `Signup`) while sign-up
+ * is open, "Join waitlist" → /waitlist while it is closed. The label is not a
+ * prop on purpose, so no page can promise a sign-up that is switched off.
+ */
 export function SignupLink({
-    children = 'Start free', variant = 'accent', size = 'lg', className,
+    variant = 'accent', size = 'lg', className, arrow, srSuffix,
 }: {
-    children?: React.ReactNode; variant?: ButtonLinkVariant; size?: ButtonLinkSize; className?: string;
+    variant?: ButtonLinkVariant; size?: ButtonLinkSize; className?: string;
+    /** Trailing arrow icon (the hero). */
+    arrow?: boolean;
+    /** Extra words for screen readers only, e.g. " on Team" on a pricing card. */
+    srSuffix?: string;
 }) {
     return (
-        <ButtonLink href="/register" variant={variant} size={size} className={className} event="Signup">
-            {children}
+        <ButtonLink href={SIGNUP_CTA.href} variant={variant} size={size} className={className} event={SIGNUP_CTA.event}>
+            {SIGNUP_CTA.label}
+            {srSuffix && <span className="sr-only">{srSuffix}</span>}
+            {arrow && <ArrowRight className="h-5 w-5" aria-hidden />}
         </ButtonLink>
     );
 }
@@ -245,29 +258,36 @@ export function PageHero({
 /* Closing call to action (green band)                                 */
 /* ------------------------------------------------------------------ */
 
+/** What the green band says under its title while sign-up is closed (unless a page says otherwise). */
+const WAITLIST_CLOSING_SUB = "Join the waitlist and we'll message you on WhatsApp when it's your turn.";
+
 export function ClosingCTA({
-    title, sub, secondary = { href: '/pricing', label: 'See pricing' },
+    title, sub, secondary = { href: '/pricing', label: 'See pricing' }, waitlist,
 }: {
     title: React.ReactNode; sub: string; secondary?: { href: string; label: string } | null;
+    /** Wording for while sign-up is closed; `sub` usually promises an instant start. */
+    waitlist?: { title?: React.ReactNode; sub?: string };
 }) {
+    const heading = REGISTRATION_OPEN ? title : waitlist?.title ?? title;
+    const line = REGISTRATION_OPEN ? sub : waitlist?.sub ?? WAITLIST_CLOSING_SUB;
     return (
         <section aria-labelledby="closing-cta" className="bg-green text-cream">
             <Awning />
             <Container className="py-14 sm:py-20">
                 <div className="max-w-2xl">
                     <h2 id="closing-cta" className="text-[1.75rem] font-bold leading-tight tracking-[-0.02em] sm:text-[2.5rem] [text-wrap:balance]">
-                        {title}
+                        {heading}
                     </h2>
-                    <p className="mt-3 text-body text-cream/90 sm:text-lg">{sub}</p>
+                    <p className="mt-3 text-body text-cream/90 sm:text-lg">{line}</p>
                     <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <SignupLink variant="accent">Start free</SignupLink>
+                        <SignupLink variant="accent" />
                         {secondary && (
                             <ButtonLink href={secondary.href} variant="inverse-outline">
                                 {secondary.label}
                             </ButtonLink>
                         )}
                     </div>
-                    <p className="mt-4 text-small text-cream/90">No card needed. Nothing to set up first.</p>
+                    <p className="mt-4 text-small text-cream/90">{SIGNUP_REASSURANCE}</p>
                 </div>
             </Container>
         </section>

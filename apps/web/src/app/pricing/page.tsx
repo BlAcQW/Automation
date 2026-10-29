@@ -2,18 +2,20 @@ import Link from 'next/link';
 import { Check } from 'lucide-react';
 import { cx as cn } from '@/components/marketing/cx';
 import { SiteShell } from '@/components/marketing/site-shell';
-import { ButtonLink, ClosingCTA, PageHero, Section, SectionTitle, motionStyles as m } from '@/components/marketing/primitives';
+import { ButtonLink, ClosingCTA, PageHero, Section, SectionTitle, SignupLink, motionStyles as m } from '@/components/marketing/primitives';
 import { FaqList } from '@/components/marketing/sections';
 import { PRICING_FAQ } from '@/components/marketing/content';
 import { breadcrumbJsonLd, faqJsonLd, pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
 import { LEGAL_EMAIL, supportWhatsAppUrl } from '@/lib/site';
+import { REGISTRATION_OPEN } from '@/lib/feature-flags';
 
 const CRUMBS = [{ name: 'Pricing', path: '/pricing' }];
 
 export const metadata = pageMetadata({
     title: 'Bookly pricing: Solo, Team and Enterprise plans',
-    description:
-        'Three plans for shops of every size in Ghana. Prices are coming soon, and you can start free today with no card and nothing to set up.',
+    description: REGISTRATION_OPEN
+        ? 'Three plans for shops of every size in Ghana. Prices are coming soon, and you can start free today with no card and nothing to set up.'
+        : "Three plans for shops of every size in Ghana. Prices are coming soon. Join the waitlist and we'll let you in when it's your turn.",
     path: '/pricing',
 });
 
@@ -37,7 +39,9 @@ export default function PricingPage() {
                 crumbs={CRUMBS}
                 eyebrow="Pricing"
                 title="Three plans. Prices coming soon."
-                sub="We're still setting the prices. What we can tell you now is the shape, and that there's a free way to start."
+                sub={REGISTRATION_OPEN
+                    ? "We're still setting the prices. What we can tell you now is the shape, and that there's a free way to start."
+                    : "We're still setting the prices. What we can tell you now is the shape. We're letting businesses in a few at a time."}
             />
 
             <Section labelledBy="plans">
@@ -74,14 +78,11 @@ export default function PricingPage() {
                                 ))}
                             </ul>
 
-                            <ButtonLink
-                                href="/register"
-                                event="Signup"
+                            <SignupLink
                                 variant={t.featured ? 'accent' : 'primary'}
                                 className="mt-8 w-full"
-                            >
-                                Start free<span className="sr-only"> on {t.name}</span>
-                            </ButtonLink>
+                                srSuffix={REGISTRATION_OPEN ? ` on ${t.name}` : ` for ${t.name}`}
+                            />
                         </li>
                     ))}
                 </ul>
@@ -112,6 +113,7 @@ export default function PricingPage() {
             <ClosingCTA
                 title="Start free while we finish the prices."
                 sub="No card, and nothing to set up first."
+                waitlist={{ title: 'Get on the list while we finish the prices.' }}
                 secondary={{ href: '/features', label: 'See what it does' }}
             />
         </SiteShell>

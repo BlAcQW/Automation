@@ -22,6 +22,7 @@ import {
     Workflow,
     ScrollText,
     Siren,
+    ListChecks,
 } from 'lucide-react';
 import { BrandLogo, Button, Drawer, Skeleton, SkeletonCard } from '@bookingflow/ui';
 import { AdminContext, type Admin } from './admin-context';
@@ -35,6 +36,7 @@ import { ROLE_LABEL } from './_components/format';
 const navigation = [
     { name: 'Overview', href: '/admin', icon: LayoutDashboard, permission: 'attention:read' },
     { name: 'Businesses', href: '/admin/tenants', icon: Building2, permission: 'tenants:read' },
+    { name: 'Waitlist', href: '/admin/waitlist', icon: ListChecks, permission: 'waitlist:read' },
     { name: 'Users', href: '/admin/users', icon: Users, permission: 'users:read' },
     { name: 'Bookings', href: '/admin/bookings', icon: Calendar, permission: 'bookings:read' },
     { name: 'Statistics', href: '/admin/stats', icon: BarChart3, permission: 'stats:read' },

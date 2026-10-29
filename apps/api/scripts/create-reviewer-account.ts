@@ -3,7 +3,11 @@
  *
  *   npx tsx scripts/create-reviewer-account.ts --api https://bookly.ikieguy.online/api \
  *       --web https://bookly.ikieguy.online --email meta-review@yourdomain \
- *       [--name "Meta Reviewer"] [--business "Review Salon"]
+ *       [--name "Meta Reviewer"] [--business "Review Salon"] [--invite <token or invite link>]
+ *
+ * While self sign-up is closed (the waitlist), pass --invite: add the reviewer
+ * address to the waitlist (bookly.../waitlist), press "Invite" on it in the
+ * admin console and give the link (or its token) here.
  *
  * It signs up through the public POST /auth/register endpoint (no database
  * access, nothing written but a normal new account), prints the password once,
@@ -25,6 +29,7 @@ async function main(): Promise<void> {
         body: JSON.stringify({
             email: args.email, password, name: args.name, businessName: args.businessName,
             businessType: 'SERVICE', timezone: 'Africa/Accra', acceptTerms: true,
+            ...(args.invite && { inviteToken: args.invite }),
         }),
     });
     if (!res.ok) {

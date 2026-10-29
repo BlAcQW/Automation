@@ -126,7 +126,8 @@ export interface WaitlistDb {
     waitlistEntry: {
         findUnique: Query<WaitlistEntry | null>;
         findMany: Query<WaitlistEntry[]>;
-        count: Query<number>;
+        /** A plain count (no `select`) is a number; typed loosely so every client shape fits. */
+        count: Query<number | object>;
         upsert: Query<WaitlistEntry>;
         update: Query<WaitlistEntry>;
         updateMany: Query<{ count: number }>;
@@ -285,7 +286,7 @@ export async function listWaitlist(db: WaitlistDb, q: WaitlistListQuery): Promis
         db.waitlistEntry.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (q.page - 1) * q.limit, take: q.limit }),
         db.waitlistEntry.count({ where }),
     ]);
-    return { rows, total };
+    return { rows, total: Number(total) };
 }
 
 export interface WaitlistSummary {
@@ -307,7 +308,7 @@ export async function waitlistSummary(db: WaitlistDb, now: Date = new Date()): P
     for (const r of byStatusRows as Array<{ status: WaitlistStatus; _count: { _all: number } }>) byStatus[r.status] = r._count._all;
     const byBusinessType: Record<string, number> = {};
     for (const r of byTypeRows as Array<{ businessType: string; _count: { _all: number } }>) byBusinessType[r.businessType] = r._count._all;
-    return { total, newThisWeek, byStatus, byBusinessType };
+    return { total: Number(total), newThisWeek: Number(newThisWeek), byStatus, byBusinessType };
 }
 
 /** Most rows one CSV export returns. The list is small; this only bounds a runaway. */

@@ -25,12 +25,13 @@ import waitlistRoutes from './index.js';
 
 let app: FastifyInstance;
 let store: WaitlistStore;
-let platformAlert: { upsert: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+const makeAlerts = () => ({ upsert: vi.fn(async (_args: unknown) => ({})), update: vi.fn(async (_args: unknown) => ({})) });
+let platformAlert: ReturnType<typeof makeAlerts>;
 let logs: string[];
 
 async function build(initial = [] as ReturnType<typeof waitlistRow>[]) {
     store = makeWaitlistStore(initial);
-    platformAlert = { upsert: vi.fn(async () => ({})), update: vi.fn(async () => ({})) };
+    platformAlert = makeAlerts();
     logs = [];
     const stream = new Writable({ write(chunk, _enc, cb) { logs.push(String(chunk)); cb(); } });
     app = Fastify({ logger: { level: 'trace', stream } });

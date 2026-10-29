@@ -4,11 +4,12 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Users, ShoppingBag, MessageSquare } from 'lucide-react';
+import { Users, ShoppingBag, MessageSquare, StickyNote } from 'lucide-react';
 import { api } from '@/lib/api';
 import {
     Avatar,
     Button,
+    Drawer,
     StatCard,
     PageHeader,
     SearchInput,
@@ -21,6 +22,7 @@ import {
 import { useProductRouteGuard } from '@/lib/use-product-route-guard';
 import { MaskedContact } from '@/components/ui/masked-contact';
 import { displayMoney } from '@/components/primitives/money';
+import { CustomerNotePanel } from '@/components/customers/customer-note-panel';
 
 interface Customer {
     id: string; // phone
@@ -28,10 +30,51 @@ interface Customer {
     phone: string;
     contactMasked?: boolean;
     conversationId: string;
+    channel?: 'WHATSAPP' | 'INSTAGRAM' | 'MESSENGER';
     lastActive: string;
     totalOrders: number;
     totalSpent: number;
     totalBookings: number;
+}
+
+const CHANNEL: Record<NonNullable<Customer['channel']>, string> = {
+    WHATSAPP: 'WhatsApp',
+    INSTAGRAM: 'Instagram',
+    MESSENGER: 'Messenger',
+};
+
+/** Customer details and the team's note, in the side panel. */
+function CustomerDetails({ customer }: { customer: Customer }) {
+    const facts: Array<[string, React.ReactNode]> = [
+        ['Phone', <MaskedContact key="p" value={customer.phone} masked={customer.contactMasked} scope="conversation" recordId={customer.conversationId} />],
+        ['Chats on', CHANNEL[customer.channel ?? 'WHATSAPP']],
+        ['Bookings', customer.totalBookings],
+        ['Orders', customer.totalOrders],
+        ['Spent', displayMoney(customer.totalSpent)],
+        ['Last seen', format(new Date(customer.lastActive), 'MMM d, yyyy')],
+    ];
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center gap-3">
+                <Avatar name={customer.name} size="md" />
+                <p className="min-w-0 truncate text-[18px] font-bold text-text">{customer.name}</p>
+            </div>
+            <dl className="divide-y divide-border rounded-control border border-border">
+                {facts.map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between gap-3 px-4 py-3 text-[15px]">
+                        <dt className="text-muted">{label}</dt>
+                        <dd className="text-right tabular-nums text-text">{value}</dd>
+                    </div>
+                ))}
+            </dl>
+            <section aria-labelledby="customer-notes-heading" className="space-y-3">
+                <h3 id="customer-notes-heading" className="flex items-center gap-2 text-base font-bold text-text">
+                    <StickyNote className="h-5 w-5 text-primary" aria-hidden /> Notes
+                </h3>
+                <CustomerNotePanel key={customer.conversationId} conversationId={customer.conversationId} />
+            </section>
+        </div>
+    );
 }
 
 const columns: Column<Customer>[] = [
@@ -86,6 +129,7 @@ export default function CustomersPage() {
     const productEnabled = useProductRouteGuard();
 
     const [search, setSearch] = useState('');
+    const [selected, setSelected] = useState<Customer | null>(null);
 
     const { data: customersResponse, isLoading, isError, refetch, isRefetching } = useQuery({
         queryKey: ['customers', search],
@@ -113,7 +157,7 @@ export default function CustomersPage() {
         <div className="space-y-6 lg:space-y-8">
             <PageHeader
                 title="Your customers"
-                subtitle="Everyone who has chatted, ordered or booked with you."
+                subtitle="Everyone who has chatted, ordered or booked with you. Tap someone to see their details and your team's notes."
             />
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
@@ -170,8 +214,13 @@ export default function CustomersPage() {
                     columns={columns}
                     rows={customers}
                     rowKey={(c) => c.id}
+                    onRowClick={setSelected}
                 />
             )}
+
+            <Drawer isOpen={selected !== null} onClose={() => setSelected(null)} title="Customer">
+                {selected && <CustomerDetails customer={selected} />}
+            </Drawer>
         </div>
     );
 }

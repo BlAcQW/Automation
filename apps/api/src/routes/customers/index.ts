@@ -3,9 +3,14 @@ import { z } from 'zod';
 import { maskHandle, maskPhone } from '../../services/contact-privacy.js';
 import { resolveMaskPolicy } from '../../services/contact-privacy-policy.js';
 import { normalizeCustomerPhone } from '../../services/customer-phone.js';
+import customerNotesRoutes from './notes.js';
 
 const customersRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', fastify.authenticate);
+
+    // Staff notes (GET/PUT /:id/note, /by-conversation/:id/note). Registered
+    // after the hook above, so it inherits authentication.
+    await fastify.register(customerNotesRoutes);
 
     // GET /customers - List aggregated customers
     fastify.get('/', async (request) => {

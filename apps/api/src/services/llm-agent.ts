@@ -27,6 +27,8 @@ import { afterBookingConfirmed, createBookingAtomic, SlotTakenError } from './bo
 import { createNotification } from './notifications.js';
 import { SHOP_TOOLS, SHOP_TOOL_NAMES, isPhoneVerified, runShopTool, shopSystemPrompt } from './llm-shop-tools.js';
 import { ownedIds, rememberOwned } from './chat-ownership.js';
+import { knowledgeRules, renderKnowledgeBlock, toKnowledgeDto, type KnowledgeDto } from './business-knowledge.js';
+import { loadCustomerNoteForAssistant, renderCustomerNoteBlock } from './customer-notes.js';
 
 /** Small and cheap: this is short-turn chat, not reasoning over documents. */
 const MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
@@ -94,6 +96,14 @@ export interface AgentContext {
     /** Notification/reminder queues, when Redis is configured. */
     queues?: { notifications: Queue | null; reminders: Queue | null } | null;
     log?: FastifyBaseLogger;
+    /**
+     * Settings > Try your assistant. No chat history, no customer, and only the
+     * read-only tools run (PREVIEW_TOOLS); every other tool answers "preview:
+     * not available". Nothing is written and nothing is sent.
+     */
+    preview?: boolean;
+    /** Knowledge to use instead of the saved row: a preview of unsaved edits. */
+    knowledgeOverride?: KnowledgeDto;
 }
 
 export interface AgentResult {
@@ -235,6 +245,17 @@ function isToolAllowed(businessType: AgentContext['businessType'], name: string)
     return businessType === 'PRODUCT' ? SHOP_TOOL_NAMES.has(name) : !SHOP_TOOL_NAMES.has(name);
 }
 
+/**
+ * The only tools a preview runs: they read the catalogue and the diary, nothing
+ * else. Anything that books, orders, pays, saves a phone or looks up a customer
+ * is refused before it runs.
+ */
+export const PREVIEW_TOOLS: ReadonlySet<string> = new Set(['list_services', 'check_availability', 'list_products', 'get_product']);
+
+const PREVIEW_REFUSAL =
+    'preview: not available. This is the business owner testing you in their dashboard: nothing can be booked, ' +
+    'ordered, paid or looked up here. Say in one sentence what you would do next in a real chat.';
+
 type BookingScope = { customerPhone: string } | { id: { in: string[] } };
 
 /** Same rule as the shop's orderScope: verified phone, else only what this conversation created. */
@@ -251,6 +272,12 @@ async function runTool(
 ): Promise<{ result: unknown; wantsHuman?: boolean }> {
     if (!isToolAllowed(ctx.businessType, name)) {
         return { result: { error: `Unknown tool ${name}: not available for this business.` } };
+    }
+    if (ctx.preview && !PREVIEW_TOOLS.has(name)) {
+        // A hand-off has no side effect here (the caller does the takeover), so
+        // the preview can report it; everything else is refused before it runs.
+        if (name === 'request_human') return { result: { ok: true }, wantsHuman: true };
+        return { result: { error: PREVIEW_REFUSAL } };
     }
     if (ctx.businessType === 'PRODUCT') {
         const shop = await runShopTool(ctx, name, args);
@@ -635,6 +662,12 @@ interface PromptInput {
     /** "Tuesday 16 September 2026, 14:05" in the tenant's zone. */
     today: string;
     services: Array<{ id: string; name: string; price: string; durationMinutes: number }>;
+    /** The owner's knowledge base, or null when nothing is saved. */
+    knowledge: KnowledgeDto | null;
+    /** YYYY-MM-DD in the tenant's zone (for offer end dates). */
+    todayIso: string;
+    /** Staff note on this customer; '' unless the chat's identity is verified. */
+    customerNote: string;
 }
 
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -673,7 +706,21 @@ function channelName(channel: AgentContext['channel']): string {
     return 'WhatsApp';
 }
 
+/** Rules + delimited block for the owner's knowledge, or [] when there is none. */
+function knowledgeSection(ctx: AgentContext, input: PromptInput): string[] {
+    if (!input.knowledge) return [];
+    const block = renderKnowledgeBlock(input.knowledge, {
+        businessType: ctx.businessType,
+        today: input.todayIso,
+        tenantName: ctx.tenantName,
+    });
+    if (!block) return [];
+    return [...knowledgeRules(ctx.businessType, input.knowledge), block];
+}
+
 function systemPrompt(ctx: AgentContext, input: PromptInput): string {
+    const knowledge = knowledgeSection(ctx, input);
+    const note = renderCustomerNoteBlock(input.customerNote);
     if (ctx.businessType === 'PRODUCT') {
         return shopSystemPrompt({
             tenantName: ctx.tenantName,
@@ -682,10 +729,13 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
             timezoneLabel: safeZone(ctx.timezone),
             today: input.today,
             openingHours: input.openingHours,
-            hasPhone: !!ctx.customerPhone,
+            // A preview has no customer to ask: don't coach the model to ask for a number.
+            hasPhone: !!ctx.customerPhone || !!ctx.preview,
             isFirstTurn: input.isFirstTurn,
             isReturning: input.isReturning,
             customerName: input.customerName,
+            knowledge,
+            customerNote: note,
         }) + (input.memory ? `\n\nWhat you already know about this customer — use it naturally, never recite it:\n${input.memory}` : '');
     }
     const kind = 'business'; // PRODUCT tenants take the shop prompt above
@@ -715,7 +765,7 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
         `- NEVER state a price, service or time that is not in the list above or a tool result. Always say prices with the currency (${ctx.currency}).`,
         '- Call check_availability before offering any time. If unsure, check again.',
         '- Confirm the exact service, date and time back to the customer before create_booking.',
-        ...(ctx.customerPhone
+        ...(ctx.customerPhone || ctx.preview
             ? []
             : [
                 '- You do NOT have this customer\'s phone number. Before booking, ask for it in its own',
@@ -738,6 +788,9 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
         '- Never invent, guess, or alter a payment link. If get_payment_link returns an error, tell them',
         '  the team will send the link shortly.',
     ];
+
+    // The owner's reference information: after the hard rules, never above them.
+    if (knowledge.length) base.push('', ...knowledge);
 
     if (input.isFirstTurn) {
         const offer = input.services.slice(0, 4).map((s) => s.name).join(', ');
@@ -766,6 +819,8 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
         base.push('', 'This is a new customer. Ask their name only when it matters (e.g. to book).');
     }
 
+    if (note) base.push('', note);
+
     return base.join('\n');
 }
 
@@ -773,22 +828,56 @@ function systemPrompt(ctx: AgentContext, input: PromptInput): string {
 // Entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * The owner's saved knowledge (or the preview's unsaved copy). Context, not a
+ * dependency: a failed read leaves the assistant answering as it did before
+ * the knowledge base existed, rather than failing the customer's turn.
+ */
+async function loadKnowledge(ctx: AgentContext): Promise<KnowledgeDto | null> {
+    if (ctx.knowledgeOverride) return ctx.knowledgeOverride;
+    try {
+        const row = await ctx.prisma.businessKnowledge.findUnique({ where: { tenantId: ctx.tenantId } });
+        return row ? toKnowledgeDto(row) : null;
+    } catch (err) {
+        ctx.log?.warn({ err, tenantId: ctx.tenantId }, 'Assistant knowledge not loaded; answering without it');
+        return null;
+    }
+}
+
+/**
+ * The staff note on this customer. Only for a VERIFIED phone, like memory: on a
+ * typed number (Instagram, Messenger, username-only WhatsApp) it would be some
+ * other person's note. Never in a preview, which has no customer.
+ */
+async function loadNote(ctx: AgentContext): Promise<string> {
+    if (ctx.preview || !isPhoneVerified(ctx)) return '';
+    try {
+        return await loadCustomerNoteForAssistant(ctx.prisma, ctx.tenantId, ctx.customerPhone);
+    } catch (err) {
+        ctx.log?.warn({ err, tenantId: ctx.tenantId }, 'Customer note not loaded; answering without it');
+        return '';
+    }
+}
+
 export async function runAgent(ctx: AgentContext, incoming: string): Promise<AgentResult> {
     // Memory and the service list are appointment-shaped (past bookings, durations).
     // A shop has neither, and feeding it booking history invites appointment talk.
     const isShop = ctx.businessType === 'PRODUCT';
-    const [memory, history, services, hours] = await Promise.all([
+    const [memory, history, services, hours, knowledge, customerNote] = await Promise.all([
         // Memory is keyed by phone, so it is only loaded for a VERIFIED phone: a typed
         // number would otherwise pull a stranger's name and booking history into the prompt.
-        isShop || !isPhoneVerified(ctx)
+        isShop || ctx.preview || !isPhoneVerified(ctx)
             ? Promise.resolve({ summary: '', isReturning: false })
             : buildCustomerMemory(ctx.prisma, ctx.tenantId, ctx.customerPhone),
-        ctx.prisma.message.findMany({
-            where: { conversationId: ctx.conversationId },
-            orderBy: { createdAt: 'desc' },
-            take: HISTORY_TURNS,
-            select: { direction: true, content: true, createdAt: true },
-        }),
+        // A preview is one question in the dashboard: there is no chat to replay.
+        ctx.preview
+            ? Promise.resolve([] as Array<{ direction: string; content: string; createdAt: Date }>)
+            : ctx.prisma.message.findMany({
+                where: { conversationId: ctx.conversationId },
+                orderBy: { createdAt: 'desc' },
+                take: HISTORY_TURNS,
+                select: { direction: true, content: true, createdAt: true },
+            }),
         isShop
             ? Promise.resolve([] as Array<{ id: string; name: string; price: unknown; durationMinutes: number }>)
             : ctx.prisma.service.findMany({
@@ -800,6 +889,8 @@ export async function runAgent(ctx: AgentContext, incoming: string): Promise<Age
             orderBy: { dayOfWeek: 'asc' },
             select: { dayOfWeek: true, startTime: true, endTime: true },
         }),
+        loadKnowledge(ctx),
+        loadNote(ctx),
     ]);
 
     // A customer has ONE conversation per business for life, so "no reply yet"
@@ -809,7 +900,8 @@ export async function runAgent(ctx: AgentContext, incoming: string): Promise<Age
     // The webhook stores the customer's message before we run, so the newest
     // row is always "now" — measure the gap from the last time WE replied.
     const lastReply = history.find((m) => m.direction === 'OUTBOUND');
-    const isFirstTurn = !lastReply || Date.now() - lastReply.createdAt.getTime() > SESSION_GAP_MS;
+    // A preview answers the owner's question directly, without the welcome.
+    const isFirstTurn = !ctx.preview && (!lastReply || Date.now() - lastReply.createdAt.getTime() > SESSION_GAP_MS);
     const customerName = memory.summary.match(/^Name: (.+?)\.$/m)?.[1] ?? null;
 
     const messages: ChatCompletionMessageParam[] = [
@@ -822,6 +914,9 @@ export async function runAgent(ctx: AgentContext, incoming: string): Promise<Age
                 isFirstTurn,
                 openingHours: formatHours(hours),
                 today: todayInZone(safeZone(ctx.timezone)),
+                todayIso: zonedDateString(new Date(), safeZone(ctx.timezone)),
+                knowledge,
+                customerNote,
                 services: services.map((s) => ({
                     id: s.id,
                     name: s.name,

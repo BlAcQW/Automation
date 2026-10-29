@@ -184,6 +184,7 @@ model Tenant {
   ridePassEntries      RidePassEntry[]
   rides                Ride[]
   paygDays             PaygDay[]
+  businessKnowledge    BusinessKnowledge?
 
   @@index([whatsappPhoneNumberId])
   @@index([businessType])
@@ -1070,18 +1071,26 @@ model PayoutRequest {
 /// A tenant's end customer, keyed by phone. Linked (optional, SetNull) from
 /// Conversation, Booking and Order.
 model Customer {
-  id         String   @id @default(cuid())
-  tenantId   String
+  id                   String    @id @default(cuid())
+  tenantId             String
   /// E.164, e.g. +233241234567
-  phone      String
-  name       String?
-  email      String?
+  phone                String
+  name                 String?
+  email                String?
   /// Vertical-specific fields with no column of their own, e.g. for RIDES
   /// { "studentId": "...", "university": "..." }. Free-form JSON: validate the
   /// shape per vertical at the API boundary, never trust it on read.
-  attributes Json?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  attributes           Json?
+  /// Staff-only note (Customers page and inbox), at most 1000 characters
+  /// (enforced in services/customer-notes.ts; the column is a backstop). The
+  /// assistant is given it only when the chat's identity is verified, and is
+  /// told never to quote it or reveal that it exists.
+  notes                String?   @db.VarChar(1000)
+  notesUpdatedAt       DateTime?
+  /// User.id of whoever last changed the note. No FK: the record outlives the user.
+  notesUpdatedByUserId String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
@@ -1630,7 +1639,8 @@ model PaygDay {
   @@unique([tenantId, day])
 }
 
-// ============================================
+// =====================================
+
 // WAITLIST (self sign-up closed while Meta verification is ongoing)
 // ============================================
 
@@ -1681,4 +1691,55 @@ model WaitlistEntry {
   @@index([businessType])
   @@index([createdAt])
   @@index([joinedTenantId])
+=======
+/// What the owner tells the assistant about the business (Settings > Your
+/// assistant): its knowledge base. 1:1 with Tenant. Every field is optional:
+/// an empty field is left out of the prompt, and a tenant with no row (or an
+/// empty one) gets exactly the prompt it had before this existed. Lengths and
+/// shapes are enforced at the API boundary (services/business-knowledge.ts);
+/// the VARCHAR caps here are a backstop.
+model BusinessKnowledge {
+  id                 String    @id @default(cuid())
+  tenantId           String    @unique
+  // About the business
+  about              String?   @db.VarChar(500)
+  specialties        String?   @db.VarChar(500)
+  audience           String?   @db.VarChar(500)
+  /// Team: [{ name, role }], at most 15. Validated JSON; never trusted on read.
+  team               Json?
+  // Location
+  address            String?   @db.VarChar(500)
+  directions         String?   @db.VarChar(500)
+  /// https only (validated at the API boundary).
+  mapsUrl            String?   @db.VarChar(500)
+  parking            String?   @db.VarChar(500)
+  // Booking rules (shops: ordering and delivery)
+  minimumNotice      String?   @db.VarChar(500)
+  advanceBooking     String?   @db.VarChar(500)
+  walkIns            String?   @db.VarChar(500)
+  groupBookings      String?   @db.VarChar(500)
+  lateArrival        String?   @db.VarChar(500)
+  homeService        String?   @db.VarChar(500)
+  // Payments and policies
+  paymentMethods     String?   @db.VarChar(500)
+  cancellationPolicy String?   @db.VarChar(1000)
+  // Before and after
+  preparation        String?   @db.VarChar(1000)
+  aftercare          String?   @db.VarChar(1000)
+  // Current offer. Left out of the prompt after offerEndsOn (tenant's zone).
+  offer              String?   @db.VarChar(1000)
+  offerEndsOn        DateTime? @db.Date
+  /// Questions customers ask: [{ question, answer }], at most 30. Validated JSON.
+  faqs               Json?
+  // Language and tone. Never overrides the hard rules.
+  tone               String?   @db.VarChar(500)
+  languages          String?   @db.VarChar(500)
+  // Anything else
+  notes              String?   @db.VarChar(2000)
+  /// User.id of whoever saved last. No FK: the record outlives the user.
+  updatedByUserId    String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }

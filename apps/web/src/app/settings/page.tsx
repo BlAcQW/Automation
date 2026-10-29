@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
     Store, User as UserIcon, Lock, Calendar, ExternalLink, Banknote, BellRing, ShieldCheck,
-    Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Trash2, Code2,
+    Boxes, Users, Smartphone, FileText, Clock, ChevronRight, Trash2, Code2, Bot,
 } from 'lucide-react';
 import {
-    Button, DashboardInput, Switch, Select, MoneyInput, PageHeader, SectionHeading, ConfirmDialog, Card,
+    Button, DashboardInput, Switch, Select, MoneyInput, PageHeader, SectionHeading, ConfirmDialog, Card, buttonVariants,
 } from '@bookingflow/ui';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -320,6 +320,20 @@ export default function SettingsPage() {
             {/* ---------------------------------------------------------- Your business */}
             <section className="space-y-4">
                 <SectionHeading title="Your business" />
+
+                <SettingsCard
+                    icon={<Bot />}
+                    title="Your assistant"
+                    description="Teach it about your business: where you are, how to pay, your policies, aftercare and the questions customers ask."
+                >
+                    <p className="max-w-[60ch] text-[15px] leading-relaxed text-muted">
+                        The more it knows, the more it can answer on its own instead of passing the chat to you. You can try it before customers do.
+                    </p>
+                    <Link href="/settings/assistant" className={buttonVariants({ className: 'w-full sm:w-auto' })}>
+                        {isOwner ? 'Teach your assistant' : 'See what your assistant knows'}
+                        <ChevronRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                </SettingsCard>
 
                 <SettingsCard icon={<Store />} title="Business details" description="How your business shows to customers.">
                     <DashboardInput

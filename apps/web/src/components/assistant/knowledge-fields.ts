@@ -93,7 +93,7 @@ export const SECTIONS: SectionDef[] = [
         fields: [
             { key: 'about', label: 'What you do', limit: LIMITS.short, multiline: true, placeholder: 'A skin clinic in East Legon for facials, chemical peels and acne care, run by a certified aesthetician.', shopPlaceholder: 'Handmade leather bags and sandals, made to order in our Osu workshop.' },
             { key: 'specialties', label: "What you're known for", limit: LIMITS.short, multiline: true, placeholder: 'Our signature HydraGlow facial, and gentle treatments for sensitive and darker skin.', shopPlaceholder: 'Our tote bags in full-grain leather, finished by hand.' },
-            { key: 'audience', label: 'Who you serve', limit: LIMITS.short, placeholder: 'Women and men 16 and over. Children welcome with a parent. Corporate packages for teams.' },
+            { key: 'audience', label: 'Who you serve', limit: LIMITS.short, multiline: true, placeholder: 'Women and men 16 and over. Children welcome with a parent. Corporate packages for teams.' },
         ],
     },
     {
@@ -111,7 +111,7 @@ export const SECTIONS: SectionDef[] = [
             { key: 'address', label: 'Address', limit: LIMITS.short, placeholder: '14 Jungle Avenue, East Legon, Accra (GA-416-2245)' },
             { key: 'directions', label: 'Directions and landmarks', limit: LIMITS.short, multiline: true, placeholder: "Opposite the A&C Mall car park. Cream building with a green gate. We're on the first floor." },
             { key: 'mapsUrl', label: 'Google Maps link', limit: LIMITS.short, placeholder: 'https://maps.app.goo.gl/…', hint: 'In Google Maps, open your business, tap Share and paste the link. It starts with https://' },
-            { key: 'parking', label: 'Parking', limit: LIMITS.short, placeholder: 'Free parking in front. Ask the security man to open the gate.' },
+            { key: 'parking', label: 'Parking', limit: LIMITS.short, multiline: true, placeholder: 'Free parking in front. Ask the security man to open the gate.' },
         ],
     },
     {
@@ -121,11 +121,11 @@ export const SECTIONS: SectionDef[] = [
         helper: 'The rules your assistant explains before someone books.',
         shopHelper: 'The rules your assistant explains before someone orders.',
         fields: [
-            { key: 'minimumNotice', label: 'Minimum notice', limit: LIMITS.short, placeholder: 'Book at least 3 hours ahead. Same-day bookings depend on space.', shopPlaceholder: 'Made-to-order pieces need 5 working days.' },
-            { key: 'advanceBooking', label: 'How far ahead people can book', shopLabel: 'How far ahead people can order', limit: LIMITS.short, placeholder: 'Up to 2 months ahead. Bridal bookings up to 6 months.', shopPlaceholder: 'Pre-orders open 4 weeks before each new collection.' },
-            { key: 'walkIns', label: 'Walk-ins', shopLabel: 'Walk-in customers', limit: LIMITS.short, placeholder: 'Walk-ins welcome on weekdays if a room is free. Weekends are by booking only.', shopPlaceholder: 'Visit the showroom Monday to Saturday, 9am to 6pm.' },
+            { key: 'minimumNotice', label: 'Minimum notice', limit: LIMITS.short, multiline: true, placeholder: 'Book at least 3 hours ahead. Same-day bookings depend on space.', shopPlaceholder: 'Made-to-order pieces need 5 working days.' },
+            { key: 'advanceBooking', label: 'How far ahead people can book', shopLabel: 'How far ahead people can order', limit: LIMITS.short, multiline: true, placeholder: 'Up to 2 months ahead. Bridal bookings up to 6 months.', shopPlaceholder: 'Pre-orders open 4 weeks before each new collection.' },
+            { key: 'walkIns', label: 'Walk-ins', shopLabel: 'Walk-in customers', limit: LIMITS.short, multiline: true, placeholder: 'Walk-ins welcome on weekdays if a room is free. Weekends are by booking only.', shopPlaceholder: 'Visit the showroom Monday to Saturday, 9am to 6pm.' },
             { key: 'groupBookings', label: 'Group bookings', shopLabel: 'Large or group orders', limit: LIMITS.short, multiline: true, placeholder: 'Bridal parties and groups of 4 or more: message us 2 weeks ahead for a group quote.', shopPlaceholder: 'Orders of 20 or more: 2 weeks’ notice and half paid upfront.' },
-            { key: 'lateArrival', label: 'Late arrival', shopLabel: 'Late collection', limit: LIMITS.short, placeholder: 'We wait 15 minutes. After that we may shorten the treatment or move you to another day.', shopPlaceholder: 'We hold paid orders for collection for 7 days.' },
+            { key: 'lateArrival', label: 'Late arrival', shopLabel: 'Late collection', limit: LIMITS.short, multiline: true, placeholder: 'We wait 15 minutes. After that we may shorten the treatment or move you to another day.', shopPlaceholder: 'We hold paid orders for collection for 7 days.' },
             { key: 'homeService', label: 'Home service', shopLabel: 'Delivery areas and fees', limit: LIMITS.short, multiline: true, placeholder: 'Our chef cooks at your home anywhere in Accra. Transport GH₵ 150, Tema GH₵ 250.', shopPlaceholder: 'Accra GH₵ 40, same day if you order by 12pm. Kumasi GH₵ 80, next day.' },
         ],
     },
@@ -134,7 +134,7 @@ export const SECTIONS: SectionDef[] = [
         title: 'Payments and policies',
         helper: 'How people can pay, and what happens if plans change.',
         fields: [
-            { key: 'paymentMethods', label: 'Payment methods you accept', limit: LIMITS.short, placeholder: 'MTN MoMo, Telecel Cash, Visa and Mastercard. Cash at the clinic.' },
+            { key: 'paymentMethods', label: 'Payment methods you accept', limit: LIMITS.short, multiline: true, placeholder: 'MTN MoMo, Telecel Cash, Visa and Mastercard. Cash at the clinic.' },
             { key: 'cancellationPolicy', label: 'Cancellation and rescheduling policy', shopLabel: 'Cancellations and returns', limit: LIMITS.long, multiline: true, placeholder: 'Move or cancel free up to 24 hours before. Later than that, the deposit is kept. One free reschedule per booking.', shopPlaceholder: 'Exchanges within 7 days with the receipt. Custom pieces cannot be returned.' },
         ],
     },
@@ -167,7 +167,7 @@ export const SECTIONS: SectionDef[] = [
         helper: "How your assistant should sound. It always replies in the customer's language and always follows Bookly's booking and payment rules.",
         shopHelper: "How your assistant should sound. It always replies in the customer's language and always follows Bookly's order and payment rules.",
         fields: [
-            { key: 'tone', label: 'How your assistant should sound', limit: LIMITS.short, placeholder: 'Warm and premium. Short replies. Call customers by their first name.' },
+            { key: 'tone', label: 'How your assistant should sound', limit: LIMITS.short, multiline: true, placeholder: 'Warm and premium. Short replies. Call customers by their first name.' },
             { key: 'languages', label: 'Languages', limit: LIMITS.short, placeholder: 'English. Twi greetings are welcome.' },
         ],
     },

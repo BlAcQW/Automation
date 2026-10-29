@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft, Lock, MessageCircle } from 'lucide-react';
 import {
     Button, Card, CardContent, ConfirmDialog, ErrorState, PageHeader, SectionHeading, SkeletonCard,
 } from '@bookingflow/ui';
@@ -178,6 +178,14 @@ export default function AssistantSettingsPage() {
 
                     <Completeness {...progress} businessType={businessType} />
 
+                    {/* On phones the try-out panel sits below the form; this gets there in one tap. */}
+                    <a
+                        href="#try-assistant"
+                        className="inline-flex min-h-[44px] items-center gap-2 rounded-control text-[15px] font-semibold text-primary underline-offset-4 hover:underline lg:hidden"
+                    >
+                        <MessageCircle className="h-4 w-4" aria-hidden /> Try your assistant
+                    </a>
+
                     <SectionHeading
                         title="What your assistant should know"
                         description="Fill in what applies to you. Leave the rest empty: your assistant only uses what's here, and checks with your team about anything else."
@@ -203,7 +211,7 @@ export default function AssistantSettingsPage() {
                     )}
                 </div>
 
-                <aside className="min-w-0 lg:sticky lg:top-6" aria-label="Try your assistant">
+                <aside id="try-assistant" className="min-w-0 scroll-mt-24 lg:sticky lg:top-24" aria-label="Try your assistant">
                     <TryAssistantPanel businessType={businessType} unsavedKnowledge={dirty ? toPayload(withoutBlankRows(form)) : null} />
                 </aside>
             </div>

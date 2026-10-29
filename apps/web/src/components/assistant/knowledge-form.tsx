@@ -85,11 +85,7 @@ export function KnowledgeForm({ form, onChange, errors, businessType, readOnly }
                         {s.id === 'faqs' && (
                             <FaqEditor rows={form.faqs} onChange={(rows) => set('faqs', rows)} errors={errors} disabled={readOnly} />
                         )}
-                        {s.id === 'bookingRules' ? (
-                            <div className="grid gap-5 md:grid-cols-2">{s.fields.map((f) => textField(s, f.key))}</div>
-                        ) : (
-                            s.fields.map((f) => textField(s, f.key))
-                        )}
+                        {s.fields.map((f) => textField(s, f.key))}
                         {s.id === 'offers' && (
                             <div className="max-w-xs space-y-1">
                                 <DashboardInput

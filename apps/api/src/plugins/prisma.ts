@@ -73,6 +73,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
     'WebhookDelivery',
     'SupportSession',
     'BillingTerms',
+    'BusinessKnowledge',
     // RIDES pack (TURBO)
     'RideSettings',
     'RideDestination',

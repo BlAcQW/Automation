@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { SITE_TAGLINE } from '@/lib/site';
 import { SIGNUP_CTA } from '@/lib/signup-cta';
+import { SHOW_LOGIN_LINKS } from '@/lib/feature-flags';
 import { SiteLogo } from './site-logo';
 import { Container } from './primitives';
 
@@ -27,7 +28,7 @@ const COLUMNS = [
         links: [
             ['About and contact', '/about'],
             ['Support', '/support'],
-            ['Log in', '/login'],
+            ...(SHOW_LOGIN_LINKS ? [['Log in', '/login']] : []),
             [SIGNUP_CTA.label, SIGNUP_CTA.href],
         ],
     },

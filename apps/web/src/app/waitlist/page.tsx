@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { SiteShell } from '@/components/marketing/site-shell';
 import { PageHero, Section } from '@/components/marketing/primitives';
 import { breadcrumbJsonLd, pageMetadata } from '@/lib/seo';
+import { SHOW_LOGIN_LINKS } from '@/lib/feature-flags';
 import { WaitlistForm } from './waitlist-form';
 
 const CRUMBS = [{ name: 'Waitlist', path: '/waitlist' }];
@@ -59,9 +60,13 @@ export default function WaitlistPage() {
                             ))}
                         </ol>
                         <p className="mt-8 rounded-card border border-border bg-surface-2 p-4 text-body text-muted">
-                            Already on Bookly?{' '}
-                            <Link href="/login" className="font-semibold text-primary underline-offset-4 hover:underline">Log in</Link>.
-                            {' '}Got an invite? Open the link in your message.
+                            {SHOW_LOGIN_LINKS && (
+                                <>
+                                    Already on Bookly?{' '}
+                                    <Link href="/login" className="font-semibold text-primary underline-offset-4 hover:underline">Log in</Link>.{' '}
+                                </>
+                            )}
+                            Got an invite? Open the link in your message.
                         </p>
                     </aside>
                 </div>

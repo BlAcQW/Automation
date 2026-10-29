@@ -17,3 +17,10 @@ export const PRODUCT_MODE_ENABLED =
  */
 export const REGISTRATION_OPEN =
     process.env.NEXT_PUBLIC_REGISTRATION_OPEN === 'true';
+
+/**
+ * Public "Log in" links (header, mobile menu, footer, waitlist page, sitemap).
+ * Hidden for now while Bookly is waitlist-only; /login itself still works for
+ * existing businesses who have the link. Set to true to bring them back.
+ */
+export const SHOW_LOGIN_LINKS = false;

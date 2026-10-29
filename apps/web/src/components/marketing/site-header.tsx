@@ -4,6 +4,7 @@ import { cx as cn } from '@/components/marketing/cx';
 import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { SiteLogo } from './site-logo';
 import { ButtonLink, Container, SignupLink } from './primitives';
+import { SHOW_LOGIN_LINKS } from '@/lib/feature-flags';
 import styles from './marketing.module.css';
 
 export const NAV_LINKS = [
@@ -46,9 +47,11 @@ export function SiteHeader({ current }: { current?: string }) {
 
                 <div className="flex items-center gap-1.5 sm:gap-2">
                     <ThemeToggle />
-                    <ButtonLink href="/login" variant="ghost" size="md" className="hidden sm:inline-flex">
-                        Log in
-                    </ButtonLink>
+                    {SHOW_LOGIN_LINKS && (
+                        <ButtonLink href="/login" variant="ghost" size="md" className="hidden sm:inline-flex">
+                            Log in
+                        </ButtonLink>
+                    )}
                     <SignupLink variant="primary" size="md" className="px-4" />
 
                     <details className={cn('relative lg:hidden', styles.menu)}>
@@ -79,15 +82,17 @@ export function SiteHeader({ current }: { current?: string }) {
                                             </Link>
                                         </li>
                                     ))}
-                                    <li className="mt-1 border-t border-border pt-1">
-                                        <Link
-                                            href="/login"
-                                            className="flex min-h-[48px] items-center justify-between rounded-control px-3 text-body font-medium text-text hover:bg-surface-2"
-                                        >
-                                            Log in
-                                            <ChevronRight className="h-4 w-4 text-muted" aria-hidden />
-                                        </Link>
-                                    </li>
+                                    {SHOW_LOGIN_LINKS && (
+                                        <li className="mt-1 border-t border-border pt-1">
+                                            <Link
+                                                href="/login"
+                                                className="flex min-h-[48px] items-center justify-between rounded-control px-3 text-body font-medium text-text hover:bg-surface-2"
+                                            >
+                                                Log in
+                                                <ChevronRight className="h-4 w-4 text-muted" aria-hidden />
+                                            </Link>
+                                        </li>
+                                    )}
                                 </ul>
                             </nav>
                         </div>

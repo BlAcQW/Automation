@@ -10,7 +10,7 @@
  * is a config change only: set NEXT_PUBLIC_SITE_URL and rebuild.
  */
 
-import { REGISTRATION_OPEN } from './feature-flags';
+import { REGISTRATION_OPEN, SHOW_LOGIN_LINKS } from './feature-flags';
 
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://bookly.ikieguy.online').replace(/\/$/, '');
 
@@ -87,7 +87,7 @@ export const PUBLIC_PAGES: { path: string; updated: string; priority: number; ch
     ...(REGISTRATION_OPEN
         ? [{ path: '/register', updated: '2026-10-26', priority: 0.6, changeFrequency: 'monthly' as const }]
         : [{ path: '/waitlist', updated: '2026-10-29', priority: 0.8, changeFrequency: 'monthly' as const }]),
-    { path: '/login', updated: '2026-10-26', priority: 0.3, changeFrequency: 'yearly' },
+    ...(SHOW_LOGIN_LINKS ? [{ path: '/login', updated: '2026-10-26', priority: 0.3, changeFrequency: 'yearly' as const }] : []),
     { path: '/privacy', updated: '2026-10-29', priority: 0.3, changeFrequency: 'yearly' },
     { path: '/terms', updated: '2026-05-14', priority: 0.3, changeFrequency: 'yearly' },
 ];

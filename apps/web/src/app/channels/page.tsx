@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Instagram, Facebook, Loader2, ArrowRight, Info, Smartphone, Lock } from 'lucide-react';
+import { Instagram, Facebook, Loader2, ArrowRight, Info, Smartphone, Lock, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
+import { loadFacebookSdk, type FacebookSdk } from '@/lib/facebook-sdk';
 import {
     PageHeader,
     Card,
@@ -20,13 +21,6 @@ import {
 } from '@bookingflow/ui';
 import { notify } from '@/components/brand/toast';
 import { useAuth } from '@/lib/auth';
-
-declare global {
-    interface Window {
-        FB: any;
-        fbAsyncInit: () => void;
-    }
-}
 
 interface ChannelState {
     connected: boolean;
@@ -80,6 +74,23 @@ export default function ChannelsPage() {
     const [selectionToken, setSelectionToken] = useState<string | null>(null);
     const [savingPage, setSavingPage] = useState<string | null>(null);
 
+    // Meta's SDK is loaded as soon as the page opens, so the login popup can
+    // open straight from the Connect click (Safari blocks popups that open
+    // after an await).
+    const appId = process.env.NEXT_PUBLIC_WHATSAPP_APP_ID;
+    const [fb, setFb] = useState<FacebookSdk | null>(null);
+    const [fbBlocked, setFbBlocked] = useState(false);
+
+    const prepareFacebook = useCallback(() => {
+        if (!appId) return;
+        setFbBlocked(false);
+        loadFacebookSdk(appId)
+            .then((sdk) => setFb(() => sdk))
+            .catch(() => setFbBlocked(true));
+    }, [appId]);
+
+    useEffect(() => { prepareFacebook(); }, [prepareFacebook]);
+
     const fetchStatus = useCallback(async () => {
         try {
             const res = await api.get('/channels/status');
@@ -94,13 +105,12 @@ export default function ChannelsPage() {
     useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
     function connectFacebook() {
-        const appId = process.env.NEXT_PUBLIC_WHATSAPP_APP_ID;
-        if (!window.FB) {
-            setError('Facebook could not load. Turn off any ad-blocker for this page and refresh.');
-            return;
-        }
         if (!appId) {
             setError('Facebook app is not configured. Contact support.');
+            return;
+        }
+        if (!fb) {
+            if (fbBlocked) prepareFacebook();
             return;
         }
 
@@ -108,7 +118,7 @@ export default function ChannelsPage() {
         setError(null);
         setNotice(null);
 
-        window.FB.login(
+        fb.login(
             async (response: any) => {
                 const code = response?.authResponse?.code;
                 if (!code) {
@@ -173,8 +183,15 @@ export default function ChannelsPage() {
 
     const fbConnected = !!status?.messenger.connected;
 
+    const fbLoading = !!appId && !fb && !fbBlocked;
+
     const connectButton = (
-        <Button onClick={connectFacebook} disabled={connecting || !isOwner} isLoading={connecting} loadingText="Connecting…">
+        <Button
+            onClick={connectFacebook}
+            disabled={connecting || !isOwner}
+            isLoading={connecting || fbLoading}
+            loadingText={connecting ? 'Connecting…' : 'Getting ready…'}
+        >
             <Facebook className="h-4 w-4" aria-hidden />
             Connect
         </Button>
@@ -190,6 +207,24 @@ export default function ChannelsPage() {
             {error && status && (
                 <div role="alert" className="rounded-control border border-error/30 bg-error-soft p-4 text-[15px] text-error-fg">
                     {error}
+                </div>
+            )}
+            {fbBlocked && status && !status.messenger.connected && (
+                <div role="alert" className="rounded-control border border-warning/40 bg-warning-soft p-4">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-warning-fg" aria-hidden />
+                        <div className="min-w-0">
+                            <p className="text-[15px] font-semibold text-text">Facebook could not load</p>
+                            <p className="mt-1 text-small text-warning-fg">
+                                An ad-blocker or browser extension may be blocking{' '}
+                                <code className="break-all rounded bg-surface px-1.5 py-0.5 text-[13px] text-text">connect.facebook.net</code>.
+                                Turn it off for this page, or try a different browser.
+                            </p>
+                            <Button variant="secondary" size="sm" onClick={prepareFacebook} className="mt-3">
+                                Try again
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             )}
             {notice && (

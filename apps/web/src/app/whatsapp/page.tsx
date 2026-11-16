@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { loadFacebookSdk } from '@/lib/facebook-sdk';
 import {
     AlertCircle, Smartphone, Send, Unplug, Zap, Store, CalendarCheck, ShieldCheck, Sparkles, Link2,
 } from 'lucide-react';
@@ -151,31 +152,6 @@ export default function WhatsAppSetupPage() {
         loadFacebookSDK();
     }, []);
 
-    // Poll for SDK readiness (handles cases where onerror doesn't fire)
-    useEffect(() => {
-        if (sdkReady || sdkFailed) return;
-
-        const interval = setInterval(() => {
-            if (window.FB) {
-                setSdkReady(true);
-                clearInterval(interval);
-            }
-        }, 1500);
-
-        // Timeout after 15 seconds — SDK is likely blocked
-        const timeout = setTimeout(() => {
-            if (!window.FB) {
-                setSdkFailed(true);
-            }
-            clearInterval(interval);
-        }, 15000);
-
-        return () => {
-            clearInterval(interval);
-            clearTimeout(timeout);
-        };
-    }, [sdkReady, sdkFailed]);
-
     const fetchStatus = async () => {
         try {
             const response = await api.get('/whatsapp/status');
@@ -187,38 +163,22 @@ export default function WhatsAppSetupPage() {
         }
     };
 
+    // Shared with the Channels page: whichever page opens first loads Meta's
+    // SDK, the other reuses it. The loader gives up after 15 s, because some
+    // blockers swallow the request without an error.
     const loadFacebookSDK = () => {
-        window.fbAsyncInit = function () {
-            window.FB.init({
-                appId: process.env.NEXT_PUBLIC_WHATSAPP_APP_ID,
-                cookie: true,
-                xfbml: true,
-                // Embedded Signup v4 (Meta's implementation guide uses v25.0).
-                version: 'v25.0'
-            });
-            setSdkReady(true);
-            setSdkFailed(false);
-        };
-
-        if (window.FB) {
+        const appId = process.env.NEXT_PUBLIC_WHATSAPP_APP_ID;
+        if (!appId) {
+            // launchWhatsAppSignup explains the missing setting on click.
             setSdkReady(true);
             return;
         }
-
-        const existing = document.getElementById('facebook-jssdk');
-        if (existing) existing.remove();
-
-        const script = document.createElement('script');
-        script.id = 'facebook-jssdk';
-        script.src = 'https://connect.facebook.net/en_US/sdk.js';
-        script.async = true;
-        script.defer = true;
-        script.crossOrigin = 'anonymous';
-        script.onerror = () => {
-            setSdkFailed(true);
-            setMessage({ type: 'error', text: 'Facebook could not load. Turn off any ad-blocker for this page and try again.' });
-        };
-        document.body.appendChild(script);
+        loadFacebookSdk(appId)
+            .then(() => {
+                setSdkReady(true);
+                setSdkFailed(false);
+            })
+            .catch(() => setSdkFailed(true));
     };
 
     const retrySDK = () => {

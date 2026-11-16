@@ -63,23 +63,30 @@ async function graph<T>(url: string, init: RequestInit | undefined, step: PageCo
 }
 
 /**
- * Exchange the Facebook Login code and list the Pages this person administers,
- * each with its linked Instagram account where one exists.
+ * Take the short-lived user token from Facebook Login in the browser and list
+ * the Pages this person administers, each with its linked Instagram account
+ * where one exists.
+ *
+ * The token is first swapped for a long-lived one (fb_exchange_token). Meta
+ * only does that for tokens issued to this app, so a token from another app is
+ * refused here, and Page tokens read with a long-lived user token do not expire.
+ * (A login *code* is no use from the browser: the JS SDK binds it to a one-off
+ * redirect_uri the server cannot reproduce.)
  *
  * Returns every Page rather than guessing: a salon owner who also administers a
  * friend's Page must choose, and silently taking the first one is how the wrong
  * business ends up wired to someone else's bookings.
  */
-export async function discoverPages(code: string, redirectUri?: string): Promise<DiscoveredPage[]> {
+export async function discoverPages(userAccessToken: string): Promise<DiscoveredPage[]> {
     if (!config.whatsapp.appId || !config.whatsapp.appSecret) {
         throw new PageConnectError('config', 'WHATSAPP_APP_ID and WHATSAPP_APP_SECRET must be set');
     }
 
     const tokenUrl = new URL(`${GRAPH_BASE}/oauth/access_token`);
+    tokenUrl.searchParams.set('grant_type', 'fb_exchange_token');
     tokenUrl.searchParams.set('client_id', config.whatsapp.appId);
     tokenUrl.searchParams.set('client_secret', config.whatsapp.appSecret);
-    tokenUrl.searchParams.set('code', code);
-    if (redirectUri) tokenUrl.searchParams.set('redirect_uri', redirectUri);
+    tokenUrl.searchParams.set('fb_exchange_token', userAccessToken);
 
     const token = await graph<{ access_token?: string }>(tokenUrl.toString(), undefined, 'token_exchange');
     if (!token.access_token) {

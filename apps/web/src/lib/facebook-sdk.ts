@@ -100,7 +100,8 @@ export function createFacebookSdkLoader(env: FacebookSdkEnv): FacebookSdkLoader 
 /** What Meta's SDK passes to the login callback. */
 export interface FacebookLoginResponse {
     status?: string;
-    authResponse?: { code?: string } | null;
+    /** `accessToken` is a short-lived user token; `code` only with response_type=code. */
+    authResponse?: { accessToken?: string; code?: string } | null;
 }
 
 /**

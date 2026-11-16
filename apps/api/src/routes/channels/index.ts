@@ -71,7 +71,7 @@ const channelRoutes: FastifyPluginAsync = async (fastify) => {
         };
     });
 
-    // POST /channels/facebook/pages — exchange the login code and list Pages.
+    // POST /channels/facebook/pages — take the browser's login token and list Pages.
     // Nothing is stored yet; the tenant has not chosen.
     fastify.post('/facebook/pages', {
         preHandler: [fastify.authenticate],
@@ -88,12 +88,12 @@ const channelRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const body = z.object({
-            code: z.string().min(1),
-            redirectUri: z.string().url().optional(),
+            // Short-lived user token from FB.login; never stored or logged.
+            accessToken: z.string().min(1).max(4096),
         }).parse(request.body);
 
         try {
-            const pages = await discoverPages(body.code, body.redirectUri);
+            const pages = await discoverPages(body.accessToken);
             if (pages.length === 0) {
                 throw fastify.httpErrors.badRequest(
                     'No Facebook Pages found on that account. Create a Page for your business first, then try again.',

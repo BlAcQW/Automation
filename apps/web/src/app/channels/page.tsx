@@ -118,8 +118,10 @@ export default function ChannelsPage() {
         setError(null);
         setNotice(null);
 
-        // Called straight from the click so the browser allows the popup.
-        facebookLogin(fb, { response_type: 'code', override_default_response_type: true, scope: FB_SCOPES })
+        // Called straight from the click so the browser allows the popup. We ask
+        // for the plain user token, not a code: the SDK binds a code to its own
+        // one-off redirect_uri, so the server could never exchange it.
+        facebookLogin(fb, { scope: FB_SCOPES })
             .then(readPages, () => {
                 setConnecting(false);
                 setError('Facebook login could not open. Refresh the page and try again.');
@@ -127,14 +129,14 @@ export default function ChannelsPage() {
     }
 
     async function readPages(response: FacebookLoginResponse) {
-        const code = response.authResponse?.code;
-        if (!code) {
+        const accessToken = response.authResponse?.accessToken;
+        if (!accessToken) {
             setConnecting(false);
             setError('Connection cancelled.');
             return;
         }
         try {
-            const res = await api.post('/channels/facebook/pages', { code });
+            const res = await api.post('/channels/facebook/pages', { accessToken });
             setPages(res.data.pages);
             setSelectionToken(res.data.selectionToken);
         } catch (err: any) {

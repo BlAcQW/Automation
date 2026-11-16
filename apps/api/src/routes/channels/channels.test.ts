@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Fastify from 'fastify';
 import sensible from '@fastify/sensible';
 
-const pages = vi.hoisted(() => ({ subscribePageToWebhooks: vi.fn(), unsubscribePage: vi.fn() }));
+const pages = vi.hoisted(() => ({ discoverPages: vi.fn(), subscribePageToWebhooks: vi.fn(), unsubscribePage: vi.fn() }));
 vi.mock('../../services/meta-pages.js', async (orig) => ({
     ...(await orig<typeof import('../../services/meta-pages.js')>()),
+    discoverPages: pages.discoverPages,
     subscribePageToWebhooks: pages.subscribePageToWebhooks,
     unsubscribePage: pages.unsubscribePage,
 }));
@@ -66,5 +67,26 @@ describe('Facebook / Instagram connection bookkeeping', () => {
         expect(pages.unsubscribePage).toHaveBeenCalledWith('pg1', 'page-tok');
         expect(tenant).toMatchObject({ facebookPageId: null, facebookConnectedAt: null, facebookConnectedByUserId: null, instagramUserId: null, instagramConnectedAt: null });
         expect(audits[0]).toMatchObject({ action: 'channels.facebook_disconnected', metadata: { pageName: 'TURBO Page', metaCleanup: 'unsubscribed_page', by: 'owner' } });
+    });
+});
+
+describe('POST /channels/facebook/pages', () => {
+    it('lists Pages from the login token and keeps Page tokens out of the response', async () => {
+        // Arrange
+        const app = await build();
+        pages.discoverPages.mockResolvedValue([
+            { pageId: 'pg1', pageName: 'Bookly Test Clinic', pageToken: 'page-tok', instagramUserId: 'ig1', instagramUsername: 'clinic.gh' },
+        ]);
+
+        // Act
+        const res = await app.inject({ method: 'POST', url: '/channels/facebook/pages', payload: { accessToken: 'short-lived-user-token' } });
+
+        // Assert
+        expect(res.statusCode).toBe(200);
+        expect(pages.discoverPages).toHaveBeenCalledWith('short-lived-user-token');
+        const body = res.json();
+        expect(body.pages).toEqual([{ pageId: 'pg1', pageName: 'Bookly Test Clinic', instagramUsername: 'clinic.gh', hasInstagram: true }]);
+        expect(res.body).not.toContain('page-tok');
+        expect(typeof body.selectionToken).toBe('string');
     });
 });

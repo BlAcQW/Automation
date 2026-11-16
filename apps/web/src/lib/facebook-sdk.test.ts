@@ -4,6 +4,8 @@ import {
     FACEBOOK_SDK_ID,
     FACEBOOK_SDK_SRC,
     createFacebookSdkLoader,
+    facebookLogin,
+    type FacebookSdk,
     type FacebookSdkEnv,
 } from './facebook-sdk';
 
@@ -132,5 +134,57 @@ describe('createFacebookSdkLoader', () => {
 
         // Assert
         expect(timers[0].cleared).toBe(true);
+    });
+});
+
+/**
+ * A stand-in for Meta's SDK that applies the same check as the real FB.login:
+ * anything but a plain function is rejected with "Expression is of type
+ * asyncfunction, not function", and no popup opens.
+ */
+function strictSdk() {
+    let callback: ((response: unknown) => void) | null = null;
+    const login = vi.fn((cb: (response: unknown) => void, _options: Record<string, unknown>) => {
+        const type = Object.prototype.toString.call(cb).slice(8, -1).toLowerCase();
+        if (type !== 'function') throw new Error(`Expression is of type ${type}, not function`);
+        callback = cb;
+    });
+    const sdk: FacebookSdk = { init: vi.fn(), login };
+    const personFinishes = (response: unknown) => callback?.(response);
+    return { sdk, login, personFinishes };
+}
+
+describe('facebookLogin', () => {
+    it('opens Meta’s login straight away with a plain callback, and resolves with the response', async () => {
+        // Arrange
+        const { sdk, login, personFinishes } = strictSdk();
+        const options = { response_type: 'code', scope: 'pages_show_list' };
+
+        // Act
+        const result = facebookLogin(sdk, options);
+
+        // Assert: called synchronously, so the popup stays inside the click.
+        expect(login).toHaveBeenCalledTimes(1);
+        expect(login.mock.calls[0][1]).toBe(options);
+
+        // Act
+        personFinishes({ status: 'connected', authResponse: { code: 'abc' } });
+
+        // Assert
+        await expect(result).resolves.toEqual({ status: 'connected', authResponse: { code: 'abc' } });
+    });
+
+    it('rejects instead of hanging when Meta’s SDK refuses to open the login', async () => {
+        // Arrange
+        const sdk: FacebookSdk = {
+            init: vi.fn(),
+            login: () => { throw new Error('Expression is of type asyncfunction, not function'); },
+        };
+
+        // Act
+        const result = facebookLogin(sdk, {});
+
+        // Assert
+        await expect(result).rejects.toThrow('asyncfunction');
     });
 });

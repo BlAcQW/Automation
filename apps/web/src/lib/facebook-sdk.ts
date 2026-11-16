@@ -97,6 +97,29 @@ export function createFacebookSdkLoader(env: FacebookSdkEnv): FacebookSdkLoader 
     };
 }
 
+/** What Meta's SDK passes to the login callback. */
+export interface FacebookLoginResponse {
+    status?: string;
+    authResponse?: { code?: string } | null;
+}
+
+/**
+ * Opens Meta's login popup and resolves with the person's response.
+ *
+ * Meta's SDK type-checks the callback and throws "Expression is of type
+ * asyncfunction, not function" for an `async` one, without opening the popup.
+ * The callback here is always a plain function. `sdk.login` runs synchronously,
+ * so call this directly from the click handler or the browser blocks the popup.
+ * Rejects if the SDK refuses to open the login.
+ */
+export function facebookLogin(sdk: FacebookSdk, options: Record<string, unknown>): Promise<FacebookLoginResponse> {
+    return new Promise<FacebookLoginResponse>((resolve) => {
+        sdk.login(function onLogin(response) {
+            resolve((response ?? {}) as FacebookLoginResponse);
+        }, options);
+    });
+}
+
 let browserLoader: FacebookSdkLoader | null = null;
 
 /** Loads (or reuses) Meta's SDK in this tab. Browser only. */

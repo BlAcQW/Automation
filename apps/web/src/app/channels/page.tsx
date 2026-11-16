@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Instagram, Facebook, Loader2, ArrowRight, Info, Smartphone, Lock, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
-import { loadFacebookSdk, type FacebookSdk } from '@/lib/facebook-sdk';
+import { facebookLogin, loadFacebookSdk, type FacebookLoginResponse, type FacebookSdk } from '@/lib/facebook-sdk';
 import {
     PageHeader,
     Card,
@@ -118,26 +118,30 @@ export default function ChannelsPage() {
         setError(null);
         setNotice(null);
 
-        fb.login(
-            async (response: any) => {
-                const code = response?.authResponse?.code;
-                if (!code) {
-                    setConnecting(false);
-                    setError('Connection cancelled.');
-                    return;
-                }
-                try {
-                    const res = await api.post('/channels/facebook/pages', { code });
-                    setPages(res.data.pages);
-                    setSelectionToken(res.data.selectionToken);
-                } catch (err: any) {
-                    setError(err?.response?.data?.message ?? 'Could not read your Facebook Pages.');
-                } finally {
-                    setConnecting(false);
-                }
-            },
-            { config_id: undefined, response_type: 'code', override_default_response_type: true, scope: FB_SCOPES },
-        );
+        // Called straight from the click so the browser allows the popup.
+        facebookLogin(fb, { response_type: 'code', override_default_response_type: true, scope: FB_SCOPES })
+            .then(readPages, () => {
+                setConnecting(false);
+                setError('Facebook login could not open. Refresh the page and try again.');
+            });
+    }
+
+    async function readPages(response: FacebookLoginResponse) {
+        const code = response.authResponse?.code;
+        if (!code) {
+            setConnecting(false);
+            setError('Connection cancelled.');
+            return;
+        }
+        try {
+            const res = await api.post('/channels/facebook/pages', { code });
+            setPages(res.data.pages);
+            setSelectionToken(res.data.selectionToken);
+        } catch (err: any) {
+            setError(err?.response?.data?.message ?? 'Could not read your Facebook Pages.');
+        } finally {
+            setConnecting(false);
+        }
     }
 
     async function choosePage(pageId: string) {

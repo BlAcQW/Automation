@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          "docs/strategy/bookly-explained.html"
+        ],
+        "createdAt": "2026-11-08T17:57:05.073Z",
+        "reason": "Brand: the owner's Bookly rebrand brief sets cream #FAF6EE as the main background (about 60% of every surface)"
+      },
+      {
+        "rule": "radial-halo",
+        "value": "*",
+        "files": [
+          "docs/strategy/bookly-explained.html"
+        ],
+        "createdAt": "2026-11-08T17:57:05.093Z",
+        "reason": "False positive: the radial-gradients draw the gold awning-stripe scallops (Bookly signature element), not a glow or halo"
+      }
+    ]
+  }
+}

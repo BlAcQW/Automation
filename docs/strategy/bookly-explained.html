@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en-GH">
+<head>
+<meta charset="utf-8">
+<title>Bookly, explained</title>
+<style>
+  @font-face { font-family: 'Clash Display'; font-weight: 600; src: url('../../apps/web/public/fonts/clash-display-600.woff2') format('woff2'); }
+  @font-face { font-family: 'Bricolage Grotesque'; font-weight: 400 700; src: url('../../apps/web/public/fonts/bricolage-grotesque-latin.woff2') format('woff2'); unicode-range: U+0000-00FF, U+2000-206F, U+2122, U+2212; }
+  @font-face { font-family: 'Bricolage Grotesque'; font-weight: 400 700; src: url('../../apps/web/public/fonts/bricolage-grotesque-latin-ext.woff2') format('woff2'); unicode-range: U+0100-02BA, U+20A0-20C4; }
+
+  @page { size: A4; margin: 0; }
+  :root {
+    --cream: #FAF6EE; --green: #0F6B4F; --green-dark: #0B5540; --green-soft: #E6F2EC;
+    --gold: #E8A317; --gold-light: #F2C14E; --gold-soft: #FBEFD5; --char: #1F2328; --muted: #5E6570; --border: #E7E1D6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: 'Bricolage Grotesque', Arial, sans-serif; color: var(--char); font-size: 10.8pt; line-height: 1.55; background: var(--cream); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .page { width: 210mm; min-height: 297mm; padding: 16mm 17mm 18mm; position: relative; break-after: page; background: var(--cream); }
+  .page:last-child { break-after: auto; }
+  .foot { position: absolute; left: 17mm; right: 17mm; bottom: 8mm; display: flex; justify-content: space-between; font-size: 8pt; color: var(--muted); }
+  .awning { height: 10mm; margin: -16mm -17mm 10mm; background:
+    radial-gradient(circle at 50% 0, var(--gold) 0 58%, transparent 59%) 0 2.4mm / 10mm 10mm repeat-x,
+    radial-gradient(circle at 50% 0, var(--gold-light) 0 58%, transparent 59%) 5mm 2.4mm / 10mm 10mm repeat-x,
+    linear-gradient(var(--gold), var(--gold)) 0 0 / 100% 2.8mm no-repeat; }
+
+  .display { font-family: 'Clash Display', 'Bricolage Grotesque', sans-serif; font-weight: 600; letter-spacing: -0.02em; }
+  .eyebrow { font-size: 8.4pt; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--green); margin: 0 0 2mm; }
+  h1 { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 40pt; line-height: 1; letter-spacing: -0.025em; margin: 0 0 5mm; }
+  h2 { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 22pt; line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 3mm; break-after: avoid; }
+  h3 { font-size: 12.5pt; font-weight: 700; margin: 0 0 1.2mm; line-height: 1.25; }
+  p { margin: 0 0 2.6mm; }
+  .lead { font-size: 12.5pt; line-height: 1.5; color: #3A3F45; }
+  .muted { color: var(--muted); }
+  b, strong { font-weight: 700; }
+  ul { margin: 0; padding-left: 5mm; }
+  li { margin: 0 0 1.2mm; }
+
+  .big-quote { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 21pt; line-height: 1.18; letter-spacing: -0.015em; color: var(--green); margin: 4mm 0 6mm; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 4mm; padding: 4.5mm 5mm; break-inside: avoid; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4mm; }
+
+  .why .num { font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 22pt; color: var(--green); line-height: 1; margin-bottom: 2mm; border-bottom: 1.2mm solid var(--gold); display: inline-block; padding-bottom: 1mm; }
+
+  .timeline { list-style: none; padding: 0; margin: 4mm 0 0; }
+  .timeline li { display: grid; grid-template-columns: 30mm 1fr; gap: 4mm; padding: 3mm 0; border-top: 1px solid var(--border); margin: 0; break-inside: avoid; }
+  .timeline .t { font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+
+  .feature { display: grid; grid-template-columns: 13mm 1fr; gap: 4mm; padding: 4.2mm 0; border-top: 1px solid var(--border); break-inside: avoid; }
+  .feature:first-of-type { border-top: 0; }
+  .feature .n { width: 11mm; height: 11mm; border-radius: 50%; background: var(--green); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11pt; }
+  .feature p { margin: 0 0 1.6mm; }
+  .means { background: var(--green-soft); color: var(--green-dark); border-radius: 2.5mm; padding: 2mm 3.2mm; font-size: 10pt; margin-top: 1.6mm; }
+  .means b { color: var(--green-dark); }
+
+  .tag { display: inline-block; font-size: 7.8pt; font-weight: 700; letter-spacing: .04em; padding: 0.6mm 2.4mm; border-radius: 99px; vertical-align: 1px; }
+  .tag.soon { background: var(--gold-soft); color: #6B4C06; }
+  .tag.now { background: var(--green-soft); color: var(--green-dark); }
+
+  .sections { columns: 2; column-gap: 6mm; margin: 2mm 0 1mm; padding-left: 5mm; font-size: 10pt; }
+  .sections li { break-inside: avoid; }
+
+  .check { list-style: none; padding: 0; margin: 2mm 0 0; }
+  .check li { position: relative; padding: 2.6mm 0 2.6mm 9mm; border-top: 1px solid var(--border); margin: 0; break-inside: avoid; }
+  .check li::before { content: ''; position: absolute; left: 0; top: 3mm; width: 5mm; height: 5mm; border: 1.6px solid var(--green); border-radius: 1.2mm; background: #fff; }
+
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 3mm 0 0; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4mm; }
+  .steps li { counter-increment: s; background: var(--green); color: #fff; border-radius: 4mm; padding: 5mm; margin: 0; break-inside: avoid; }
+  .steps li::before { content: counter(s); display: block; font-family: 'Clash Display', sans-serif; font-weight: 600; font-size: 26pt; color: var(--gold); line-height: 1; margin-bottom: 2mm; }
+  .steps b { display: block; font-size: 12pt; margin-bottom: 1mm; }
+
+  /* chat mock */
+  .phone { width: 64mm; background: var(--char); border-radius: 9mm; padding: 2.4mm; margin: 0 auto; }
+  .screen { background: #EFEAE2; border-radius: 7mm; overflow: hidden; }
+  .chead { background: #075E54; color: #fff; padding: 3mm 4mm; font-size: 9pt; display: flex; gap: 2.4mm; align-items: center; }
+  .chead .av { width: 7mm; height: 7mm; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 7pt; }
+  .cbody { padding: 3mm; display: flex; flex-direction: column; gap: 1.6mm; }
+  .b { max-width: 84%; padding: 1.8mm 2.6mm; border-radius: 3mm; font-size: 8pt; line-height: 1.35; }
+  .b.me { align-self: flex-end; background: #D9FDD3; border-bottom-right-radius: 1mm; }
+  .b.them { align-self: flex-start; background: #fff; border-bottom-left-radius: 1mm; }
+  .b.done { align-self: stretch; background: var(--green-soft); color: var(--green-dark); border: 1px solid rgba(15,107,79,.25); max-width: none; }
+
+  .faq { break-inside: avoid; padding: 3mm 0; border-top: 1px solid var(--border); }
+  .faq h3 { font-size: 11pt; margin-bottom: 1mm; }
+  .faq p { margin: 0; }
+
+  .who { display: grid; grid-template-columns: 1fr 1fr; gap: 0 6mm; }
+  .who div { padding: 2.4mm 0; border-top: 1px solid var(--border); break-inside: avoid; }
+
+  .cover { background: var(--cream); }
+  .cover-cta { position: absolute; left: 17mm; right: 17mm; bottom: 26mm; }
+  .pill { display: inline-block; background: var(--green); color: #fff; font-weight: 700; padding: 3mm 6mm; border-radius: 3mm; font-size: 12pt; }
+  .note { font-size: 9.2pt; color: var(--muted); }
+  .soonbox { background: #fff; border: 1.5px dashed var(--gold); border-radius: 4mm; padding: 4.5mm 5mm; break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<!-- 1. Cover -->
+<section class="page cover">
+  <div class="awning"></div>
+  <div style="margin-top:22mm">
+    <div class="display" style="font-size:44pt;color:var(--green);letter-spacing:-0.03em">Bookly</div>
+    <h1 style="margin-top:14mm;font-size:46pt">Bookly,<br>explained.</h1>
+    <p class="lead" style="max-width:135mm">What Bookly does for your business, what you get, and what you need to start. In plain words, with no technical talk.</p>
+  </div>
+  <div class="cover-cta">
+    <p class="display" style="font-size:24pt;color:var(--green);margin-bottom:6mm">Your shop, always open.</p>
+    <span class="pill">Join the waitlist at booklygh.com</span>
+    <p class="note" style="margin-top:8mm">November 2026. The businesses, people and prices in this guide are examples.</p>
+  </div>
+</section>
+
+<!-- 2. One sentence + why + chat -->
+<section class="page">
+  <p class="eyebrow">Bookly in one sentence</p>
+  <p class="big-quote">Bookly is like a receptionist who lives in your WhatsApp, Instagram and Facebook Messenger. It answers your clients, books them in and collects the deposit, day and night, even while you're busy with someone.</p>
+
+  <h2>Why it matters</h2>
+  <div class="grid3 why" style="margin-bottom:7mm">
+    <div class="card"><div class="num">1</div><h3>Clients want an answer now</h3><p class="muted" style="margin:0">If they wait, they message the next business. Most people book with whoever replies first.</p></div>
+    <div class="card"><div class="num">2</div><h3>You can't always reply</h3><p class="muted" style="margin:0">You're with a client, driving, or asleep. Messages at 9 p.m. still deserve an answer.</p></div>
+    <div class="card"><div class="num">3</div><h3>No-shows cost money</h3><p class="muted" style="margin:0">An empty slot is income gone. A deposit and a reminder mean people turn up.</p></div>
+  </div>
+
+  <div class="grid2" style="align-items:center;gap:8mm">
+    <div>
+      <h2>What it looks like</h2>
+      <p>Your client chats with your business the way they always do. Bookly replies for you, in seconds, with your real prices and your real free times.</p>
+      <p>When the deposit is paid, the booking is confirmed and lands in your diary. You didn't have to type a word.</p>
+      <p class="note">Example conversation with a made-up skin clinic.</p>
+    </div>
+    <div class="phone"><div class="screen">
+      <div class="chead"><span class="av">MS</span><span><b>Maison Skin Clinic</b><br><span style="opacity:.75;font-size:7pt">Business account</span></span></div>
+      <div class="cbody">
+        <div class="b me">Hi, can I get a HydraFacial this week?</div>
+        <div class="b them">Hi Efua! A HydraFacial is GH₵ 850 and takes an hour. Thursday has 11:00 am and 4:30 pm free.</div>
+        <div class="b me">4:30 please</div>
+        <div class="b them">Lovely. A GH₵ 200 deposit holds it. I've sent you the payment request.</div>
+        <div class="b me">Paid ✅</div>
+        <div class="b done"><b>Booked</b> · Thu 4:30 pm · HydraFacial · GH₵ 200 deposit paid</div>
+      </div>
+    </div></div>
+  </div>
+  <div class="foot"><span>Bookly, explained</span><span>2</span></div>
+</section>
+
+<!-- 3. A day with Bookly -->
+<section class="page">
+  <p class="eyebrow">A day with Bookly</p>
+  <h2>One booking, from first message to front door</h2>
+  <p class="lead">Here is what happens when a client messages a skin clinic late in the evening.</p>
+  <ul class="timeline">
+    <li><span class="t">Mon, 9:47 pm</span><span>Efua sends a WhatsApp message: "Can I get a HydraFacial this week?" The owner is at home with her family.</span></li>
+    <li><span class="t">Mon, 9:47 pm</span><span>Bookly replies within seconds with the price and two times that are really free on Thursday.</span></li>
+    <li><span class="t">Mon, 9:49 pm</span><span>Efua picks 4:30 pm. Bookly sends her a payment request for the GH₵ 200 deposit, and she pays by Mobile Money.</span></li>
+    <li><span class="t">Mon, 9:50 pm</span><span>The booking is confirmed. Efua gets a confirmation. The owner sees it in Bookly, and in Google Calendar if she uses it.</span></li>
+    <li><span class="t">Thu, 3:30 pm</span><span>Bookly reminds Efua her appointment is in an hour, with a link to cancel if her plans change, so the slot can go to someone else.</span></li>
+    <li><span class="t">Thu, 4:30 pm</span><span>Efua walks in. The owner never had to stop what she was doing.</span></li>
+  </ul>
+  <div class="card" style="margin-top:7mm">
+    <h3>And if Efua had asked something Bookly didn't know?</h3>
+    <p style="margin:0">Bookly never guesses. It would tell her someone from the clinic will get back to her, and pass the chat to the owner. The owner can reply herself at any time.</p>
+  </div>
+  <div class="foot"><span>Bookly, explained</span><span>3</span></div>
+</section>
+
+<!-- 4-6. What you get -->
+<section class="page">
+  <p class="eyebrow">What you get</p>
+  <h2>Everything Bookly does for you</h2>
+  <p class="lead">Ten things, in the order you'll notice them.</p>
+
+  <div class="feature"><span class="n">1</span><div>
+    <h3>It answers every message</h3>
+    <p>On WhatsApp, Instagram and Facebook Messenger, in seconds, at any hour, weekends included. It writes like a friendly member of your staff: short, polite, and in the language your client uses. Regulars are welcomed back by name.</p>
+    <p>It never makes up a price, a service or a time. It only says what you've set.</p>
+    <div class="means"><b>What this means for you:</b> no more lost bookings because you replied too late.</div>
+  </div></div>
+
+  <div class="feature"><span class="n">2</span><div>
+    <h3>It knows your business</h3>
+    <p>On a page called <b>Your assistant</b>, you write down what a new receptionist would need to know. There are ten short parts, and every part is optional:</p>
+    <ol class="sections">
+      <li>About your business</li><li>Your team</li><li>Location and parking</li><li>Booking rules</li><li>Payments and policies</li>
+      <li>Before and after (how to prepare, aftercare)</li><li>Current offers</li><li>Questions clients ask</li><li>Language and tone</li><li>Anything else</li>
+    </ol>
+    <p>Before any client sees it, you can ask Bookly questions yourself and read its answers. If something isn't written down, it doesn't guess: it passes the chat to you.</p>
+    <div class="means"><b>What this means for you:</b> "Where are you?", "Is there parking?", "What do I do after the peel?" get answered properly, in your words.</div>
+  </div></div>
+
+  <div class="feature"><span class="n">3</span><div>
+    <h3>It books them in properly</h3>
+    <p>Bookly only offers times you're really free. It checks your opening hours, your days off, the appointments you already have, and how many clients you can take at once. It repeats the service, day and time back to the client before booking.</p>
+    <div class="means"><b>What this means for you:</b> no double bookings, and no "sorry, I'm actually full".</div>
+  </div></div>
+  <div class="foot"><span>Bookly, explained</span><span>4</span></div>
+</section>
+
+<section class="page">
+  <div class="feature"><span class="n">4</span><div>
+    <h3>It collects the deposit</h3>
+    <p>You choose the deposit for each service. Clients pay by Mobile Money or card on a simple payment page with your business name. The time is held for 30 minutes; if nobody pays, it's freed up for someone else. The booking is only confirmed once the deposit is paid.</p>
+    <p><span class="tag now">Today</span> deposits go through your own Paystack or Payaza account, and we help you set it up. <span class="tag soon">Coming soon</span> Bookly collects for you and you withdraw to your Mobile Money whenever you like, with no account to open.</p>
+    <div class="means"><b>What this means for you:</b> people who pay a deposit turn up.</div>
+  </div></div>
+
+  <div class="feature"><span class="n">5</span><div>
+    <h3>It reminds your clients</h3>
+    <p>Clients get a confirmation as soon as they book, and a reminder one hour before their appointment, on WhatsApp or by text message. The reminder includes a link to cancel, so if plans change you get the slot back instead of an empty chair. Text messages are sent from "Bookly" on our account: nothing for you to set up or pay separately.</p>
+    <div class="means"><b>What this means for you:</b> fewer no-shows, and fewer "I forgot".</div>
+  </div></div>
+
+  <div class="feature"><span class="n">6</span><div>
+    <h3>It remembers your regulars</h3>
+    <p>When someone comes back, Bookly greets them by name and knows their past and upcoming appointments. You and your staff can also write a private note on a client, such as "prefers Esi" or "sensitive skin". Bookly uses it quietly to help, and never repeats it to the client.</p>
+    <div class="means"><b>What this means for you:</b> your regulars feel known, even when you're not the one replying.</div>
+  </div></div>
+
+  <div class="feature"><span class="n">7</span><div>
+    <h3>You're always in charge</h3>
+    <p>Every chat from WhatsApp, Instagram and Messenger is in one inbox. You can read what Bookly said, tap <b>Take over</b> to reply yourself, and <b>Hand back</b> when you're done. You get a notification when something needs you.</p>
+    <div class="means"><b>What this means for you:</b> Bookly does the routine work; you step in when it matters.</div>
+  </div></div>
+  <div class="foot"><span>Bookly, explained</span><span>5</span></div>
+</section>
+
+<section class="page">
+  <div class="feature"><span class="n">8</span><div>
+    <h3>Your diary and your clients in one place</h3>
+    <p>All bookings in one list you can search and filter, showing who has paid. Bookings can also appear in your Google Calendar automatically. Your client list keeps everyone's history. You manage your services, prices, opening hours and days off from the same place.</p>
+    <div class="means"><b>What this means for you:</b> no more notebook, and no more "I think I have someone at two".</div>
+  </div></div>
+
+  <div class="feature"><span class="n">9</span><div>
+    <h3>Your team, safely</h3>
+    <p>Give your staff their own logins so they can answer chats and manage bookings. Staff only see the last four digits of a client's number; if they really need the full number they can show it, and that's recorded. You see everything.</p>
+    <div class="means"><b>What this means for you:</b> your client list stays yours, even if someone leaves.</div>
+  </div></div>
+
+  <div class="feature"><span class="n">10</span><div>
+    <h3>It works on your phone</h3>
+    <p>Use Bookly in your phone's browser or add it to your home screen like an app. Light and dark mode included.</p>
+    <div class="means"><b>What this means for you:</b> run your bookings from wherever you are.</div>
+  </div></div>
+
+  <div style="margin-top:8mm"></div>
+  <p class="eyebrow">Your clients</p>
+  <h2>What your clients see</h2>
+  <div class="grid2">
+    <div class="card"><h3>Nothing new to learn</h3><p style="margin:0">They chat on WhatsApp, Instagram or Messenger, exactly as they do today. There's no app to download and no account to create.</p></div>
+    <div class="card"><h3>A quick, polite answer</h3><p style="margin:0">Prices, free times and answers about your business, in seconds, at any hour.</p></div>
+    <div class="card"><h3>An easy way to pay</h3><p style="margin:0">A simple payment page with your business name, by Mobile Money or card.</p></div>
+    <div class="card"><h3>Confirmation and a reminder</h3><p style="margin:0">Right after booking, and an hour before, with a link to cancel if they need to.</p></div>
+  </div>
+
+  <div class="foot"><span>Bookly, explained</span><span>6</span></div>
+</section>
+
+<!-- 7. Who it is for -->
+<section class="page">
+  <p class="eyebrow">Who it's for</p>
+  <h2>Made for businesses where every booking counts</h2>
+  <p>If clients book a time with you, Bookly fits. It works especially well for:</p>
+  <div class="who">
+    <div><b>Skin and aesthetics clinics</b><br><span class="muted">Facials, peels and laser, deposit first.</span></div>
+    <div><b>Spas and wellness</b><br><span class="muted">Massages and packages, booked into real therapist time.</span></div>
+    <div><b>Private dental clinics</b><br><span class="muted">Check-ups and whitening, booked and reminded.</span></div>
+    <div><b>Bespoke tailoring</b><br><span class="muted">Fittings and collections, with a deposit.</span></div>
+    <div><b>Private chefs and caterers</b><br><span class="muted">The date held and paid for before you shop.</span></div>
+    <div><b>Photography studios</b><br><span class="muted">Shoots and studio time, deposit first.</span></div>
+    <div><b>Pilates and fitness studios</b><br><span class="muted">Private sessions and classes.</span></div>
+    <div><b>Car detailing</b><br><span class="muted">Details and coatings booked into the bay.</span></div>
+    <div><b>Salons and barbers</b><br><span class="muted">Braids, cuts, nails and lashes.</span></div>
+    <div><b>And more</b><br><span class="muted">Anything booked by appointment, run by one to eight people.</span></div>
+  </div>
+  <p class="note" style="margin-top:4mm">Not a fit yet: walk-in-only businesses, and businesses that need clients to pick one specific team member's diary.</p>
+  <div class="foot"><span>Bookly, explained</span><span>7</span></div>
+</section>
+
+<!-- 7. What you need + steps + cost -->
+<section class="page">
+  <p class="eyebrow">Getting started</p>
+  <h2>What you need to start</h2>
+  <p>No technical skills. Most businesses are set up in an afternoon, and we help you through it.</p>
+  <ul class="check">
+    <li><b>Your business WhatsApp number</b>, and/or your Instagram account and Facebook Page. We connect them with you in a few guided steps.</li>
+    <li><b>Your services:</b> name, price, how long each takes, and the deposit you want.</li>
+    <li><b>Your opening hours and days off.</b></li>
+    <li><b>Your business details for "Your assistant":</b> location, policies, aftercare and so on. Our owner guide shows what to write.</li>
+    <li><b>For deposits, for now:</b> a Paystack or Payaza account. We help you open and connect it.</li>
+    <li><b>If you use WhatsApp:</b> a debit or credit card on your Meta (Facebook) business account, because Meta charges a small fee for some WhatsApp messages. Instagram and Messenger are free.</li>
+  </ul>
+
+  <h2 style="margin-top:9mm">Three steps</h2>
+  <ol class="steps">
+    <li><b>Join the waitlist</b>At booklygh.com. It takes a minute and costs nothing.</li>
+    <li><b>We invite you and set up together</b>Connect your channels, add services and hours, fill in "Your assistant", and test it yourself.</li>
+    <li><b>Share your number</b>Put it in your Instagram bio and WhatsApp status. Bookly takes it from there.</li>
+  </ol>
+
+  <h2 style="margin-top:9mm">What it costs</h2>
+  <div class="grid2">
+    <div class="card"><h3>Bookly</h3><p style="margin:0">Prices will be announced when we open to everyone. Joining the waitlist is free and doesn't commit you to anything.</p></div>
+    <div class="card"><h3>Messages</h3><p style="margin:0">WhatsApp fees are Meta's own, paid straight to Meta; we add nothing on top. Instagram and Messenger are free. Text reminders are sent on our account.</p></div>
+  </div>
+  <div class="foot"><span>Bookly, explained</span><span>8</span></div>
+</section>
+
+<!-- 8. Coming soon + FAQ -->
+<section class="page">
+  <p class="eyebrow">What's next</p>
+  <h2>Coming soon</h2>
+  <div class="soonbox" style="margin-bottom:8mm">
+    <p>These are already built and will be switched on over the coming months. We'll tell you when each one is ready.</p>
+    <ul>
+      <li><b>Bookly collects deposits for you.</b> No Paystack or Payaza account; withdraw your money to Mobile Money whenever you like.</li>
+      <li><b>A WhatsApp number we set up for you</b>, paid in one bill by Mobile Money or card, with no Meta account of your own.</li>
+      <li><b>Selling products:</b> a catalogue, orders, stock and delivery, all through the same chats.</li>
+      <li><b>A Bookly phone app</b> for owners and staff.</li>
+    </ul>
+  </div>
+
+  <p class="eyebrow">Questions people ask</p>
+  <h2>Good questions</h2>
+  <div class="grid2" style="gap:0 7mm">
+    <div>
+      <div class="faq"><h3>Do my clients need an app?</h3><p>No. They use WhatsApp, Instagram or Messenger as they already do.</p></div>
+      <div class="faq"><h3>Will it say something wrong?</h3><p>It only uses your prices, your free times and what you've written in "Your assistant". If it doesn't know, it passes the chat to you.</p></div>
+      <div class="faq"><h3>Can I still reply myself?</h3><p>Any time. Tap "Take over", reply, then hand the chat back.</p></div>
+      <div class="faq"><h3>Does it sound like a robot?</h3><p>No. It writes short, friendly messages like your staff would, and you can tell it how to sound.</p></div>
+      <div class="faq"><h3>What if a client cancels?</h3><p>Their reminder has a cancel link, so the slot frees up for someone else. Your cancellation policy is up to you.</p></div>
+    </div>
+    <div>
+      <div class="faq"><h3>Is my client list safe?</h3><p>Yes. Staff see only the last four digits of numbers, and every full look-up is recorded. Your private notes are never shown to clients.</p></div>
+      <div class="faq"><h3>Do I need to be good with technology?</h3><p>No. If you can use WhatsApp, you can use Bookly, and we set it up with you.</p></div>
+      <div class="faq"><h3>Can it handle several clients at once?</h3><p>Yes. It answers everyone at the same time and tells you how many you can see at once, so it never overbooks.</p></div>
+      <div class="faq"><h3>Why is there a waitlist?</h3><p>We're letting businesses in a few at a time, so everyone gets a proper start and personal help setting up.</p></div>
+      <div class="faq"><h3>How do I join?</h3><p>Go to booklygh.com and tap "Join waitlist". We'll message you on WhatsApp or email when it's your turn.</p></div>
+    </div>
+  </div>
+  <div class="foot"><span>Bookly, explained</span><span>9</span></div>
+</section>
+
+<!-- 9. Close -->
+<section class="page" style="display:flex;flex-direction:column;justify-content:center">
+  <div class="awning" style="position:absolute;top:0;left:0;right:0;margin:0"></div>
+  <div style="text-align:center">
+    <div class="display" style="font-size:40pt;color:var(--green);letter-spacing:-0.03em">Bookly</div>
+    <p class="display" style="font-size:28pt;margin:8mm 0 4mm">Your shop, always open.</p>
+    <p class="lead" style="max-width:130mm;margin:0 auto 10mm">Answers your clients, books them in, collects the deposit and reminds them, while you get on with your work.</p>
+    <span class="pill" style="font-size:14pt">Join the waitlist at booklygh.com</span>
+  </div>
+  <div class="foot"><span>Bookly, explained · November 2026</span><span>10</span></div>
+</section>
+
+</body>
+</html>

@@ -49,3 +49,13 @@ coverage/
 # Uploaded WhatsApp media (customer photos/documents) — served from disk,
 # never source. See apps/api/src/services/media.ts (MEDIA_DIR).
 apps/api/var/
+
+# Deploy backups and swap folders made when a new build is put live. Build
+# output, hundreds of MB each: never commit.
+apps/api/dist.prev-*/
+apps/api/dist.next/
+apps/web/.next.pre-*/
+apps/web/.next.next/
+
+# Per-session cache written by the impeccable design hook.
+.impeccable/hook.cache.json

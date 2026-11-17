@@ -24,10 +24,10 @@
     "clean": "rimraf node_modules apps/*/node_modules packages/*/node_modules"
   },
   "devDependencies": {
+    "@types/react": "18.3.31",
     "ajv": "^8.20.0",
     "concurrently": "^8.2.2",
-    "rimraf": "^5.0.5",
-    "@types/react": "18.3.31"
+    "rimraf": "^5.0.5"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -41,5 +41,8 @@
       "ajv": "^6.12.6"
     },
     "google-auth-library": "^10.9.1"
+  },
+  "dependencies": {
+    "cors": "^2.8.6"
   }
 }

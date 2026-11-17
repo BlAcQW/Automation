@@ -3,7 +3,8 @@
 // Bump this whenever the caching strategy changes — the `activate` handler
 // deletes every cache that isn't the current name, so an old cache holding a
 // stale build is purged.
-const CACHE_NAME = 'bookly-v2';
+// v3: purge in-app page data (RSC) that v2 cached by mistake.
+const CACHE_NAME = 'bookly-v3';
 // Only truly-static, public assets. Auth-gated HTML documents (e.g.
 // /dashboard) are NOT precached — their markup embeds build-specific chunk
 // URLs that go stale, which would resurrect the stale-code class of bug.
@@ -61,6 +62,13 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Never intercept Next.js in-app page data (opening a page from the menu
+    // fetches /page?_rsc=… with an RSC header). It is build- and
+    // session-specific, so a cached copy would bring back a stale page.
+    if (request.headers.get('RSC') === '1' || url.searchParams.has('_rsc')) {
+        return;
+    }
+
     // For navigation requests, use network-first
     if (request.mode === 'navigate') {
         event.respondWith(
@@ -107,7 +115,10 @@ self.addEventListener('fetch', (event) => {
                     }
                     return networkResponse;
                 })
-                .catch(() => cachedResponse);
+                // Offline and not cached: a network-error Response, never
+                // `undefined` (which respondWith rejects as "Failed to
+                // convert value to 'Response'").
+                .catch(() => cachedResponse || Response.error());
 
             return cachedResponse || fetchPromise;
         })

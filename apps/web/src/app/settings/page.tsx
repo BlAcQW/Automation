@@ -11,6 +11,7 @@ import {
 } from '@bookingflow/ui';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
+import { changePassword as changeAccountPassword, nameProblem, newPasswordProblem, saveProfileName } from '@/lib/account-api';
 import { notify } from '@/components/brand/toast';
 import { PayazaCard } from '@/components/payments/payaza-card';
 import { ConnectionRow } from '@/components/payments/connection-parts';
@@ -211,9 +212,16 @@ export default function SettingsPage() {
     };
 
     const saveProfile = async () => {
+        const problem = nameProblem(name);
+        if (problem) {
+            notify.error(problem);
+            return;
+        }
         setSaving(true);
         try {
-            await api.put('/users/me', { name, email });
+            await saveProfileName(api, name);
+            // So the new name shows in the sidebar and header straight away.
+            await refreshUser();
             notify.success('Profile saved');
             flashProfile();
         } catch (err) {
@@ -229,10 +237,15 @@ export default function SettingsPage() {
             setPasswordError("These passwords don't match. Type the new one again.");
             return;
         }
+        const problem = newPasswordProblem(newPassword);
+        if (problem) {
+            setPasswordError(problem);
+            return;
+        }
         setPasswordError('');
         setSaving(true);
         try {
-            await api.put('/users/me/password', { currentPassword, newPassword });
+            await changeAccountPassword(api, currentPassword, newPassword);
             setCurrentPassword('');
             setNewPassword('');
             setConfirmPassword('');
@@ -503,7 +516,15 @@ export default function SettingsPage() {
                 <SectionHeading title="Your account" />
                 <SettingsCard icon={<UserIcon />} title="Profile">
                     <DashboardInput label="Your name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-                    <DashboardInput label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+                    <DashboardInput
+                        label="Email"
+                        type="email"
+                        value={email}
+                        readOnly
+                        className="text-muted"
+                        hint="This is the email you log in with. It can't be changed here."
+                        autoComplete="email"
+                    />
                     <SaveRow saved={profileSaved}>
                         <Button onClick={saveProfile} isLoading={saving}>Save profile</Button>
                     </SaveRow>
